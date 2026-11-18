@@ -7,7 +7,8 @@ const {Readable,Transform}=require('node:stream');
 const {pipeline}=require('node:stream/promises');
 const {publicClueURL}=require('../browser/pdf-clues.cjs');
 const {readPartitionCookies}=require('../browser/request-cookies.cjs');
-const {checkCanceled,waitFor}=require('../browser/browser-task.cjs');
+const {checkCanceled,timeoutFailure,waitFor}=require('../browser/browser-task.cjs');
+const {BrowserFailure}=require('../browser/browser-errors.cjs');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const same=(info,pair)=>Array.isArray(pair)&&pair.length===2&&info.dev===pair[0]&&info.ino===pair[1];
 const failure=code=>Object.assign(Error(code),{bodyLocal:true});
@@ -69,6 +70,64 @@ async function target(url,resolver=dns.lookup) {
   const parsed=new URL(url),addresses=await resolver(parsed.hostname,{all:true});
   if(!addresses.length||addresses.some(item=>!publicAddress(item.address)))throw Error('unsafe-target');
   return parsed;
+}
+
+async function recoverBodyAccess(browser,data,{signal,deadline,onWaiting}={}) {
+  const request=data.body_access;
+  if(!request || Object.keys(request).sort().join(',')!=='referer,url'
+    || Object.hasOwn(data,'reader') || Object.hasOwn(data,'reader_access_only') || Object.hasOwn(data,'wantAbstract')
+    || !/^[a-f0-9]{64}$/.test(data.workspace_identity) || !UUID.test(data.paper_id)
+    || request.referer!==null && !publicClueURL(request.referer))
+    throw new BrowserFailure('navigation','document_operation_failed');
+  const destination=await waitFor(()=>target(request.url,browser.bodyTargetResolver),signal,deadline);
+  const owner=browser.operation,verify=browser.pinPreparedPaperAccess(data);
+  await owner.validateRecovery?.({signal,deadline});
+  verify();
+  const tab=await browser.newTaskPage({signal,deadline,managed:true});
+  browser.associatePage(tab,{role:'verification'});
+  tab.view.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  const reachedHeaders=new AbortController();
+  let bodyStatus;
+  const navigationSignal=AbortSignal.any([signal,reachedHeaders.signal].filter(Boolean));
+  let mainRequest;
+  const requestGuard=browser.sessionEvents.subscribe('beforeRequest',details=>{
+    if(details.webContentsId!==tab.id)return;
+    verify();
+    if(navigationSignal.aborted || Date.now()>=deadline || !browser.ownsPage(owner,tab.id) || !publicClueURL(details.url))
+      return {cancel:true};
+    const origin=new URL(details.url).origin;
+    if(details.resourceType==='mainFrame') {
+      if(details.method!=='GET' || origin!==destination.origin)return {cancel:true};
+      mainRequest=details.id;
+    } else if(origin!==destination.origin && origin!=='https://challenges.cloudflare.com')return {cancel:true};
+  });
+  const headerGuard=browser.sessionEvents.subscribe('headersReceived',details=>{
+    if(details.webContentsId!==tab.id || details.resourceType!=='mainFrame' || details.id!==mainRequest
+      || navigationSignal.aborted || Date.now()>=deadline || !browser.ownsPage(owner,tab.id)
+      || details.statusCode<200 || details.statusCode>=300)return;
+    verify();
+    const headers=Object.entries(details.responseHeaders || {});
+    if(headers.some(([name,values])=>name.toLowerCase()==='cf-mitigated'
+      && values.some(value=>value.trim().toLowerCase()==='challenge')))return;
+    const mime=headers.find(([name])=>name.toLowerCase()==='content-type')?.[1]?.[0]?.split(';')[0].trim().toLowerCase();
+    if(!['application/pdf','application/octet-stream'].includes(mime))return;
+    // A binary response is enough to resume the Session request. Stop the
+    // navigation at headers so this owned page cannot also save the body.
+    bodyStatus=details.statusCode;
+    reachedHeaders.abort();
+    return {cancel:true};
+  });
+  // The task owner drains the page and Solver before replying to Python. Keep
+  // the request scope in place until that physical page has gone away.
+  tab.view.webContents.once('destroyed',()=>{requestGuard.dispose();headerGuard.dispose();});
+  try {
+    await browser.navigate(destination.href,{tab,signal:navigationSignal,deadline,onWaiting,
+      httpReferrer:request.referer?{url:request.referer,policy:'strict-origin-when-cross-origin'}:undefined});}
+  catch(error){if(!reachedHeaders.signal.aborted)throw error;}
+  checkCanceled(signal);verify();
+  if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
+  if(bodyStatus)browser.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:bodyStatus});
+  return {outcome:'retrieved',body_access_ready:true};
 }
 const API_SCOPES={
   elsevier:['api.elsevier.com','/content/article/','X-ELS-APIKey'],
@@ -241,4 +300,4 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     if(!completed && partitionCookies!==null)try{observe({stream_partition_cookie_count:partitionCookies.cookies.length});}catch(_){}
   }
 }
-module.exports={executeBodyStream,openOutput,publicAddress,target,directories,credentialHeaders};
+module.exports={executeBodyStream,recoverBodyAccess,openOutput,publicAddress,target,directories,credentialHeaders};

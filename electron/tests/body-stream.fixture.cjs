@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),
 const assert=require('node:assert/strict'),{spawn}=require('node:child_process'),{createInterface}=require('node:readline');
 const {gzipSync}=require('node:zlib');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
-const {executeBodyStream}=require('../src/workflows/body-stream.cjs');
+const {executeBodyStream,recoverBodyAccess}=require('../src/workflows/body-stream.cjs');
 const {executeLocalBody}=require('../src/workflows/local-body.cjs');
 const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
@@ -14,7 +14,7 @@ app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
-  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;payload.write('%PDF-');
+  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],solves=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;payload.write('%PDF-');
   const server=http.createServer(async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     const input=new URL(req.url,origin);
@@ -31,7 +31,19 @@ app.whenReady().then(async()=>{
     if(req.url==='/cross'){res.writeHead(302,{location:origin.replace('pdf.','other.')+'/leak'});res.end();return;}
     if(req.url==='/cross-private'){res.writeHead(302,{location:origin.replace('pdf.','private.')+'/private-leak'});res.end();return;}
     if(req.url==='/cross-unsafe'){res.writeHead(302,{location:'ftp://other.example.org/unsafe-leak'});res.end();return;}
-    if(req.url==='/challenge'){res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});res.end('<html><title>Just a moment...</title></html>');return;}
+    if(req.url==='/challenge'){
+      const headers={'content-type':'text/html'};
+      if(req.headers.accept==='application/pdf')headers['cf-mitigated']='challenge';
+      res.writeHead(403,headers);res.end('<title>Unavailable</title>');return;
+    }
+    if(input.pathname==='/protected.pdf'&&!req.headers.cookie?.includes('fixture_access=ok')){
+      res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
+      res.end('<title>Just a moment...</title><a id="fixture-check" href="/fixture-check">Continue</a>'
+        +'<img src="'+origin.replace('pdf.','other.')+'/unrelated-image">');return;
+    }
+    if(req.url==='/fixture-check'){
+      res.writeHead(302,{'set-cookie':'fixture_access=ok; Path=/protected.pdf',location:'/protected.pdf?Signature=fixture'});res.end();return;
+    }
     if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><article><h1>View PDF</h1><p>access denied and captcha research</p></article><input type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
     if(req.url.startsWith('/redirect')){res.writeHead(302,{location:'/body?Signature=A%2FB'});res.end();return;}
     if(req.url==='/html.pdf'){res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=body.pdf'});res.end('<html><title>Login required</title><form><input type="password"></form></html>');return;}
@@ -51,7 +63,14 @@ app.whenReady().then(async()=>{
     res.end();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://pdf.example.org:${server.address().port}`;
-  const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window});
+  const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window,
+    solveCloudflare:async(tab)=>{
+      const contents=tab.view.webContents;
+      assert.equal(new URL(contents.getURL()).pathname,'/protected.pdf');
+      solves.push(tab.id);
+      await contents.executeJavaScript('document.querySelector("#fixture-check").click()');
+      return {outcome:'solved'};
+    }});
   browser.bodyTargetResolver=async host=>{resolved.push(host);return [{address:host==='private.example.org'||host==='watermark02.silverchair.com'&&faultKind==='blocked.pdf'?'127.0.0.1':'93.184.216.34'}];};
   await browser.ready;
   await browser.partition.cookies.set({url:origin,name:'fixture_session',value:'selected-session',sameSite:'unspecified'});
@@ -73,7 +92,7 @@ app.whenReady().then(async()=>{
   const streamTimings=[];
   const context=vm.createContext({browser,send,executeBodyStream:(browser,data,options)=>executeBodyStream(browser,data,{...options,observe:timing=>{
     options.observe(timing);throw Error('synthetic observation failure');
-  }}),executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
+  }}),recoverBodyAccess,executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
@@ -155,7 +174,15 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,29);assert.equal(slowWitness,true);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,30);assert.equal(slowWitness,true);
+    assert.equal(solves.length,1);
+    assert.equal(browser.tabs.has(solves[0]),false,'challenge page is destroyed before the managed retry settles');
+    const protectedRequests=requests.filter(r=>r.url==='/protected.pdf?Signature=fixture');
+    assert.deepEqual(protectedRequests.map(r=>r.headers.accept==='application/pdf'),[true,false,false,true]);
+    assert.deepEqual(protectedRequests.map(r=>r.headers.cookie?.includes('fixture_access=ok')),[false,false,true,true]);
+    assert.deepEqual(protectedRequests.map(r=>r.headers.referer),[origin+'/article',origin+'/article',origin+'/protected.pdf?Signature=fixture',origin+'/article']);
+    assert.equal(requests.filter(r=>r.url==='/unrelated-image').length,0,'recovery page cannot reach unrelated origins');
+    assert.equal(requests.filter(r=>r.url==='/fixture-check').length,1);
     assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
     assert.ok(streamTimings.length>0);
     for(const event of streamTimings){
@@ -179,9 +206,10 @@ app.whenReady().then(async()=>{
     assert.equal(requests.filter(r=>r.url.startsWith('/cookie-return')).length,2);
     assert.equal(requests.filter(r=>r.url==='/private-leak'||r.url==='/unsafe-leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
-    assert.equal(browser.tabs.size,0,'pure stream must create no pages');
+    assert.equal(browser.tabs.size,0,'all temporary pages drain before body completion');
     for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);
       if(request.url.startsWith('/cookie-progress'))continue; // Exact evolving values checked above.
+      if(protectedRequests.includes(request) || request.url==='/fixture-check')continue; // Browser challenge sequence checked above.
       const cookie=request.headers.host.startsWith('academic.')?'publisher_only':request.headers.host.startsWith('watermark02.')?'cdn_only':request.headers.host.startsWith('ieeexplore.')?'reader_only':request.headers.host.startsWith('other.')?'fallback_only':'fixture_session';
       assert.equal(request.headers.cookie,cookie+'=selected-session');
       assert.equal(request.headers.referer,cookie==='fixture_session'&&request.url!=='/cross-referer'?origin+'/article':request.url==='/cross-referer'?origin.replace('pdf.','other.')+'/':origin+'/');}

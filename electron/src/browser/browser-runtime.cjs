@@ -761,7 +761,7 @@ class BrowserRuntime {
     }
   }
 
-  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting}={}) {
+  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,httpReferrer}={}) {
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     await waitFor(()=>this.ready,signal,deadline);
@@ -784,7 +784,7 @@ class BrowserRuntime {
       checkCanceled(bounded);
       validate();
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
-      const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target),
+      const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target,{httpReferrer}),
         {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target});
       chain=tab.navigation.current.chain;
       const navigation=await (tab.authContext?.active

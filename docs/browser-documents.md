@@ -150,8 +150,10 @@ manual authentication/verification, restored access or failure. These states and
 bounded diagnostic reasons describe the current Page, not a Paper/Run state or a
 retroactive verdict on completed extraction/download. Login/CARSI still own their
 existing credential/consent actions. Solver never submits credentials, MFA or
-business forms. Other CAPTCHA vendors remain manual. No HTTP API/stream response
-opens an authentication tab or replays a POST for Solver.
+business forms. Other CAPTCHA vendors remain manual. A confirmed ordinary body
+GET challenge can reach the same Page observer through the scoped [body access
+recovery](body-downloads.md#session-stream-and-resource-settlement). API requests
+and original form actions retain their own authority and dispatch.
 
 Cloudflare's [response header](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/)
 and [widget visibility/execution modes](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)

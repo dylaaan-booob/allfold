@@ -183,6 +183,7 @@ async def main():
         print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
         cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'cross-private', 'cross-unsafe', 'bad-encoding', 'close-delimited', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals', 'octet', 'missing-mime', 'wrong-mime', 'split-prefix', 'fake-pdf', 'cookie-progress']]
         cases.extend([
+            ('protected-cdn',origin+'/protected.pdf?Signature=fixture',None),
             ('background-cloudflare',origin+'/background-cloudflare',None),
             ('oxford-cdn',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/body.pdf',None),
             ('oxford-private-dns',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/blocked.pdf',None),
@@ -239,7 +240,7 @@ async def main():
                 assert result.candidate_result.diagnostic == reason
                 assert saved.download.reason == reason
             if path=='background-cloudflare':assert not saved.download.reason.startswith('access-')
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress'}
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress','protected-cdn'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:

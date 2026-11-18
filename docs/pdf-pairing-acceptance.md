@@ -4,7 +4,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 23
-of the 31 frozen Papers have observations (58 pair slots including repeats).
+of the 31 frozen Papers have observations (59 pair slots including repeats).
 Eight Papers are unstarted. Twenty-five comparable low-load pairs from earlier
 platforms and one ScienceDirect matched fallback pair have reliable local
 file/association endpoints. Springer has two slower Allfold points and one
@@ -22,7 +22,10 @@ reentry restored actual entitlement and the unchanged code saved its publisher
 PDF in two new pairs. A remaining large-PDF warm-repeat user-wait disadvantage
 has direct cache-reuse evidence and is not declared met. The first formal
 ScienceDirect pair, F26, failed on both products after independent institutional
-preparation. F28 saved the same related preprint on both products. F27's Allfold
+preparation. In F26-2, both native viewers had already displayed the same
+publication. Zotero saved the correct PDF in 9.741–10.036 s, while Allfold's
+CDN requests encountered challenges and ended without a file. F28 saved the
+same related preprint on both products. F27's Allfold
 attempt encountered a CDN access challenge and Zotero's terminal state was
 unobserved when its trial tab was closed. Further coverage and affected retests remain required.
 Workspace is retained.**
@@ -100,7 +103,7 @@ The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed befor
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
 At this checkpoint Allfold has 53 automatic local-PDF successes, one assisted
-success and four failures. Zotero has 47 local-PDF successes, one visible
+success and five failures. Zotero has 48 local-PDF successes, one visible
 attachment failure and ten operator interruptions with unknown product terminal
 state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
@@ -117,7 +120,7 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
-| ScienceDirect | 3 / 6 | F26 failed on both products. F28 saved matching preprints. F27 Allfold failed and the Zotero trial tab was closed after the common observation horizon. | Publisher retrieval and prepared-control repeats remain under investigation. Not confirmed. |
+| ScienceDirect | 3 / 6 | F26-1 failed on both products. F26-2 saved the correct publication in Zotero only. F28 saved matching preprints. F27 Allfold failed and the Zotero trial tab was closed after the common observation horizon. | The observed extra failure fails the success criterion. Publisher retrieval and prepared controls require retest. |
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
 launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
@@ -177,6 +180,37 @@ attachment or product terminal state. The operator closed only the trial
 article tab after 633.413–633.468 s. The parent still had zero attachments at
 that check. The result is an operator interruption with product terminal
 state unknown. Neither product opened a full PDF before this pair.
+
+F26-2 used A→Z after both normal viewers had displayed the same 12-page
+publication. Chrome's earlier two user verification steps were preparation.
+Neither action needed human input during timing. Allfold attempt 2 ended in
+19.044–19.416 s without a file. Its article challenge reached the Solver, which
+logged an actual checkbox click. The Page next reached HTTP 200 and the pending
+Solver stopped. The three subsequent R024 Reader continuations returned
+`access-challenge` at the publisher's assets CDN after 625, 525 and 632 ms.
+Those Session requests had no corresponding Page verification or Solver event.
+The earlier export exposes the classification without the raw HTTP header.
+Zotero's new local imported attachment had the exact DOI and title, 12 pages
+and 4,834,588 bytes. Both the parent and file were verified in the acceptance
+collection. There is no time difference or ratio for this asymmetric outcome.
+
+The per-attempt [challenge audit](pdf-pairing-formal-results.json) covers all
+59 recorded slots and marks the eight unstarted samples. The retained traces
+show 11 attempts with Cloudflare evidence, 45 without observed Cloudflare
+evidence and three with insufficient time bounds or matching traces. Earlier
+Oxford, Wiley and SIAM source classifications are retained even when a related
+PDF subsequently saved. F20's Imperva/hCaptcha handoff remains separate. An
+absent event cannot establish absence of a real challenge. The pilot table
+retains the same diagnostic fields for its trials.
+
+The scoped repair sends a challenged ordinary GET to the existing Browser
+observer when it has no fixed Reader route. It keeps the original Service
+binding and waits for the temporary Page to drain before retrying the managed
+Session stream. The isolated fixture exercises an actual two-way Browser/Session
+handoff with a synthetic challenge, watcher dispatch and a completed local
+Paper file. It separately proves that an ordinary 403 is refused and an unrelated
+origin receives no request from the recovery Page. Publisher acceptance of the
+repair remains open until the original and unseen real samples complete.
 
 **Measurement load:** the original external observer requested full JSON for the
 newest20 Zotero items at nominal250ms. An idle A/B check measured Zotero CPU at

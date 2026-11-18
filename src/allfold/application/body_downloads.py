@@ -4,6 +4,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace, field
 import threading
 import time
+from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
 
 from allfold.application.browser_services import browser_workspace_identity
@@ -288,6 +289,7 @@ class _BodyDiscoveryIO:
         self.io = PdfDiscoveryIO(None, document_context=self.context)
         self.resources = ExitStack()
         self.oce_authority = None
+        self.challenge_endpoints = set()
         self.openalex_available = reservation.body_request.candidates is None
 
     def _http(self):
@@ -327,8 +329,27 @@ class _BodyDiscoveryIO:
 
     def reader(self, candidate, response):
         # The same live parser also handles a ScienceDirect article fallback.
-        return self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate, response),
-            candidate.access)
+        def read(operation, io):
+            parsed = _document_candidates(operation, self.repository, candidate, response)
+            if parsed is not None or response.access != 'challenge' or candidate.action or candidate.credential:
+                return parsed
+            actual = urlsplit(response.url)
+            # Signed query variants of the same endpoint must not reopen an
+            # unchanged access barrier within this Download and Service scope.
+            endpoint = (actual.scheme, actual.netloc, actual.path, operation.service_id)
+            if endpoint in self.challenge_endpoints or reader_context(candidate, response.url):
+                return None
+            self.challenge_endpoints.add(endpoint)
+            context = io.context
+            reply = context.execute_native('extract_paper_pdf_clues', context.native_payload() | {
+                'body_access': {'url': response.url, 'referer': candidate.referer}}).result()
+            if (isinstance(reply, dict) and reply.get('outcome') == 'retrieved'
+                    and reply.get('body_access_ready') is True and not reply.get('diagnostic')):
+                # The browser restored access to this ordinary GET. Its bytes
+                # must still come through the original managed stream consumer.
+                return SimpleNamespace(current_candidates=(replace(candidate, url=response.url, reader_kind=None),))
+            raise PdfSourceReadError('Body access was not restored', diagnostic='access-blocked')
+        return self._read(read, candidate.access)
 
     def oce_access(self, candidate, response):
         if response.status != 200 or access_limited(response):

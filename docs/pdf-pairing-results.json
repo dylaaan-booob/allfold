@@ -45,7 +45,10 @@
         "file_bytes": 2100180,
         "file_pages": 10,
         "version": "Oxford published CC BY 4.0",
-        "verification": "original Paper/attempt completed + permanent PDF file + rendered first page DOI/title"
+        "verification": "original Paper/attempt completed + permanent PDF file + rendered first page DOI/title",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "status": "local_pdf_not_observed",
@@ -141,7 +144,10 @@
           "link.springer.com response",
           "idp.springer.com response",
           "link.springer.com closed PDF stream"
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "formal_score": false,
       "cache_note": "Each product first PDF save for this DOI; Zotero first, Allfold second. System/proxy cache equality not proven. No builds/full tests/other downloads during pair.",
@@ -178,7 +184,10 @@
           "cancel_click_utc": [
             "2026-11-16T14:37:27.099Z",
             "2026-11-16T14:37:27.312Z"
-          ]
+          ],
+          "cloudflare_observation": {
+            "evidence": "no_matching_attempt_trace"
+          }
         },
         {
           "attempt": 2,
@@ -194,7 +203,40 @@
           "access_cache_context": "Unprepared Allfold access vs later entitled Chrome; not same-access parity evidence.",
           "terminal_wait_seconds_lower": 122.449,
           "terminal_wait_seconds_upper": 122.894,
-          "native_document_duration_ms": 121292
+          "native_document_duration_ms": 121292,
+          "cloudflare_observation": {
+            "evidence": "challenge_observed",
+            "solver_events": [
+              {
+                "time": "2026-11-16T14:38:48.263Z",
+                "event": "cloudflare_solver_started",
+                "page_id": 2
+              },
+              {
+                "time": "2026-11-16T14:39:29.557Z",
+                "event": "page_access",
+                "page_id": 2,
+                "code": "checkbox_clicked"
+              },
+              {
+                "time": "2026-11-16T14:39:57.522Z",
+                "event": "navigation_ready",
+                "page_id": 2,
+                "code": "page_ready",
+                "status": 200
+              },
+              {
+                "time": "2026-11-16T14:39:57.540Z",
+                "event": "cloudflare_solver_finished",
+                "page_id": 2,
+                "outcome": "not_executed",
+                "code": "canceled"
+              }
+            ],
+            "private_exports": [
+              "blocked-checkpoint-diagnostics.zip"
+            ]
+          }
         },
         {
           "attempt": 3,
@@ -209,7 +251,10 @@
           "local_pdf": false,
           "access_cache_context": "Normal Login/Prepare; target article visibly entitled in Allfold. Existing API facts, warm article, no prior PDF.",
           "terminal_wait_seconds_lower": 15.043,
-          "terminal_wait_seconds_upper": 15.347
+          "terminal_wait_seconds_upper": 15.347,
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
         },
         {
           "attempt": 4,
@@ -238,7 +283,10 @@
             5347,
             1054,
             5202
-          ]
+          ],
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
         },
         {
           "attempt": 5,
@@ -276,7 +324,10 @@
               "duration_ms": 1966
             }
           ],
-          "native_download_item_observed": false
+          "native_download_item_observed": false,
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
         }
       ],
       "zotero": {
@@ -337,7 +388,10 @@
           "local_pdf": false,
           "access_cache_context": "Institution shown on homepage, target article had not loaded. Later article showed entitlement. Do not dismiss as a site restriction; request stage was unobserved.",
           "terminal_wait_seconds_lower": 599.814,
-          "terminal_wait_seconds_upper": 600.205
+          "terminal_wait_seconds_upper": 600.205,
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
         },
         {
           "attempt": 2,
@@ -363,7 +417,10 @@
             "status": 200
           },
           "source_origin": "https://ieeexplore.ieee.org",
-          "source_path": "/stampPDF/getPDF.jsp"
+          "source_path": "/stampPDF/getPDF.jsp",
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
         },
         {
           "attempt": 3,
@@ -390,7 +447,10 @@
             "status": 200
           },
           "source_origin": "https://ieeexplore.ieee.org",
-          "source_path": "/stampPDF/getPDF.jsp"
+          "source_path": "/stampPDF/getPDF.jsp",
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
         }
       ],
       "repair_relationship": "fix2 does not alter IEEE P2. Two later successful Allfold downloads are separated from the initial expiry; changed Session/confirmed article access cannot be called code benefit. A paired repeat is waiting for user authentication before Zotero save.",
@@ -445,7 +505,10 @@
         "fallback_used": false,
         "source_origin": "https://pdf.sciencedirectassets.com",
         "version": "Published Neural Networks PDF; full normalized title/DOI matched.",
-        "cache_context": "Same prepared platform Session as P03; first article/PDF operation for this Paper, no Allfold article preload."
+        "cache_context": "Same prepared platform Session as P03; first article/PDF operation for this Paper, no Allfold article preload.",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero_trials": [
         {
@@ -524,7 +587,10 @@
         "fallback_used": false,
         "source_origin": "https://pdf.sciencedirectassets.com",
         "version": "Published Pattern Recognition PDF; full normalized title/DOI matched.",
-        "cache_context": "Same prepared platform Session; first article/PDF operation for this Paper, no Allfold article preload."
+        "cache_context": "Same prepared platform Session; first article/PDF operation for this Paper, no Allfold article preload.",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero_trials": [
         {

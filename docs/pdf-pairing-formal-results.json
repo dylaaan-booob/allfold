@@ -123,6 +123,9 @@
           "metadata_generation": 1,
           "operation_generation": 1,
           "body_generation": 1
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -226,7 +229,10 @@
             "All rights reserved": true
           }
         },
-        "human_intervention_note": "none"
+        "human_intervention_note": "none",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -384,7 +390,10 @@
           "body_generation": 1
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -543,7 +552,10 @@
           "body_generation": 1
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -667,7 +679,10 @@
           "body_generation": 1
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -810,7 +825,10 @@
           "body_generation": 3
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -954,7 +972,10 @@
           "body_generation": 5
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1098,7 +1119,10 @@
           "body_generation": 3
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1242,7 +1266,10 @@
           "body_generation": 5
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1387,7 +1414,10 @@
           "body_generation": 1
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1531,7 +1561,10 @@
           "body_generation": 1
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1670,7 +1703,10 @@
           "body_generation": 3
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1807,7 +1843,10 @@
           "body_generation": 5
         },
         "runtime_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -1912,7 +1951,10 @@
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -2026,7 +2068,10 @@
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -2150,7 +2195,17 @@
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://academic.oup.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "after-sleep-controls-oxford-diagnostics.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2235,7 +2290,17 @@
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://academic.oup.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "after-sleep-controls-oxford-diagnostics.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2312,7 +2377,10 @@
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": false,
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "incomplete_attempt_time_bound"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2391,7 +2459,10 @@
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2470,7 +2541,10 @@
         "timing_eligible_for_parity": true,
         "cache_context": "Repeated normal Download in the same Electron shared Session; prior body removed through product Reject/delete/Restore. HTTP cache response was not observed.",
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_matching_attempt_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -2581,7 +2655,10 @@
         "timing_eligible_for_parity": true,
         "cache_context": "Repeated normal Download in the same Electron shared Session; prior body removed through product Reject/delete/Restore. HTTP cache response was not observed.",
         "runtime_head_sha": "fdad2a3a3e04d7bc5f0e915b8d1d0f826f8b9be5",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_matching_attempt_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -2707,7 +2784,16 @@
           "limitation": "Actual human input start/end and exact verification-clear time are missing. The span includes operator/tool handoff delay before the prompt; do not count that span as network or machine Solver time."
         },
         "runtime_head_sha": "92f6492ac35b118dab55597b42536de4c1dc0a78",
-        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862"
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace",
+          "other_page_challenge_types": [
+            "imperva"
+          ],
+          "private_exports": [
+            "3a551ea-f18-third-pair-session-context.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -2827,7 +2913,10 @@
         "human_intervention_note": "none for this click",
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
-        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record"
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -2913,7 +3002,10 @@
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
-        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record"
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3037,7 +3129,10 @@
         },
         "human_intervention_note": "none for this click",
         "measurement_revision": "keys-v2",
-        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record"
+        "body_version": "Publisher Accepted Manuscript, not final typeset Version of Record",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3153,7 +3248,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3296,7 +3394,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3431,7 +3532,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3545,7 +3649,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3669,7 +3776,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3778,7 +3888,10 @@
         },
         "human_intervention_note": "none during download",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -3893,7 +4006,10 @@
         },
         "human_intervention_note": "none during download",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4007,7 +4123,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4121,7 +4240,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4235,7 +4357,10 @@
         },
         "human_intervention_note": "none",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4386,7 +4511,18 @@
             "stream_closed_ms": 1526
           }
         ],
-        "native_operations_note": "Seven source observation records are not seven physical HTTP requests. Four native operation completions include12.997s article PDF-clue navigation and1.527s successful stream. Internal HTTP/cache details are not inferred."
+        "native_operations_note": "Seven source observation records are not seven physical HTTP requests. Four native operation completions include12.997s article PDF-clue navigation and1.527s successful stream. Internal HTTP/cache details are not inferred.",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://onlinelibrary.wiley.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "3a551ea-f18-third-pair-session-context.zip",
+            "77df-siam-f17-first-pair.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4526,7 +4662,10 @@
             "stream_first_byte_ms": 656,
             "stream_closed_ms": 1071
           }
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4653,7 +4792,10 @@
             "stream_first_byte_ms": 1350,
             "stream_closed_ms": 2090
           }
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -4733,7 +4875,10 @@
         "human_intervention_note": "none during Download",
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
-        "actual_file_source": "onlinelibrary.wiley.com, P1 R002"
+        "actual_file_source": "onlinelibrary.wiley.com, P1 R002",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4851,7 +4996,10 @@
         "human_intervention_note": "none during Download",
         "measurement_revision": "keys-v2",
         "timing_eligible_for_parity": true,
-        "actual_file_source": "onlinelibrary.wiley.com, P1 R002"
+        "actual_file_source": "onlinelibrary.wiley.com, P1 R002",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -4967,7 +5115,10 @@
         },
         "human_intervention_note": "none during Download",
         "measurement_revision": "keys-v2",
-        "timing_eligible_for_parity": true
+        "timing_eligible_for_parity": true,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -5073,7 +5224,10 @@
             "stream_first_byte_ms": 779,
             "stream_closed_ms": 1573
           }
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -5188,7 +5342,18 @@
             "stream_first_byte_ms": 1153,
             "stream_closed_ms": 21511
           }
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://epubs.siam.org/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "3a551ea-f18-third-pair-session-context.zip",
+            "77df-f18-siam-before-direct-entry-fix.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -5410,7 +5575,18 @@
             "source_origin": "https://arxiv.org/",
             "subsequent_attempted": false
           }
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://epubs.siam.org/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "3a551ea-f18-third-pair-session-context.zip",
+            "79db-f18-second-pair-session-context.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -5537,7 +5713,17 @@
           }
         },
         "diagnostic_reference": "Private3a551ea-f18-third-pair-session-context.zip / f18-a3-native-source-sequence.json",
-        "unresolved": "P1R039 and P4R061 report access-challenge while normal same-Session Browser has publisher body. No code-speedup attribution."
+        "unresolved": "P1R039 and P4R061 report access-challenge while normal same-Session Browser has publisher body. No code-speedup attribution.",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://epubs.siam.org/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "3a551ea-f18-third-pair-session-context.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -5654,6 +5840,9 @@
           "pdf_stage": "P1",
           "reason": "transferred",
           "fallback_used": false
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -5780,6 +5969,9 @@
             "arXiv:": false,
             "All rights reserved": false
           }
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -5906,6 +6098,9 @@
             "arXiv:": false,
             "All rights reserved": false
           }
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -6032,6 +6227,9 @@
           "pdf_stage": "P1",
           "reason": "transferred",
           "fallback_used": false
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -6159,6 +6357,9 @@
           "pdf_stage": "P1",
           "reason": "transferred",
           "fallback_used": false
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -6286,6 +6487,9 @@
           "pdf_stage": "P1",
           "reason": "transferred",
           "fallback_used": false
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -6414,6 +6618,9 @@
           "pdf_stage": "P1",
           "reason": "transferred",
           "fallback_used": false
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -6570,7 +6777,38 @@
             "rule": "OPENALEX",
             "stage": "P5"
           }
-        ]
+        ],
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "solver_events": [
+            {
+              "time": "2026-11-17T16:55:55.601Z",
+              "event": "cloudflare_solver_started",
+              "page_id": 4
+            },
+            {
+              "time": "2026-11-17T16:56:11.155Z",
+              "event": "navigation_ready",
+              "page_id": 4,
+              "code": "page_ready",
+              "status": 200
+            },
+            {
+              "time": "2026-11-17T16:56:11.189Z",
+              "event": "cloudflare_solver_finished",
+              "page_id": 4,
+              "outcome": "not_executed",
+              "code": "canceled"
+            }
+          ],
+          "source_challenge_origins": [
+            "https://epubs.siam.org/"
+          ],
+          "private_exports": [
+            "40d4356-f26-first-pair.zip",
+            "69b9a41-f19-fourth-pair.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -6699,6 +6937,9 @@
           "pdf_stage": "P1",
           "reason": "transferred",
           "fallback_used": false
+        },
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
         }
       },
       "zotero": {
@@ -6826,7 +7067,10 @@
           "reason": "transferred",
           "fallback_used": false
         },
-        "receive_counter_note": "One-shot90ordered1s nettop snapshots; outputbuffered until exit. Approx11.5MB browserreceive after subtracting local UI-serveroutput. See private summary; no exactpacket timestamp/cacheflag inferred."
+        "receive_counter_note": "One-shot90ordered1s nettop snapshots; outputbuffered until exit. Approx11.5MB browserreceive after subtracting local UI-serveroutput. See private summary; no exactpacket timestamp/cacheflag inferred.",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -6999,7 +7243,36 @@
           "source_f26_after_user_reboot"
         ],
         "diagnostic_evidence": "Private40d4356-f26-first-pair.zip and selected native/source sequence",
-        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately."
+        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately.",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "solver_events": [
+            {
+              "time": "2026-11-17T23:35:15.628Z",
+              "event": "cloudflare_solver_started",
+              "page_id": 28
+            },
+            {
+              "time": "2026-11-17T23:35:19.026Z",
+              "event": "page_access",
+              "page_id": 28,
+              "code": "checkbox_clicked"
+            },
+            {
+              "time": "2026-11-17T23:35:22.263Z",
+              "event": "cloudflare_solver_finished",
+              "page_id": 28,
+              "outcome": "not_executed",
+              "code": "canceled"
+            }
+          ],
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "private_exports": [
+            "40d4356-f26-first-pair.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "failure",
@@ -7137,7 +7410,17 @@
           },
           "body_version": "Related arXiv preprint; not publisher version"
         },
-        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately."
+        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately.",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "40d4356-f26-second-pair.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "automatic_success",
@@ -7281,7 +7564,17 @@
             "cdn_stream_partition_cookie_count": 1
           }
         ],
-        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately."
+        "transport_context": "Ordinary shared Session post-CARSI entry; native operation logs carried no retained service-capability ID. Actual published content access checked separately.",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
+          "private_exports": [
+            "40d4356-f26-second-pair.zip"
+          ]
+        }
       },
       "zotero": {
         "result": "operator_interrupted",
@@ -7323,6 +7616,168 @@
       "access_preparation_note": "Independently prepared Source and Chrome CARSI ScienceDirect Sessions. Actual target article Full text access and PDF entry verified on each. No PDF opened before either attempt.",
       "diagnostic_evidence": "Private40d4356-f27-first-pair.zip",
       "comparable_body_version": false
+    },
+    {
+      "pair_id": "F26-2",
+      "sample_id": "F26",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+      "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+      "allfold": {
+        "result": "failure",
+        "click_utc": [
+          "2026-11-18T00:02:28.295Z",
+          "2026-11-18T00:02:28.405Z"
+        ],
+        "ui_preparation": "Same production build and legal Source Session. Both normal View PDF controls were used after the first failed pair; each showed correct 12-page publisher PDF and DOI. Diagnostic viewer prewarming recorded for both. User completed two Chrome verification steps before the measured pair. Actual original F26 Candidate had no body and an enabled Download button. Source prior attempt settled. No extra competing test/build/download.",
+        "human_intervention": false,
+        "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
+        "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+        "human_intervention_note": "none during Download; Chrome preparation assisted separately",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "reason": "access-challenge",
+        "terminal_observation_utc": [
+          "2026-11-18T00:02:47.449Z",
+          "2026-11-18T00:02:47.711Z"
+        ],
+        "attempt": 2,
+        "terminal_wait_seconds": [
+          19.044,
+          19.416
+        ],
+        "publisher_cdn_origin": "https://pdf.sciencedirectassets.com/",
+        "native_operations": [
+          {
+            "action": "extract_paper_pdf_clues",
+            "role": "article",
+            "duration_ms": 10473,
+            "outcome": "retrieved",
+            "verification_http_status": 403,
+            "later_ready_http_status": 200,
+            "solver_checkout": "Solver clicked at 00:02:36.853Z; terminal canceled after the Page recovered."
+          },
+          {
+            "rule": "R024",
+            "publisher_entry_ms": [
+              114,
+              132,
+              129
+            ],
+            "reader_reads_ms": [
+              2228,
+              1727,
+              1523
+            ],
+            "cdn_access_challenge_ms": [
+              625,
+              525,
+              632
+            ],
+            "cdn_stream_partition_cookie_count": [
+              0,
+              0,
+              0
+            ],
+            "cdn_solver_dispatch_observed": false
+          }
+        ],
+        "diagnostic_evidence": "Private 40d4356-f26-second-pair.zip and native sequence",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "solver_events": [
+            {
+              "time": "2026-11-18T00:02:32.866Z",
+              "event": "cloudflare_solver_started",
+              "page_id": 43
+            },
+            {
+              "time": "2026-11-18T00:02:36.853Z",
+              "event": "page_access",
+              "page_id": 43,
+              "code": "checkbox_clicked"
+            },
+            {
+              "time": "2026-11-18T00:02:39.273Z",
+              "event": "navigation_ready",
+              "page_id": 43,
+              "code": "page_ready",
+              "status": 200
+            },
+            {
+              "time": "2026-11-18T00:02:39.313Z",
+              "event": "cloudflare_solver_finished",
+              "page_id": 43,
+              "outcome": "not_executed",
+              "code": "canceled"
+            }
+          ],
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "private_exports": [
+            "40d4356-f26-second-pair.zip"
+          ]
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T00:04:18.494Z",
+          "2026-11-18T00:04:18.516Z"
+        ],
+        "ui_preparation": "Normal new article tab on current CARSI reauthenticated profile. Exact F26 title/DOI, institutional Full text access and ScienceDirect Translator verified. Both normal viewers already showed the 12-page publisher version after the first failed pair; two user Chrome checks during preparation. This new tab had no prior Save or PDF open. CUA tab-creation call timed out but the correctly created new tab was independently verified before clicking. Dedicated collection shown. Source attempt2 already terminal without file.",
+        "human_intervention": false,
+        "translator": "ScienceDirect",
+        "parent_key": "GT4JTST3",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T00:04:28.257Z",
+          "2026-11-18T00:04:28.530Z"
+        ],
+        "wait_seconds": [
+          9.741,
+          10.036
+        ],
+        "file_bytes": 4834588,
+        "attachment_key": "KCURXEQP",
+        "link_mode": "imported_url",
+        "human_intervention_note": "none during Save; two Chrome verification steps observed during earlier separate viewer preparation",
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 4834588,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "acceptance_collection_membership_verified": true,
+        "pdf_version": "publisher_version",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "diagnostic_evidence": "Private f26-zotero-KCURXEQP-file-verification.json and local import observations"
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "measurement_stratum": "institutional_access_after_matched_viewer_preparation",
+      "configured_access_method": "CARSI ScienceDirect",
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "Additional Allfold failure after independent viewer confirmation; Zotero saved the actual publisher PDF. No paired time difference or ratio."
     }
   ],
   "coverage_gaps": [
@@ -7396,7 +7851,7 @@
       "gap": "All three frozenSIAM Papers now have version-matched publisher PDFs from normal UI pairs on actual69b9a41, including previously untouchedF19. Original arXiv fallbacks and parent-only interruption retained. Each new first paired point is slower beyond timing precision; exchanged-order repeats/transfer diagnosis outstanding. No SIAM parity claim."
     }
   ],
-  "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
+  "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests. ScienceDirect F26-2 has an additional Allfold failure after matched-viewer access preparation. Zotero saved the correct publisher body; no paired time comparison exists.",
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -7438,7 +7893,7 @@
     "old_results_retained": true
   },
   "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-18T00:01:24.801Z",
+  "checkpoint_utc": "2026-11-18T00:04:28.530Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -8109,6 +8564,19 @@
       "https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L81",
       "https://github.com/chromium/chromium/blob/156.0.8078.48/net/disk_cache/memory/mem_backend_impl.cc",
       "https://github.com/electron/electron/blob/v45.0.0/docs/api/session.md#sessionfrompartitionpartition-options"
+    ]
+  },
+  "cloudflare_audit": {
+    "basis": "Matching Paper and action observation window in retained diagnostics. Source rows show classification and may be duplicated. A Solver terminal marked canceled can follow actual page recovery. Missing or negative trace evidence does not establish that the site presented no challenge.",
+    "unstarted_samples": [
+      "F21",
+      "F22",
+      "F23",
+      "F24",
+      "F25",
+      "F29",
+      "F30",
+      "F31"
     ]
   }
 }

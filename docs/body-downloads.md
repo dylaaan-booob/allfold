@@ -150,7 +150,7 @@ refused; no CDN URLs are guessed. Referer uses
 request markers leave no outbound header. Renderer cannot configure API secrets.
 
 Already received bounded HTML/JSON is parsed for qualified next hops first.
-Only a necessary fixed Reader executes in Browser/Solver. Its operation-local
+A necessary fixed Reader uses the Browser and its Solver. Its operation-local
 `reader_result` carries the actual owned main-frame GET URL, observed Referer
 (including absence), Cookie-context change and an opaque equality key separately
 from persistable facts. Main keys Cookie states with a Session-local secret;
@@ -184,9 +184,20 @@ Their access classification uses the exact response's Cloudflare mitigation head
 real authorization/status errors and contextual verification/login/denial structure.
 An optional password field, hidden hCaptcha, background Turnstile/jsd script or
 ordinary `access denied` text is insufficient. Current CPE/Incapsula denial evidence
-remains distinct from auxiliary resources. HTTP/stream responses do not start a
-Solver tab or replay a form. Browser/Reader pages use the common tab-owned observer;
-Solver state cannot revoke a completed transfer. Access classification remains
+remains distinct from auxiliary resources. When discovery reaches a Cloudflare
+challenge on an ordinary stream GET outside the fixed Reader routes, the body
+owner can request a temporary verification Page for the exact observed URL.
+An eligible ready entry can still finish before deferred recovery. Main checks
+public DNS, pins the original Service authority and confines the Page's main
+request to GET on that origin. Its network scope allows that origin and Cloudflare
+challenge resources. The Page uses the common observer and parent deadline.
+If it reaches a PDF or octet-stream response, Main stops the navigation at
+headers. A recovered Page drains before Python resumes the original Session
+stream with its existing Referer. Browser readiness is never a save result.
+Repeated signed variants of the same endpoint and Service do not create more
+verification Pages in that attempt. API-key requests, generic authorization
+errors and form actions keep their own paths. Solver state cannot revoke a
+completed transfer. Access classification remains
 local to the current response. Independent sources continue under the original
 parent deadline; cancellation, invalid task authority, unfinished resources and
 actual file/database failure still stop the task. Missing credentials/native

@@ -599,13 +599,61 @@ def test_reader_alternatives_continue_after_empty_or_blocked_response(tmp_path,a
             url=empty,content_type='text/html',status=200,body='<html>No PDF here</html>',access=access)))
         until=time.monotonic()+2
         while len(bridge.calls)<3 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
-        assert len(bridge.calls)==3 and bridge.calls[-1][1]['url']==good
+        expected = 3
+        if access == 'challenge':
+            assert bridge.calls[-1][1]['body_access']['url'] == empty
+            bridge.result.set_result(dict(diagnostic=dict(code='http_error', stage='navigation', status=403)))
+            expected = 4
+            while len(bridge.calls)<expected and not task.future.done() and time.monotonic()<until:time.sleep(.005)
+        assert len(bridge.calls)==expected and bridge.calls[-1][1]['url']==good
         bridge.finish()
         result=task.future.result(2)
         assert result.status=='completed' and result.paper.body.fallback_used
     finally:
         if hasattr(bridge,'result') and not bridge.result.done():bridge.result.set_result(dict(kind='cancelled',outcome='cancelled'))
         host.shutdown();host.join()
+
+
+def test_challenged_cdn_runs_owned_browser_recovery_before_resuming_stream(tmp_path):
+    import time
+    from allfold.application.body_downloads import submit_body_download
+
+    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+    cdn = 'https://cdn.example.org/article.pdf?Signature=test'
+    article = 'https://publisher.example.org/article'
+
+    def next_request(count):
+        until = time.monotonic() + 2
+        while len(bridge.calls) < count and not task.future.done() and time.monotonic() < until:
+            time.sleep(.005)
+        assert len(bridge.calls) == count
+        return bridge.calls[-1]
+
+    try:
+        task = submit_body_download(host, paper, candidates=(replace(candidate, url=cdn, referer=article),))
+        next_request(1)
+        bridge.result.set_result(dict(kind='response', outcome='response', response=dict(
+            url=cdn, content_type='text/html', status=403, body='<title>Just a moment...</title>', access='challenge')))
+        action, recovery = next_request(2)
+        assert action == 'extract_paper_pdf_clues'
+        assert recovery['body_access'] == {'url': cdn, 'referer': article}
+        assert recovery['paper_id'] == str(paper.id)
+        assert recovery['parent_task_id'] == bridge.calls[0][1]['parent_task_id'] == task.task_id
+        assert recovery['workflow_id'] == bridge.calls[0][1]['workflow_id']
+        assert not list((workspace / 'Documents/.downloads').glob('*.part'))
+        bridge.result.set_result(dict(outcome='retrieved', body_access_ready=True))
+        action, resumed = next_request(3)
+        assert action == 'stream_paper_body'
+        assert (resumed['url'], resumed['referer']) == (cdn, article)
+        bridge.finish()
+        result = task.future.result(2)
+        assert result.status == 'completed'
+        assert (workspace / result.paper.body.relative_path).is_file()
+    finally:
+        if hasattr(bridge, 'result') and not bridge.result.done():
+            bridge.result.set_result(dict(kind='cancelled', outcome='cancelled'))
+        host.shutdown()
+        host.join()
 
 
 @pytest.mark.parametrize('reason',['cancelled','expired'])
