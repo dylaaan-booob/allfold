@@ -11171,6 +11171,41 @@
         "F26-3 (Allfold automatic publisher PDF after CDN recovery repair)"
       ],
       "diagnostic_locator": "Private 10e5038-f26-source-control archive, native sequence and exact file verification."
+    },
+    {
+      "id": "F23-F24-Retained-EBSCO-Profile",
+      "sample_ids": ["F23", "F24"],
+      "diagnostic_only": true,
+      "side": "allfold",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "5ba9b6b0d1f916c6faf26bbece8781a865ed5850",
+      "actual_access": "Prepared EBSCO Service, CARSI, Business Source Complete",
+      "lookup": "One exact DOI result per sample in the vendor's current browser profile. F23 publisher PDF and F24 Just Accepted viewer observed.",
+      "viewer_download_dialog_click_utc": ["2026-11-18T12:37:05.928Z", "2026-11-18T12:37:06.023Z"],
+      "result": "F23 normal site action reached system Save As. The dialog closed during destination selection and no new file appeared at the observed locations.",
+      "paper_download_started": false,
+      "local_pdf_and_association_utc": null,
+      "diagnostic_locator": "Private 10e5038-ebsco-same-session-bounded-lookup and 10e5038-ebsco-f23-viewer-download-dialog records."
+    },
+    {
+      "id": "F10-F05-Cross-Platform-Preparation",
+      "sample_ids": ["F10", "F05"],
+      "diagnostic_only": true,
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "oxford_f10": {
+        "allfold_challenge_start_utc": "2026-11-18T12:20:52.664Z",
+        "allfold_checkbox_utc": "2026-11-18T12:20:57.701Z",
+        "allfold_access_recovered_utc": "2026-11-18T12:21:13.708Z",
+        "allfold_human_intervention_inside_challenge": false,
+        "chrome_institutional_transition": "Supplier internal server error",
+        "chrome_public_article": "Exact open-access article and Silverchair action confirmed"
+      },
+      "springer_f05": {
+        "chrome_access": "Springer chosen through CARSI; exact open-access article showed full access",
+        "allfold_access": "The separate CARSI portal displayed an inactivity prompt during Springer preparation"
+      },
+      "pdf_actions_in_this_diagnostic": 0,
+      "diagnostic_locator": "Private 10e5038-f10-f05-resumed-preparation archive and context."
     }
   ],
   "evidence_join_corrections": [

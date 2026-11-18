@@ -616,9 +616,28 @@ for F23 was unobserved. EBSCO's entitlement API uses separately provisioned
 client credentials and a profile token. The established browser session alone
 does not establish API access. The configured EBSCO Service uses the generic
 EBSCOhost root through CARSI. EBSCO documents browser outbound search from
-an already identified institutional profile. Verification of that search
-route under the actual prepared Service and its exact record-to-PDF handoff
-remain open. [EBSCO API authentication](https://developer.ebsco.com/entitlement-api/docs/use-the-client-credentials-grant) · [EBSCO profile search](https://connect.ebsco.com/s/article/Stacks-Outbound-Searches-to-the-New-EDS?language=en_US)
+an already identified institutional profile. [EBSCO API authentication](https://developer.ebsco.com/entitlement-api/docs/use-the-client-credentials-grant) · [EBSCO profile search](https://connect.ebsco.com/s/article/Stacks-Outbound-Searches-to-the-New-EDS?language=en_US)
+
+On 18 November, the retained EBSCO target in the real Allfold Session
+(`10e5038`) opened after the user restored institutional access. A normal
+profile-scoped DOI lookup yielded the exact F23 and F24 records on Business
+Source Complete. The vendor's record links led to the F23 29-page publisher
+PDF and the F24 Just Accepted manuscript. F23's normal viewer download reached
+the system Save As dialog. The dialog closed during destination selection,
+and no new file was observed at either candidate destination. This was a
+Browser diagnostic before any new Paper Download or Zotero Save. The precise
+attachment request, native save completion, and Paper association remain
+unverified. No pairing time or EBSCO source fix is attributed to this diagnostic.
+
+The same resumption verified Oxford F10 on both article pages before a new
+PDF action. Allfold's Oxford Service page recovered from a Cloudflare check
+automatically, 21.044 s after the Solver started. Chrome's separate Oxford
+institutional transition returned a supplier server error. F10 is Open Access
+and loaded in a fresh normal Chrome tab through its public article entry, with
+the Silverchair Translator identified. Both PDF endpoints remain to be tested
+in this repeat. Springer F05's Chrome article showed Open Access and full
+text after selecting Springer in CARSI. Allfold's separate portal then showed
+an inactivity prompt, holding the next actions before either click.
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
