@@ -785,7 +785,7 @@ class BrowserRuntime {
       validate();
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
       const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target,{httpReferrer}),
-        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target});
+        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target,httpReferrer});
       chain=tab.navigation.current.chain;
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);

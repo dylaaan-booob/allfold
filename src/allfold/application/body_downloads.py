@@ -187,6 +187,8 @@ def _consume(reservation, repository, files, candidate, progress):
         parent_task_id=reservation.parent_task_id)
     if credential is not None:
         payload['pdf_credential'] = credential
+    if candidate.recover_access:
+        payload['recover_access'] = True
     with registry.paper_gate():
         registry._require_live(reservation)
         repository.require_download(reservation.download_token)
@@ -227,8 +229,11 @@ def _consume(reservation, repository, files, candidate, progress):
             context_changed=current.get('context_changed', False), context_key=current.get('context_key')),
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)
     else:
+        reason = 'file-io' if kind == 'local_failure' else None
+        if kind == 'failed' and value.get('diagnostic_code') == 'access-challenge':
+            reason = 'access-challenge'
         result = CandidateResult(kind if kind in {'pending','failed','local_failure','cancelled','stale','expired'} else 'failed',
-            diagnostic='file-io' if kind=='local_failure' else None)
+            diagnostic=reason)
     # Never start the next candidate until this writer/output actually settled.
     files.cleanup(output)
     repository.record_download_output(reservation.download_token, None)
@@ -329,9 +334,10 @@ class _BodyDiscoveryIO:
 
     def reader(self, candidate, response):
         # The same live parser also handles a ScienceDirect article fallback.
-        def read(operation, io):
+        def read(operation, _io):
             parsed = _document_candidates(operation, self.repository, candidate, response)
-            if parsed is not None or response.access != 'challenge' or candidate.action or candidate.credential:
+            if (parsed is not None or response.access != 'challenge' or candidate.action
+                    or candidate.credential or candidate.recover_access):
                 return parsed
             actual = urlsplit(response.url)
             # Signed query variants of the same endpoint must not reopen an
@@ -340,15 +346,10 @@ class _BodyDiscoveryIO:
             if endpoint in self.challenge_endpoints or reader_context(candidate, response.url):
                 return None
             self.challenge_endpoints.add(endpoint)
-            context = io.context
-            reply = context.execute_native('extract_paper_pdf_clues', context.native_payload() | {
-                'body_access': {'url': response.url, 'referer': candidate.referer}}).result()
-            if (isinstance(reply, dict) and reply.get('outcome') == 'retrieved'
-                    and reply.get('body_access_ready') is True and not reply.get('diagnostic')):
-                # The browser restored access to this ordinary GET. Its bytes
-                # must still come through the original managed stream consumer.
-                return SimpleNamespace(current_candidates=(replace(candidate, url=response.url, reader_kind=None),))
-            raise PdfSourceReadError('Body access was not restored', diagnostic='access-blocked')
+            # Recovery and transfer share one native owner so the actual Page
+            # context is available to the succeeding Session GET.
+            return SimpleNamespace(current_candidates=(replace(candidate, url=response.url,
+                reader_kind=None, recover_access=True),))
         return self._read(read, candidate.access)
 
     def oce_access(self, candidate, response):

@@ -601,8 +601,9 @@ def test_reader_alternatives_continue_after_empty_or_blocked_response(tmp_path,a
         while len(bridge.calls)<3 and not task.future.done() and time.monotonic()<until:time.sleep(.005)
         expected = 3
         if access == 'challenge':
-            assert bridge.calls[-1][1]['body_access']['url'] == empty
-            bridge.result.set_result(dict(diagnostic=dict(code='http_error', stage='navigation', status=403)))
+            action, payload = bridge.calls[-1]
+            assert action == 'stream_paper_body' and payload['url'] == empty and payload['recover_access'] is True
+            bridge.result.set_result(dict(kind='failed', outcome='failed', diagnostic_code='access-challenge'))
             expected = 4
             while len(bridge.calls)<expected and not task.future.done() and time.monotonic()<until:time.sleep(.005)
         assert len(bridge.calls)==expected and bridge.calls[-1][1]['url']==good
@@ -635,16 +636,12 @@ def test_challenged_cdn_runs_owned_browser_recovery_before_resuming_stream(tmp_p
         bridge.result.set_result(dict(kind='response', outcome='response', response=dict(
             url=cdn, content_type='text/html', status=403, body='<title>Just a moment...</title>', access='challenge')))
         action, recovery = next_request(2)
-        assert action == 'extract_paper_pdf_clues'
-        assert recovery['body_access'] == {'url': cdn, 'referer': article}
+        assert action == 'stream_paper_body'
+        assert (recovery['url'], recovery['referer'], recovery['recover_access']) == (cdn, article, True)
         assert recovery['paper_id'] == str(paper.id)
         assert recovery['parent_task_id'] == bridge.calls[0][1]['parent_task_id'] == task.task_id
         assert recovery['workflow_id'] == bridge.calls[0][1]['workflow_id']
-        assert not list((workspace / 'Documents/.downloads').glob('*.part'))
-        bridge.result.set_result(dict(outcome='retrieved', body_access_ready=True))
-        action, resumed = next_request(3)
-        assert action == 'stream_paper_body'
-        assert (resumed['url'], resumed['referer']) == (cdn, article)
+        assert not task.future.done()
         bridge.finish()
         result = task.future.result(2)
         assert result.status == 'completed'

@@ -72,24 +72,16 @@ async function target(url,resolver=dns.lookup) {
   return parsed;
 }
 
-async function recoverBodyAccess(browser,data,{signal,deadline,onWaiting}={}) {
-  const request=data.body_access;
-  if(!request || Object.keys(request).sort().join(',')!=='referer,url'
-    || Object.hasOwn(data,'reader') || Object.hasOwn(data,'reader_access_only') || Object.hasOwn(data,'wantAbstract')
-    || !/^[a-f0-9]{64}$/.test(data.workspace_identity) || !UUID.test(data.paper_id)
-    || request.referer!==null && !publicClueURL(request.referer))
-    throw new BrowserFailure('navigation','document_operation_failed');
-  const destination=await waitFor(()=>target(request.url,browser.bodyTargetResolver),signal,deadline);
-  const owner=browser.operation,verify=browser.pinPreparedPaperAccess(data);
+async function recoverBodyAccess(browser,destination,referer,{signal,deadline,verify,onWaiting}) {
+  const owner=browser.operation;
   await owner.validateRecovery?.({signal,deadline});
   verify();
   const tab=await browser.newTaskPage({signal,deadline,managed:true});
   browser.associatePage(tab,{role:'verification'});
   tab.view.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   const reachedHeaders=new AbortController();
-  let bodyStatus;
   const navigationSignal=AbortSignal.any([signal,reachedHeaders.signal].filter(Boolean));
-  let mainRequest;
+  let mainRequest,bodyRequest,bodyStatus,sawChallenge=false;
   const requestGuard=browser.sessionEvents.subscribe('beforeRequest',details=>{
     if(details.webContentsId!==tab.id)return;
     verify();
@@ -98,36 +90,63 @@ async function recoverBodyAccess(browser,data,{signal,deadline,onWaiting}={}) {
     const origin=new URL(details.url).origin;
     if(details.resourceType==='mainFrame') {
       if(details.method!=='GET' || origin!==destination.origin)return {cancel:true};
-      mainRequest=details.id;
+      mainRequest={id:details.id,url:details.url,referer:null};
     } else if(origin!==destination.origin && origin!=='https://challenges.cloudflare.com')return {cancel:true};
   });
+  const requestHeaders=browser.sessionEvents.subscribe('beforeSendHeaders',details=>{
+    if(details.webContentsId===tab.id && details.id===mainRequest?.id && details.url===mainRequest.url) {
+      const headers=Object.entries(details.requestHeaders || {});
+      mainRequest.referer=headers.find(([name])=>name.toLowerCase()==='referer')?.[1] || null;
+      mainRequest.cookie=headers.find(([name])=>name.toLowerCase()==='cookie')?.[1];
+    }
+  });
   const headerGuard=browser.sessionEvents.subscribe('headersReceived',details=>{
-    if(details.webContentsId!==tab.id || details.resourceType!=='mainFrame' || details.id!==mainRequest
-      || navigationSignal.aborted || Date.now()>=deadline || !browser.ownsPage(owner,tab.id)
-      || details.statusCode<200 || details.statusCode>=300)return;
+    if(details.webContentsId!==tab.id || details.resourceType!=='mainFrame' || details.id!==mainRequest?.id
+      || navigationSignal.aborted || Date.now()>=deadline || !browser.ownsPage(owner,tab.id))return;
     verify();
     const headers=Object.entries(details.responseHeaders || {});
     if(headers.some(([name,values])=>name.toLowerCase()==='cf-mitigated'
-      && values.some(value=>value.trim().toLowerCase()==='challenge')))return;
-    const mime=headers.find(([name])=>name.toLowerCase()==='content-type')?.[1]?.[0]?.split(';')[0].trim().toLowerCase();
-    if(!['application/pdf','application/octet-stream'].includes(mime))return;
-    // A binary response is enough to resume the Session request. Stop the
-    // navigation at headers so this owned page cannot also save the body.
+      && values.some(value=>value.trim().toLowerCase()==='challenge'))){sawChallenge=true;return;}
+    if(details.statusCode<200 || details.statusCode>=300 || details.url!==mainRequest.url)return;
+    const value=name=>headers.find(([key])=>key.toLowerCase()===name)?.[1]?.[0] || '';
+    const mime=value('content-type').split(';')[0].trim().toLowerCase();
+    const attachment=/^\s*attachment(?:\s*;|\s*$)/i.test(value('content-disposition'));
+    const restoredSamePath=(sawChallenge || tab.challenge?.kind==='cloudflare')
+      && new URL(mainRequest.url).pathname===destination.pathname;
+    if(!attachment && !restoredSamePath && !['application/pdf','application/octet-stream'].includes(mime))return;
+    // Bound to the owned successful request. MIME/attachment can indicate a
+    // body entry, but only the separate Session stream can prove PDF bytes.
+    bodyRequest=mainRequest;
     bodyStatus=details.statusCode;
     reachedHeaders.abort();
     return {cancel:true};
   });
   // The task owner drains the page and Solver before replying to Python. Keep
   // the request scope in place until that physical page has gone away.
-  tab.view.webContents.once('destroyed',()=>{requestGuard.dispose();headerGuard.dispose();});
+  tab.view.webContents.once('destroyed',()=>{requestGuard.dispose();requestHeaders.dispose();headerGuard.dispose();});
   try {
     await browser.navigate(destination.href,{tab,signal:navigationSignal,deadline,onWaiting,
-      httpReferrer:request.referer?{url:request.referer,policy:'strict-origin-when-cross-origin'}:undefined});}
+      httpReferrer:referer?{url:referer,policy:'strict-origin-when-cross-origin'}:undefined});}
   catch(error){if(!reachedHeaders.signal.aborted)throw error;}
   checkCanceled(signal);verify();
   if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
-  if(bodyStatus)browser.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:bodyStatus});
-  return {outcome:'retrieved',body_access_ready:true};
+  if(!bodyRequest || bodyRequest.referer!==null && !publicClueURL(bodyRequest.referer))
+    throw new BrowserFailure('navigation','pdf_target_refused');
+  browser.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:bodyStatus});
+  // Read only the partition of this actual Page in the same native owner.
+  // Neither Cookie values nor the scoped view leave the stream invocation.
+  const partitionCookies=await readPartitionCookies(browser,bodyRequest.url,tab.view.webContents.getURL(),
+    {signal,validate:verify,page:tab});
+  let navigationCookie;
+  // A warm binary response can arrive before any Document commits. Respect
+  // the exact native GET's selection and omit cookies since removed/rotated.
+  if(!partitionCookies && typeof bodyRequest.cookie==='string' && !/[\r\n]/.test(bodyRequest.cookie)) {
+    const current=await waitFor(()=>browser.partition.cookies.get({url:bodyRequest.url}),signal,deadline);
+    const active=new Set(current.map(({name,value})=>name+'='+value));
+    navigationCookie=bodyRequest.cookie.split(';').map(value=>value.trim()).filter(value=>active.has(value)).join('; ');
+  }
+  await browser.closePage(tab);
+  return {url:bodyRequest.url,referer:bodyRequest.referer,partitionCookies,navigationCookie};
 }
 const API_SCOPES={
   elsevier:['api.elsevier.com','/content/article/','X-ELS-APIKey'],
@@ -184,16 +203,25 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
   const deadlineController=new AbortController(),bounded=deadlineController.signal;
   const timer=setTimeout(()=>deadlineController.abort(),Math.max(1,Math.ceil(data.deadline_ms-Date.now())));
   const stop=AbortSignal.any([signal,controller.signal,bounded].filter(Boolean));
-  let fd,writer,response,body,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false,partitionCookies=null;
+  let fd,writer,response,body,localError,requests=[],size=0,lastProgress=0,closeError,redirect,completed=false,partitionCookies=null,navigationCookie;
   try {
     await waitFor(()=>browser.ready,stop,data.deadline_ms);checkCanceled(stop);
     const verify=browser.pinPreparedPaperAccess(data);
     verify();
     // Preflight both output and target before the first physical request.
     try{fd=openOutput(data.workspace_root,output);}catch(error){error.bodyLocal=true;throw error;}
-    const initial=await waitFor(()=>target(data.url,browser.bodyTargetResolver),stop,data.deadline_ms);
+    let url=data.url,referer=data.referer;
+    const initial=await waitFor(()=>target(url,browser.bodyTargetResolver),stop,data.deadline_ms);
     const owner=browser.operation;
     const validate=()=>{if(completed)return;checkCanceled(stop);verify();if(Date.now()>=data.deadline_ms)throw Error('expired');};
+    if(referer && !publicClueURL(referer))throw Error('unsafe-referer');
+    if(data.recover_access===true) {
+      if(data.pdf_credential!==undefined)throw Error('credential-scope');
+      ({url,referer,partitionCookies,navigationCookie}=await recoverBodyAccess(browser,initial,referer,
+        {signal:stop,deadline:data.deadline_ms,verify:validate,onWaiting:diagnostic=>
+          progress({waiting_for_user:true},'navigation',diagnostic)}));
+      progress({waiting_for_user:false},'navigation');
+    }
     const validateRequest=details=>{
       validate();
       if(!publicClueURL(details.url)||new URL(details.url).origin!==initial.origin)throw Error('redirect-scope');
@@ -205,24 +233,23 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
           redirect={url:details.url,status:details.statusCode,location:details.redirectURL};
       }
     };
-    const headers={Accept:'application/pdf',...credentialHeaders(data.pdf_credential,data.url)};
-    const cookieState=()=>browser.sessionEvents.cookieContext(data.url);
+    const headers={Accept:'application/pdf',...credentialHeaders(data.pdf_credential,url)};
+    const cookieState=()=>browser.sessionEvents.cookieContext(url);
     const priorCookies=await waitFor(cookieState,stop,data.deadline_ms);
-    if(data.referer) {
-      if(!publicClueURL(data.referer))throw Error('unsafe-referer');
-      const referrer=new URL(data.referer);referrer.hash='';
+    if(referer) {
+      const referrer=new URL(referer);referrer.hash='';
       // Electron net.fetch accepts explicit Referer as a header; Chromium rejects
       // a full cross-origin value under strict-origin policy. Project that same
       // policy before dispatch, including HTTPS-to-HTTP suppression.
       if(!(referrer.protocol==='https:'&&initial.protocol==='http:'))
         headers.Referer=referrer.origin===initial.origin?referrer.href:referrer.origin+'/';
     }
-    partitionCookies=await readPartitionCookies(browser,data.url,data.referer,{signal:stop,validate});
+    if(data.recover_access!==true)partitionCookies=await readPartitionCookies(browser,url,referer,{signal:stop,validate});
     validate();
     const requestAt=performance.now();
-    ({response,requests}=await browser.sessionEvents.fetch(data.url,
+    ({response,requests}=await browser.sessionEvents.fetch(url,
       {method:'GET',redirect:'follow',credentials:'include',headers,referrerPolicy:'strict-origin-when-cross-origin'},
-      {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest,partitionCookies}));
+      {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest,partitionCookies,navigationCookie}));
     const responseAt=performance.now();validate();
     const facts=requests.flatMap(request=>request.responses),final=facts.at(-1);
     if(!final||!publicClueURL(final.url))throw Error('missing-native-response');
@@ -271,7 +298,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     // redirect to the same candidate chain; the next Session request repeats
     // URL/DNS validation and uses destination cookies without source API keys.
     if(redirect)return {outcome:'response',kind:'redirect',response:redirect};
-    return {outcome:'failed',kind:'failed',diagnostic_code:'source-failed'};
+    return {outcome:'failed',kind:'failed',diagnostic_code:data.recover_access===true?'access-challenge':'source-failed'};
   }finally {
     clearTimeout(timer);
     // pipeline is awaited, then writer/fd close before the native result exists.
@@ -300,4 +327,4 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     if(!completed && partitionCookies!==null)try{observe({stream_partition_cookie_count:partitionCookies.cookies.length});}catch(_){}
   }
 }
-module.exports={executeBodyStream,recoverBodyAccess,openOutput,publicAddress,target,directories,credentialHeaders};
+module.exports={executeBodyStream,openOutput,publicAddress,target,directories,credentialHeaders};

@@ -6,11 +6,11 @@ const pending=new WeakMap();
 // Electron cookies.get includes all partitions but omits their keys. Never merge
 // that unqualified list or move cookies between Sessions. This query reads no
 // document content, navigates no page, and keeps values within Main.
-async function readPartitionCookies(browser,url,sourceURL,{signal,validate}={}) {
+async function readPartitionCookies(browser,url,sourceURL,{signal,validate,page}={}) {
   if(!sourceURL)return null; // An explicit no-referrer continuation supplies no guessed page context.
   let source;
   try{source=new URL(sourceURL);if(!['http:','https:'].includes(source.protocol))return null;}catch(_){return null;}
-  const tab=[...(browser.tabs?.values() || [])].find(tab=>{
+  const tab=(page?[page]:[...(browser.tabs?.values() || [])]).find(tab=>{
     const contents=tab.view.webContents;
     try{return !tab.closing && contents.session===browser.partition && !contents.isDestroyed() && !contents.isCrashed()
       && !contents.isLoadingMainFrame() && new URL(contents.getURL()).origin===source.origin;}catch(_){return false;}

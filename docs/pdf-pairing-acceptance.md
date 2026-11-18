@@ -205,12 +205,18 @@ retains the same diagnostic fields for its trials.
 
 The scoped repair sends a challenged ordinary GET to the existing Browser
 observer when it has no fixed Reader route. It keeps the original Service
-binding and waits for the temporary Page to drain before retrying the managed
-Session stream. The isolated fixture exercises an actual two-way Browser/Session
-handoff with a synthetic challenge, watcher dispatch and a completed local
-Paper file. It separately proves that an ordinary 403 is refused and an unrelated
-origin receives no request from the recovery Page. Publisher acceptance of the
-repair remains open until the original and unseen real samples complete.
+binding and the actual recovered GET, including a renewed URL or Referer.
+The isolated Electron fixture uses HTTPS, actual Chromium partitioned cookies
+and a synthetic Solver response. It exercises first verification, a warm
+response before a Document commits, a renewed signature, an attachment with
+HTML MIME, and local Paper association. It also checks ordinary 403/HTML,
+unrelated origin refusal, and cancellation while the Solver waits. The temporary
+Page drains before the stream, and the Cookie context stays in the same native
+task and Session. Cloudflare documents why the partition matters. [Cloudflare
+Cookie documentation](https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/)
+
+Publisher acceptance of the repair remains open until the original and unseen
+real samples complete.
 
 **Measurement load:** the original external observer requested full JSON for the
 newest20 Zotero items at nominal250ms. An idle A/B check measured Zotero CPU at

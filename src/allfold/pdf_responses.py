@@ -202,7 +202,8 @@ def _safe_next(candidate, base, value, **extra):
         parsed = urlsplit(url)
         if parsed.hostname == 'journals.plos.org' and 'manuscript' in parse_qs(parsed.query).get('type', ()):
             return None
-        return replace(candidate, **({'url': url, 'reader_kind': None, 'credential': None, 'accept': None} | extra))
+        return replace(candidate, **({'url': url, 'reader_kind': None, 'credential': None, 'accept': None,
+            'recover_access': False} | extra))
     except ValueError:
         return None
 

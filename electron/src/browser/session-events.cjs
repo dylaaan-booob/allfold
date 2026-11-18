@@ -61,6 +61,15 @@ class SharedSessionEvents {
         if(request?.controlled?.partitionCookies)
           state.requestHeaders=withPartitionCookies(state.requestHeaders,details.url,
             request.controlled.initialURL,request.controlled.partitionCookies);
+        const controlled=request?.controlled;
+        if(controlled?.navigationCookie!==undefined && controlled.initialURL===details.url && details.method==='GET') {
+          // This was the Chromium-selected header for this exact top-level
+          // GET in the same Session. Consume it before any redirect can reuse it.
+          const key=Object.keys(state.requestHeaders).find(name=>name.toLowerCase()==='cookie') || 'Cookie';
+          delete state.requestHeaders[key];
+          if(controlled.navigationCookie)state.requestHeaders[key]=controlled.navigationCookie;
+          delete controlled.navigationCookie;
+        }
       }
       if(event==='headersReceived')state.responseHeaders=details.responseHeaders;
       if(event==='headersReceived') {
@@ -129,7 +138,7 @@ class SharedSessionEvents {
     const token=randomBytes(24).toString('hex'),requests=[];
     const identity=Object.freeze({...owner.association || owner,attempt_id:attemptId,
       page_id:document?.pageId,document_id:document?.documentId});
-    const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,
+    const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,navigationCookie:context.navigationCookie,
       validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
     // The deadline belongs to this physical request, including its response body.

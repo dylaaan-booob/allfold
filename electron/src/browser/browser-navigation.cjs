@@ -183,7 +183,7 @@ class NavigationRecovery {
         nav.pendingStart=true;nav.started=false;nav.committed=false;
         // A provisional cross-site failure can leave the previous document committed.
         const url=nav.url;
-        this.track(()=>this.contents.getURL()===url?this.contents.reload():this.contents.loadURL(url));
+        this.track(()=>this.contents.getURL()===url?this.contents.reload():this.contents.loadURL(url,{httpReferrer:nav.httpReferrer}));
       }catch(error) {
         if(this.current===nav && nav.active)
           this.recordFailure(error,undefined,recoveryStop(error,signal));
@@ -231,7 +231,7 @@ class NavigationRecovery {
     nav.chain.replayFollowingGets=false;
   }
   begin({automatic=false,owner=null,signal,deadline=Infinity,enabled=true,resume=false,replayable=false,valid=()=>true,
-    beforeRefresh,recoveryReport,initialURL=null,replayFollowingGets=false}={}) {
+    beforeRefresh,recoveryReport,initialURL=null,replayFollowingGets=false,httpReferrer}={}) {
     const previous=this.current;
     const sameOwner=owner && previous?.owner===owner;
     this.finish({preserve:resume});
@@ -239,7 +239,7 @@ class NavigationRecovery {
     const nav=this.current={generation:++this.generation,chain,get reloads(){return chain.reloads;},automatic,owner,signal,enabled,
       replayable,valid,beforeRefresh,recoveryReport,deadline:sameOwner?Math.min(deadline,previous.deadline):deadline,
       loadDeadline:sameOwner && resume?previous.loadDeadline:null,active:true,pendingStart:true,started:false,
-      loaded:false,failure:null,url:initialURL};
+      loaded:false,failure:null,url:initialURL,httpReferrer};
     this.report('info','page_load_started',{page_id:this.tab.id,generation:nav.generation});
     this.watchSignal(nav);
     return nav;

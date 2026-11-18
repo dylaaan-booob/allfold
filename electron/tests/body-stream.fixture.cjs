@@ -1,10 +1,11 @@
 'use strict';
 const {app,BrowserWindow}=require('electron');
-const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),vm=require('node:vm');
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),https=require('node:https'),vm=require('node:vm');
 const assert=require('node:assert/strict'),{spawn}=require('node:child_process'),{createInterface}=require('node:readline');
+const {X509Certificate}=require('node:crypto');
 const {gzipSync}=require('node:zlib');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
-const {executeBodyStream,recoverBodyAccess}=require('../src/workflows/body-stream.cjs');
+const {executeBodyStream}=require('../src/workflows/body-stream.cjs');
 const {executeLocalBody}=require('../src/workflows/local-body.cjs');
 const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
@@ -14,8 +15,8 @@ app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 app.whenReady().then(async()=>{
-  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],solves=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0;payload.write('%PDF-');
-  const server=http.createServer(async(req,res)=>{
+  const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],solves=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0,canceledSolver=false;payload.write('%PDF-');
+  const serve=async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     const input=new URL(req.url,origin);
     if(input.pathname==='/cookie-return') {
@@ -36,13 +37,29 @@ app.whenReady().then(async()=>{
       if(req.headers.accept==='application/pdf')headers['cf-mitigated']='challenge';
       res.writeHead(403,headers);res.end('<title>Unavailable</title>');return;
     }
+    if(req.url==='/unrelated-ready'){
+      const headers={'content-type':'text/html'};
+      if(req.headers.accept==='application/pdf')headers['cf-mitigated']='challenge';
+      res.writeHead(req.headers.accept==='application/pdf'?403:200,headers);
+      res.end('<title>Unrelated article</title><main>Ordinary HTML</main>');return;
+    }
+    if(req.url==='/pending-challenge'){
+      res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
+      res.end('<title>Just a moment...</title>');return;
+    }
     if(input.pathname==='/protected.pdf'&&!req.headers.cookie?.includes('fixture_access=ok')){
       res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
       res.end('<title>Just a moment...</title><a id="fixture-check" href="/fixture-check">Continue</a>'
         +'<img src="'+origin.replace('pdf.','other.')+'/unrelated-image">');return;
     }
     if(req.url==='/fixture-check'){
-      res.writeHead(302,{'set-cookie':'fixture_access=ok; Path=/protected.pdf',location:'/protected.pdf?Signature=fixture'});res.end();return;
+      res.writeHead(302,{'set-cookie':'fixture_access=ok; Path=/protected.pdf; Secure; HttpOnly; SameSite=None; Partitioned',location:'/protected.pdf?Signature=renewed'});res.end();return;
+    }
+    if(input.pathname==='/protected.pdf'){
+      if(input.searchParams.get('Signature')!=='renewed'){
+        res.writeHead(403,{'content-type':'text/html'});res.end('<title>Expired signature</title>');return;
+      }
+      res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=article.pdf'});res.end(payload);return;
     }
     if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><article><h1>View PDF</h1><p>access denied and captcha research</p></article><input type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
     if(req.url.startsWith('/redirect')){res.writeHead(302,{location:'/body?Signature=A%2FB'});res.end();return;}
@@ -61,11 +78,22 @@ app.whenReady().then(async()=>{
     if(req.url==='/truncated'){setTimeout(()=>res.destroy(),40);return;}
     for(let n=65536;n<streamed.length&&!res.destroyed;n+=65536){if(req.url!=='/slow-writer')await new Promise(r=>setTimeout(r,req.url==='/expiry'?40:8));if(req.url==='/slow-writer')slowProduced+=65536;if(!res.write(streamed.subarray(n,n+65536)))await new Promise(r=>{const done=()=>{res.removeListener('drain',done);res.removeListener('close',done);r();};res.once('drain',done);res.once('close',done);});}
     res.end();
-  });
+  };
+  const server=http.createServer(serve);
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://pdf.example.org:${server.address().port}`;
+  const cert=fs.readFileSync(path.join(root,'tests/fixtures/http/localhost-cert.pem'));
+  const fingerprint=new X509Certificate(cert).fingerprint256;
+  const secureServer=https.createServer({cert,key:fs.readFileSync(path.join(root,'tests/fixtures/http/localhost-key.pem'))},serve);
+  await new Promise(resolve=>secureServer.listen(0,'127.0.0.1',resolve));
+  const secureOrigin=`https://pdf.example.org:${secureServer.address().port}`;
   const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window,
-    solveCloudflare:async(tab)=>{
+    solveCloudflare:async(tab,{signal})=>{
       const contents=tab.view.webContents;
+      if(new URL(contents.getURL()).pathname==='/pending-challenge'){
+        await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));
+        canceledSolver=true;
+        return {outcome:'not_executed',reason:'canceled'};
+      }
       assert.equal(new URL(contents.getURL()).pathname,'/protected.pdf');
       solves.push(tab.id);
       await contents.executeJavaScript('document.querySelector("#fixture-check").click()');
@@ -73,10 +101,18 @@ app.whenReady().then(async()=>{
     }});
   browser.bodyTargetResolver=async host=>{resolved.push(host);return [{address:host==='private.example.org'||host==='watermark02.silverchair.com'&&faultKind==='blocked.pdf'?'127.0.0.1':'93.184.216.34'}];};
   await browser.ready;
+  browser.partition.setCertificateVerifyProc((request,callback)=>callback(request.hostname==='pdf.example.org'
+    && new X509Certificate(request.certificate.data).fingerprint256===fingerprint?0:-3));
+  const fetch=browser.sessionEvents.fetch.bind(browser.sessionEvents);
+  browser.sessionEvents.fetch=(url,...args)=>{
+    if(new URL(url).searchParams.get('Signature')==='renewed')
+      assert.ok(solves.length===1&&!browser.tabs.has(solves[0]),'Browser and its Solver drain before the actual renewed GET');
+    return fetch(url,...args);
+  };
   await browser.partition.cookies.set({url:origin,name:'fixture_session',value:'selected-session',sameSite:'unspecified'});
   for(const [host,name] of [['academic.oup.com','publisher_only'],['watermark02.silverchair.com','cdn_only'],['ieeexplore.ieee.org','reader_only'],['other.example.org','fallback_only']])
     await browser.partition.cookies.set({url:origin.replace('pdf.example.org',host),name,value:'selected-session',sameSite:'unspecified'});
-  const python=spawn(path.join(root,'.venv/bin/python'),['-u',path.join(root,'tests/electron_body_stream_fixture.py'),profile,origin],
+  const python=spawn(path.join(root,'.venv/bin/python'),['-u',path.join(root,'tests/electron_body_stream_fixture.py'),profile,origin,secureOrigin],
     {cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')+':'+path.join(root,'tests')},stdio:['pipe','pipe','pipe']});
   let stderr='';python.stderr.on('data',data=>{stderr+=data;});
   let lateClosed=false,lateMessage,logAcknowledged=false;
@@ -92,7 +128,7 @@ app.whenReady().then(async()=>{
   const streamTimings=[];
   const context=vm.createContext({browser,send,executeBodyStream:(browser,data,options)=>executeBodyStream(browser,data,{...options,observe:timing=>{
     options.observe(timing);throw Error('synthetic observation failure');
-  }}),recoverBodyAccess,executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
+  }}),executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
@@ -174,15 +210,19 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,30);assert.equal(slowWitness,true);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,33);assert.equal(slowWitness,true);
     assert.equal(solves.length,1);
     assert.equal(browser.tabs.has(solves[0]),false,'challenge page is destroyed before the managed retry settles');
-    const protectedRequests=requests.filter(r=>r.url==='/protected.pdf?Signature=fixture');
-    assert.deepEqual(protectedRequests.map(r=>r.headers.accept==='application/pdf'),[true,false,false,true]);
-    assert.deepEqual(protectedRequests.map(r=>r.headers.cookie?.includes('fixture_access=ok')),[false,false,true,true]);
-    assert.deepEqual(protectedRequests.map(r=>r.headers.referer),[origin+'/article',origin+'/article',origin+'/protected.pdf?Signature=fixture',origin+'/article']);
+    const protectedRequests=requests.filter(r=>r.url.startsWith('/protected.pdf?Signature='));
+    assert.deepEqual(protectedRequests.map(r=>r.headers.accept==='application/pdf'),[true,false,false,true,true,false,true]);
+    assert.deepEqual(protectedRequests.map(r=>r.headers.cookie?.includes('fixture_access=ok')),[false,false,true,true,false,true,true]);
+    assert.deepEqual(protectedRequests.map(r=>new URL(r.url,origin).searchParams.get('Signature')),['fixture','fixture','renewed','renewed','renewed','renewed','renewed']);
+    assert.deepEqual(protectedRequests.map(r=>r.headers.referer),[secureOrigin+'/article',secureOrigin+'/article',secureOrigin+'/protected.pdf?Signature=fixture',secureOrigin+'/protected.pdf?Signature=fixture',secureOrigin+'/article',secureOrigin+'/article',secureOrigin+'/article']);
+    assert.equal(requests.filter(r=>r.url==='/unrelated-ready').length,2,'ordinary unchallenged HTML cannot trigger a new stream');
     assert.equal(requests.filter(r=>r.url==='/unrelated-image').length,0,'recovery page cannot reach unrelated origins');
     assert.equal(requests.filter(r=>r.url==='/fixture-check').length,1);
+    assert.equal(canceledSolver,true,'canceling the captured Paper drains the waiting verification solver');
+    assert.equal(requests.filter(r=>r.url==='/pending-challenge').length,2,'cancelled verification cannot resume the stream');
     assert.equal(logAcknowledged,true,'Python terminal/owner release must not wait for Main final logging');
     assert.ok(streamTimings.length>0);
     for(const event of streamTimings){
@@ -221,5 +261,6 @@ app.whenReady().then(async()=>{
     assert.equal(requests.filter(r=>r.url==='/body?Signature=A%2FB').length,1);
     const first=cases[0];assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',first.paper+'.pdf')),payload);
     console.log('BODY STREAM PASS '+JSON.stringify(cases.map(({path,status})=>({path,status}))));
-  }finally {Readable.fromWeb=realFromWeb;fs.openSync=realOpen;fs.write=realWrite;fs.fsync=realFsync;fs.close=realClose;await browser.close();window.destroy();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+  }finally {Readable.fromWeb=realFromWeb;fs.openSync=realOpen;fs.write=realWrite;fs.fsync=realFsync;fs.close=realClose;await browser.close();window.destroy();
+    await Promise.all([server,secureServer].map(listener=>{listener.closeAllConnections();return new Promise(resolve=>listener.close(resolve));}));}
 }).then(()=>app.exit(0)).catch(error=>{console.error(error);app.exit(1);});

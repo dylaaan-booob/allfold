@@ -78,6 +78,7 @@ class PdfCandidate:
     # Ephemeral host-captured access inherited only by this source's descendants.
     # Never accepted from the renderer or persisted in discovery facts.
     access: object = dataclass_field(default=None, repr=False, compare=False)
+    recover_access: bool = dataclass_field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, PdfTarget) or self.stage not in {'P1', 'P2', 'P3', 'P4', 'P5'}:

@@ -12,7 +12,7 @@ const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
 const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
-const {executeBodyStream,recoverBodyAccess}=require('./workflows/body-stream.cjs');
+const {executeBodyStream}=require('./workflows/body-stream.cjs');
 const {executeBodyNative}=require('./workflows/body-native.cjs');
 const {executeLocalBody}=require('./workflows/local-body.cjs');
 const {wosQuery,wosExport}=require('./workflows/wos-operations.cjs');
@@ -158,7 +158,8 @@ async function executeOperation(message,current) {
           catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
-        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action))
+        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action)
+          || message.action==='stream_paper_body' && message.data?.recover_access===true)
           browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'native_paper_body') {
           return await executeBodyNative(browser,message.data,{signal:controller.signal,progress});
@@ -173,11 +174,8 @@ async function executeOperation(message,current) {
           return await prepare(browser,message.data,{signal:controller.signal,progress});
         } else if(['extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)) {
           if(!Number.isSafeInteger(message.data?.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
-          const options={signal:controller.signal,deadline:message.data.deadline_ms,
-            onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic)};
-          if(message.action==='extract_paper_pdf_clues' && Object.hasOwn(message.data,'body_access'))
-            return await recoverBodyAccess(browser,message.data,options);
-          return await browser[message.action==='extract_paper_metadata'?'extractPaperMetadata':'extractPaperPdfClues'](message.data,options);
+          return await browser[message.action==='extract_paper_metadata'?'extractPaperMetadata':'extractPaperPdfClues'](message.data,{signal:controller.signal,deadline:message.data.deadline_ms,
+            onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic)});
         } else if(message.action === 'search_journal_cover') {
           return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'wos_query' || message.action === 'wos_export') {

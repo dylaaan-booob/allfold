@@ -191,9 +191,14 @@ An eligible ready entry can still finish before deferred recovery. Main checks
 public DNS, pins the original Service authority and confines the Page's main
 request to GET on that origin. Its network scope allows that origin and Cloudflare
 challenge resources. The Page uses the common observer and parent deadline.
-If it reaches a PDF or octet-stream response, Main stops the navigation at
-headers. A recovered Page drains before Python resumes the original Session
-stream with its existing Referer. Browser readiness is never a save result.
+When it reaches a usable GET after observed access progress or a body response,
+Main stops the navigation at headers. A fresh signed URL and observed Referer
+belong to that request. Within the same native operation, Main captures that
+Page's selected partition context before it drains. If a warm response arrives
+before the Page commits a Document, the original native request's still-current
+Cookie selection applies once to that exact GET in the same Session. It stays
+inside Main and expires with this continuation. The stream receives the actual
+PDF bytes and settles its writer before the host can publish and associate them.
 Repeated signed variants of the same endpoint and Service do not create more
 verification Pages in that attempt. API-key requests, generic authorization
 errors and form actions keep their own paths. Solver state cannot revoke a

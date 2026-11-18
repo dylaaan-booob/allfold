@@ -26,7 +26,8 @@ _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
 _RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
 _PAPER_ACTIONS = {"extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
 _BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
-_RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues", "native_paper_body", "local_paper_body"}
+_RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues",
+    "stream_paper_body", "native_paper_body", "local_paper_body"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
 _RECEIVE_ERRORS = (*_SOCKET_ERRORS, ValueError, TimeoutError)
@@ -337,7 +338,6 @@ class ElectronBridge:
                 not isinstance(data, dict) or action == 'extract_paper_metadata' and type(data.get('wantAbstract')) is not bool
                 or action == 'extract_paper_pdf_clues' and 'wantAbstract' in data
                 or 'reader_access_only' in data and (action != 'extract_paper_pdf_clues' or data['reader_access_only'] is not True)
-                or 'body_access' in data and action != 'extract_paper_pdf_clues'
                 or type(data.get('deadline_ms')) is not int or data['deadline_ms'] <= 0):
             raise ValueError('Invalid native extraction parameters')
         socket = self._socket

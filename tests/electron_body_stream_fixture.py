@@ -36,7 +36,7 @@ class Socket:
 
 
 async def main():
-    root, origin = Path(sys.argv[1]), sys.argv[2]
+    root, origin, secure_origin = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
     config, _, _, service = current_mapping_document(root)
     config.write_text(config.read_text()+'enabled_providers: [openalex]\n')
     workspace = root / 'workspace'
@@ -183,7 +183,10 @@ async def main():
         print(json.dumps({'type':'fixture_local','status':'settled','retry_attempt':retry_task.download_token.attempt}), flush=True)
         cases=[(path,origin+'/'+path,None) for path in ['redirect?Signature=A%2FB', 'encoded', 'chunked', 'html.pdf', 'unknown', 'truncated', 'cancel', 'expiry', 'cross', 'cross-private', 'cross-unsafe', 'bad-encoding', 'close-delimited', 'challenge', 'disk-write', 'disk-flush', 'slow-writer', 'cross-referer', 'completed-late-signals', 'octet', 'missing-mime', 'wrong-mime', 'split-prefix', 'fake-pdf', 'cookie-progress']]
         cases.extend([
-            ('protected-cdn',origin+'/protected.pdf?Signature=fixture',None),
+            ('protected-cdn',secure_origin+'/protected.pdf?Signature=fixture',None),
+            ('protected-cdn-warm',secure_origin+'/protected.pdf?Signature=renewed',None),
+            ('unrelated-ready',origin+'/unrelated-ready',None),
+            ('pending-challenge',origin+'/pending-challenge',None),
             ('background-cloudflare',origin+'/background-cloudflare',None),
             ('oxford-cdn',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/body.pdf',None),
             ('oxford-private-dns',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/blocked.pdf',None),
@@ -196,12 +199,15 @@ async def main():
                 paper = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(doi=f'10.5555/body{index}'),
                     metadata=PaperMetadata(title='Same title')).paper
             target = PdfTarget(str(paper.id), doi=f'10.5555/body{index}', article_url=article, direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
-            candidate = PdfCandidate(target, 'P1', 'GENERIC', 'generic', url,
-                referer=origin.replace('pdf.','other.')+'/article?InstitutionToken=synthetic' if path=='cross-referer' else origin+'/article')
-            received, closing = threading.Event(), threading.Event()
+            referer = secure_origin+'/article' if path.startswith('protected-cdn') else origin+'/article'
+            if path=='cross-referer':
+                referer=origin.replace('pdf.','other.')+'/article?InstitutionToken=synthetic'
+            candidate = PdfCandidate(target, 'P1', 'GENERIC', 'generic', url, referer=referer)
+            received, closing, waiting = threading.Event(), threading.Event(), threading.Event()
             def progress(value):
                 if value.get('received_bytes',0)>0:received.set()
                 if value.get('fixture_close_pending'):closing.set()
+                if value.get('waiting_for_user'):waiting.set()
             task = await asyncio.to_thread(submit_body_download, host, paper, candidates=(candidate,), service_id=service.id,
                 deadline=__import__('time').monotonic() + (.3 if path=='expiry' else 8),
                 progress=progress)
@@ -230,6 +236,10 @@ async def main():
                 assert not task.future.done() and host.active
                 with PaperRepository.open(workspace) as repo:
                     assert repo.get(paper.id).body is None
+            if path=='pending-challenge':
+                assert await asyncio.to_thread(waiting.wait,3)
+                assert not task.future.done()
+                host.current().cancel_paper(paper.id,paper.workspace_id)
             result = await asyncio.to_thread(task.future.result, 10)
             with PaperRepository.open(workspace) as repo:
                 saved = repo.get(paper.id)
@@ -240,7 +250,8 @@ async def main():
                 assert result.candidate_result.diagnostic == reason
                 assert saved.download.reason == reason
             if path=='background-cloudflare':assert not saved.download.reason.startswith('access-')
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress','protected-cdn'}
+            if path=='pending-challenge':assert result.status=='cancelled'
+            success = path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress','protected-cdn','protected-cdn-warm'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:
@@ -255,7 +266,7 @@ async def main():
             projection = (await client.get('/api/ui-next/workspace')).json()
             encoded = json.dumps(projection)
             assert str(workspace) not in encoded and 'Signature' not in encoded and 'output_file' not in encoded
-            assert saved.download.status == ('completed' if success else 'cancelled' if path in {'cancel','expiry'} else 'failed'), (path, result, saved.download)
+            assert saved.download.status == ('completed' if success else 'cancelled' if path in {'cancel','expiry','pending-challenge'} else 'failed'), (path, result, saved.download)
             if index==0:
                 assert saved.metadata.abstract=='Manual abstract' and saved.metadata.notes=='Manual notes'
             print(json.dumps({'type':'fixture_case','path':path,'status':result.status,'paper':str(paper.id)}),flush=True)

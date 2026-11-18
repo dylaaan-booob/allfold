@@ -583,7 +583,8 @@ class PdfDiscovery:
                         fresh_reader = True
                         following = tuple(replace(candidate, url=c.url, reader_kind=c.reader_kind,
                             referer=c.referer, action=c.action, credential=None, accept=None,
-                            access=getattr(c, 'access', candidate.access))
+                            access=getattr(c, 'access', candidate.access),
+                            recover_access=getattr(c, 'recover_access', False))
                             for c in parsed.current_candidates)
                         navigation = getattr(parsed, 'reader_result', None)
                         if navigation is not None:
@@ -591,7 +592,7 @@ class PdfDiscovery:
                             if not following and (navigation.url != response.url
                                     or navigation.context_changed or access_limited(response)):
                                 following = (replace(candidate, url=navigation.url, referer=navigation.referer,
-                                    reader_kind=None, action=None, credential=None, accept=None),)
+                                    reader_kind=None, action=None, credential=None, accept=None, recover_access=False),)
                 if (not following and self.io is not None and (reader or {}).get('platform') == 'lww'
                         and callable(getattr(type(self.io), 'oce_access', None))
                         and callable(getattr(type(self.io), 'oce_reader', None))):
@@ -601,7 +602,7 @@ class PdfDiscovery:
                             parsed = self._call(self.io.oce_reader, candidate, response)
                             if parsed is not None:
                                 following = tuple(replace(candidate, url=c.url, platform='oce', reader_kind=c.reader_kind,
-                                    referer=c.referer, action=c.action, credential=None, accept=None,
+                                    referer=c.referer, action=c.action, credential=None, accept=None, recover_access=False,
                                     access=getattr(c, 'access', candidate.access))
                                     for c in parsed.current_candidates)
                     except PdfSourceReadError as error:
