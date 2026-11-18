@@ -263,10 +263,10 @@ Handle、Crossref 和官方 API 的响应按用途解释。登记 URL 不等于 
 有合格 PII 后生成：
 
 ```text
-https://www.sciencedirect.com/science/article/pii/{PII}/pdfft
+https://www.sciencedirect.com/science/article/pii/{PII}/pdfft?download=true
 ```
 
-已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。`?download=true` 作为该平台已有依据的变体处理。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)
+已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。生成入口时优先使用 `?download=true`，无法继续时回退到普通 `/pdfft`。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
 
 Cell Press 的 [R023](#r023) 使用 `https://www.cell.com/action/showPdf?pii={pii}`，输入可来自 `fulltext`、`pdfExtended` 或 `showPdf` URL。保留其有标点 PII/端点条件，不把 ScienceDirect 的规范化与 Host 直接套到 Cell。
 
@@ -394,7 +394,7 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 
 | 平台 | 采用的处理路径 | 保留的条件 |
 |---|---|---|
-| **ScienceDirect** | PII → `/pdfft`；必要时读取 `meta refresh`、`#redirect-message a`、`.PdfEmbed > object` 或明确 JSON 下载字段 | `md5/pid` 等值来自页面，不自行生成；已有下一跳时不返回文章页重走。[R024](#r024) |
+| **ScienceDirect** | PII → `/pdfft?download=true`，保留 `/pdfft` 回退。必要时读取 `meta refresh`、`#redirect-message a`、`.PdfEmbed > object` 或明确 JSON 下载字段。 | `md5/pid` 等值来自页面，不自行生成。已有下一跳时不返回文章页重走。[R024](#r024) |
 | **IEEE** | 已知编号先请求 `getPDF.jsp`；失败后解析 `stamp.jsp` 的 frame/iframe/meta refresh | 区分阅读器与二进制候选；保持目标 `arnumber`。[R025](#r025) |
 | **Optica / OSA** | `citation_pdf_url` 或 `#link-pdf` → 中间页 `frame:not(:first-of-type)[src]`，或已知 `gotourl` 参数 | `frame` 规则不能退化为任意第一个 iframe；`gotourl` 为平台字段。[R053](#r053) |
 | **Silverchair / OUP** | 明确的 article-pdf 入口 → 正常 HTTP 重定向 → CDN | 不生成或修改签名；是否需要导航、Cookie 或 Referer 按 Host 和现有上下文处理。[R020](#r020)、[R044](#r044)–[R050](#r050) |
@@ -1096,11 +1096,11 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 **本规格采用：** 纳入 P2；已有所需 ID 优先，缺失时只执行有依据的解析路径。
 
 **Host：** `www.sciencedirect.com`  
-**表达式或提取位置：** `https://www.sciencedirect.com/science/article/pii/{PII}/pdfft`
+**表达式或提取位置：** `https://www.sciencedirect.com/science/article/pii/{PII}/pdfft?download=true`
 
 **所需输入与解析：** PII；Crossref alternative-id经PII格式校验；或DOI登记/redirect目标的/pii/；已有API响应也可直接给scidir-pdf；HTML条件：已有所需ID时可构造或查询；ID来源见解析规则。
 
-**已列变体：** `/pdfft?download=true；页面JSON article.pdfDownload.urlMetadata`
+**已列变体：** 普通 `/pdfft` 回退入口，页面 JSON `article.pdfDownload.urlMetadata`。
 
 **中间页或响应：** meta refresh；#redirect-message a；.PdfEmbed>object；明确JSON字段。
 
@@ -1108,7 +1108,7 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **源实现范围：** 无需把HTML中间页放成每篇必经阶段。PII通常应使用规范化串；B类/旧PII及非标准值需校验；不能取alternative-id任意第一项。
 
-**研究证据及模块：** 源码验证；本轮未做授权下载；函数/模块：getPDFLink; parseIntermediatePDFPage; _crossref_pii。**来源：** [S002](#s002)、[S033](#s033)、[S025](#s025)。
+**研究证据及模块：** 原研究验证源码 `getPDFLink`、`parseIntermediatePDFPage`、`_crossref_pii`。实际入口顺序依据本地 PDF 配对验收的 F27 诊断。[S002](#s002)、[S033](#s033)、[S025](#s025)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
 
 
 <a id="r025"></a>

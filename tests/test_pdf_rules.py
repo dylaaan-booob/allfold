@@ -102,8 +102,8 @@ def test_sciencedirect_checks_each_alternative_id_and_preserves_bounded_variants
     inputs = PdfRuleInputs(paper, alternative_ids=('not-a-pii', 'S014067362400123X'))
     candidates = iter_p2_candidates(paper, inputs)
     first = next(candidates)
-    assert (first.rule_id, first.url) == ('R024', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft')
-    assert next(candidates).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'
+    assert (first.rule_id, first.url) == ('R024', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true')
+    assert next(candidates).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
     assert list(iter_p2_candidates(paper, PdfRuleInputs(paper, alternative_ids=('junk', '12345678901234567')))) == []
     punctuated = PdfRuleInputs(paper, identifiers=(('pii', 'S0140-6736(24)00123-4'),))
     assert list(iter_p2_candidates(paper, punctuated)) == []
@@ -121,7 +121,7 @@ def test_known_scidir_pdf_does_not_require_pii_and_has_bound_field():
 
 def test_pii_can_only_be_extracted_from_explicit_platform_paths():
     paper = target('www.sciencedirect.com', 'sciencedirect', article_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
-    assert next(iter_p2_candidates(paper)).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    assert next(iter_p2_candidates(paper)).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'
     assert list(iter_p2_candidates(replace(paper, article_url='https://www.sciencedirect.com/search/S014067362400123X'))) == []
 
 
@@ -129,7 +129,7 @@ def test_sciencedirect_template_retains_the_actual_article_origin_and_referer():
     article='http://www.sciencedirect.com:12345/science/article/pii/S014067362400123X'
     paper=target('www.sciencedirect.com','sciencedirect',article_url=article)
     candidate=next(iter_p2_candidates(paper))
-    assert candidate.url==article+'/pdfft' and candidate.referer==article
+    assert candidate.url==article+'/pdfft?download=true' and candidate.referer==article
 
 
 @pytest.mark.parametrize('article_url', [

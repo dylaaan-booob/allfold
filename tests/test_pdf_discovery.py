@@ -369,11 +369,50 @@ def test_terminal_direct_outcome_discards_deferred_reader(terminal):
     assert result.status == ('local-failure' if terminal == 'local_failure' else terminal)
 
 
+@pytest.mark.parametrize('download_entry_available', [True, False])
+def test_sciencedirect_generated_download_entry_comes_before_reader_fallback(download_entry_available):
+    from allfold.application.document_metadata import DocumentPdfResult, ReaderResult
+
+    article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
+    reader_url = article + '/pdfft'
+    download_url = reader_url + '?download=true'
+    body_url = 'https://cdn.example.org/Body.PDF'
+    available = download_url if download_entry_available else reader_url
+    paper = target('www.sciencedirect.com', article_url=article)
+    facts = document(paper, [])
+    calls = []
+
+    class IO:
+        def reader(self, candidate, response):
+            calls.append(('reader', response.url))
+            if response.url == available:
+                return DocumentPdfResult(facts, (), reader_result=ReaderResult(
+                    body_url, response.url, False, '0' * 64))
+            return DocumentPdfResult(facts, ())
+
+    def consume(candidate):
+        assert candidate.target is paper
+        calls.append(('get', candidate.url))
+        if candidate.url in {download_url, reader_url}:
+            return CandidateResult.current(CurrentResponse(candidate.url, 'text/html', b'<html>Reader</html>'))
+        assert candidate.url == body_url
+        assert candidate.referer == available
+        return CandidateResult.pdf(transfer_complete=True)
+
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    expected = [('get', download_url), ('reader', download_url)]
+    if not download_entry_available:
+        expected.extend([('get', reader_url), ('reader', reader_url)])
+    expected.append(('get', body_url))
+    assert calls == expected
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', not download_entry_available)
+
+
 @pytest.mark.parametrize('reader_succeeds', [True, False])
 def test_reader_keeps_same_endpoint_template_variants_as_fallbacks(reader_succeeds):
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
-    entry, body = article + '/pdfft', 'https://cdn.example.org/current.pdf'
+    entry, body = article + '/pdfft?download=true', 'https://cdn.example.org/current.pdf'
     paper = target('www.sciencedirect.com', article_url=article)
     facts = document(paper, [PdfCandidateFact(stage='P4', rule_id='R024', url=entry,
                                             reader_kind='sciencedirect')])
@@ -389,7 +428,7 @@ def test_reader_keeps_same_endpoint_template_variants_as_fallbacks(reader_succee
             return CandidateResult.current(CurrentResponse(entry, 'text/html', b'<html>Reader</html>'))
         return CandidateResult.pdf(transfer_complete=True)
     result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
-    assert seen == [entry, body if reader_succeeds else entry + '?download=true']
+    assert seen == [entry, body if reader_succeeds else article + '/pdfft']
     assert readers == [entry]
     assert result.fallback_used is not reader_succeeds
 
@@ -398,7 +437,7 @@ def test_reader_keeps_same_endpoint_template_variants_as_fallbacks(reader_succee
 def test_paused_reader_variants_wait_for_other_direct_and_their_original_reader(winner):
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
-    entry, variant = article + '/pdfft', article + '/pdfft?download=true'
+    entry, variant = article + '/pdfft?download=true', article + '/pdfft'
     direct, body = 'https://cdn.example.org/current.pdf', 'https://cdn.example.org/reader-body.pdf'
     paper = target('www.sciencedirect.com', article_url=article)
     facts = document(paper, [
@@ -427,7 +466,7 @@ def test_paused_reader_variants_wait_for_other_direct_and_their_original_reader(
 
 @pytest.mark.parametrize('host,article,entry', [
     ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X',
-     'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'),
+     'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'),
     ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/document/123',
      'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=123&ref='),
 ])
@@ -435,7 +474,7 @@ def test_paused_reader_variants_wait_for_other_direct_and_their_original_reader(
 def test_duplicate_meta_is_not_another_direct_source_or_fallback(host, article, entry, variant):
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     paper = target(host, article_url=article)
-    meta = entry + (('&' if '?' in entry else '?') + 'download=true' if variant else '')
+    meta = entry + '&fixture-variant=1' if variant else entry
     facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R024' if 'sciencedirect' in host else 'R025',
                                             field='citation_pdf_url', url=meta)])
     body, seen = 'https://cdn.example.org/current.pdf', []
@@ -478,7 +517,7 @@ def test_resumed_reader_retains_original_source_index_and_skips_are_not_fallback
 
 @pytest.mark.parametrize('host,landing,entry', [
     ('www.sciencedirect.com', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X',
-     'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'),
+     'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'),
     ('opg.optica.org', 'https://opg.optica.org/abstract.cfm?uri=ao-63-1-1',
      'https://opg.optica.org/viewmedia.cfm?uri=ao-63-1-1'),
     ('ieeexplore.ieee.org', 'https://ieeexplore.ieee.org/document/123',
@@ -525,7 +564,7 @@ def test_t15_sd_current_redirect_response_keeps_initial_source_and_actual_base()
         return CandidateResult.pdf(transfer_complete=True)
     result = PdfDiscovery(paper).run(consume)
     assert [c.url for c in seen] == [
-        'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft',
+        'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true',
         'https://www.sciencedirect.com/science/article/Files/Body.PDF?md5=AbC&pid=Keep']
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
@@ -617,7 +656,7 @@ def test_t02_only_applicable_openalex_path_is_not_fallback_and_initialization_is
 
 
 @pytest.mark.parametrize('host,identifiers,url', [
-    ('www.sciencedirect.com', (('pii', 'S014067362400123X'),), '/pii/S014067362400123X/pdfft'),
+    ('www.sciencedirect.com', (('pii', 'S014067362400123X'),), '/pii/S014067362400123X/pdfft?download=true'),
     ('ieeexplore.ieee.org', (('article_number', '123'),), '/getPDF.jsp?tp=&arnumber=123&ref='),
     ('www.jstor.org', (('jstor_stable_id', '10.2307/AbC/Part2'),), '/stable/pdfplus/10.2307/AbC/Part2.pdf'),
 ])
@@ -647,7 +686,7 @@ def test_t05_all_crossref_alternative_ids_are_qualified_before_use():
     facts = crossref_discovery_facts({'DOI': paper.doi, 'alternative-id': ['junk', 'S014067362400123X']}, datetime.now(timezone.utc))
     seen = []
     result = PdfDiscovery(paper, facts=(facts,)).run(lambda c: seen.append(c) or CandidateResult.pdf(transfer_complete=True))
-    assert seen[0].url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    assert seen[0].url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'
     assert result.pdf_source == 'P2'
 
 
@@ -680,7 +719,7 @@ def test_pdf_refresh_uses_observed_content_host_and_ids_before_openalex():
     assert calls == ['document']
     assert len(seen) == 1 and seen[0].target is paper
     assert (seen[0].stage, seen[0].rule_id, seen[0].url) == ('P2', 'R024',
-        'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft')
+        'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true')
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
 

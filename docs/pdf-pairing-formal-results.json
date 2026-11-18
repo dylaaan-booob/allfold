@@ -9509,6 +9509,17 @@
       "rebuilt_ui": true,
       "observation_note": "Exact repo Source and rebuilt UI verified at readiness before any formal test. Normal relaunch establishes a separate in-memory Electron Session.",
       "measurement_revision": "keys-v2"
+    },
+    {
+      "started_at_utc": "2026-11-18T03:06:58.930Z",
+      "ready_at_utc": "2026-11-18T03:06:59.943Z",
+      "runtime_id": "24d6afc7666bd3737d833f3a19ab3e68",
+      "head_sha": "7a4ea99b824bed6d5543e4759b504f848a5d5cf1",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "frontend_head_sha": "7a4ea99b824bed6d5543e4759b504f848a5d5cf1",
+      "rebuilt_ui": true,
+      "observation_note": "Diagnostic-only Source relaunch from the exact checkout. Original R024 entry order and Download behavior retained. New Electron Session required separate ScienceDirect institutional preparation.",
+      "measurement_revision": "keys-v2"
     }
   ],
   "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
@@ -10095,6 +10106,62 @@
       "download_or_save_clicked": false,
       "result": "valid_publisher_viewer",
       "limitations": "Separate warm Browser navigation to the plain Reader entry in the same Allfold Session. It is a real viewer observation and not a managed body save. No Cloudflare was observed on this visit. Two earlier timed attempts had first-Reader Cloudflare recovery before an empty entry; the later ordinary viewer cannot explain that state. Record the added one-sided viewer warmth for any later F27 timing."
+    },
+    {
+      "id": "F27-D4-original-reader-order",
+      "sample_id": "F27",
+      "side": "allfold",
+      "source_checkout_sha": "7a4ea99b824bed6d5543e4759b504f848a5d5cf1",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_id": "24d6afc7666bd3737d833f3a19ab3e68",
+      "attempt": 4,
+      "platform": "ScienceDirect",
+      "access": "Current institutional Full text after the user authenticated through the normal CARSI Source route before timing. No PDF preview in this Session.",
+      "click_utc": [
+        "2026-11-18T03:18:48.140Z",
+        "2026-11-18T03:18:48.229Z"
+      ],
+      "file_and_association_complete_utc": [
+        "2026-11-18T03:19:30.216Z",
+        "2026-11-18T03:19:30.474Z"
+      ],
+      "elapsed_seconds": [41.987, 42.334],
+      "rule": "R024",
+      "stage": "P2",
+      "article_clue_read_ms": 5206,
+      "plain_reader": {
+        "reader_duration_ms": 17501,
+        "initial_response_ms": 405,
+        "solver_started_utc": "2026-11-18T03:18:59.187Z",
+        "solver_clicked_utc": "2026-11-18T03:19:09.232Z",
+        "page_ready_utc": "2026-11-18T03:19:12.720Z",
+        "page_ready_status": 200,
+        "landing_relation": "other-origin",
+        "qualified_dom_pdf_candidates": 0,
+        "native_get_handoff": false,
+        "discovery_outcome": "no-pdf-entry"
+      },
+      "download_query_reader": {
+        "initial_response_ms": 552,
+        "reader_duration_ms": 4250,
+        "landing_relation": "other-origin",
+        "qualified_dom_pdf_candidates": 0,
+        "native_get_handoff": true,
+        "native_get_changed_from_entry": true,
+        "ordinary_cookie_context_changed": true,
+        "cdn_challenged_response_ms": 5126,
+        "cdn_recovery": "Owned Page reached normal HTTP 200, no Solver widget click or human action observed there.",
+        "native_stream_ms": 7596,
+        "native_first_byte_ms": 2202
+      },
+      "body_version": "publisher PDF",
+      "size_bytes": 3156648,
+      "pages": 12,
+      "file_verified": true,
+      "human_assistance_during_download": false,
+      "result": "automatic_success_diagnostic_only",
+      "limitations": "Original-order Source only. No corresponding Zotero Save in this diagnostic. The first Reader reported no reusable GET or clues after recovery. No observation identifies the exact method of the final first-Reader navigation or the site's internal reason.",
+      "private_evidence": "7a4ea99-f27-reader-observation.zip and f27-allfold-4-file-verification.json"
     }
   ],
   "evidence_join_corrections": [

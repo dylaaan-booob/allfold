@@ -346,6 +346,8 @@ The same publication saved locally in 54.394–54.700 s (3,155,935 bytes). The
 assisted total difference is −4.151 to −3.481 s and the ratio is 0.9241–0.9360.
 The manual time alone is unknown. Ordinary fully automatic latency remains open.
 
+<a id="live-sciencedirect-reader-order"></a>
+
 The two original F27 final-code retests both spent time in an unsuccessful
 first R024 Reader before the second R024 entry succeeded. The retained exact
 DOI facts had no earlier valid P2 PDF URL. Initial article extraction ran before
@@ -357,11 +359,29 @@ canonical entry. A later non-scoring normal Browser visit to the plain `/pdfft`
 entry on the same running Session reached the actual 12-page publisher CDN
 viewer. There was no observed challenge on that visit. The earlier losses
 occurred after actual Reader verification; this comparison establishes a
-working plain URL in the current state, with the post-challenge cause still
-open. The new terminal observation captures entry class, final landing
-relation and qualified candidate count on the original source order. The
-alternative order was evaluated in an isolated fixture and is pending the
-live route evidence.
+working plain URL in the observed warm Session.
+
+A new Source Session on diagnostic checkout `7a4ea99` kept the original order.
+After independent institutional login and article full-text confirmation, a
+single Download on the restored F27 Paper reproduced the first-path loss.
+The plain Reader recovered automatically from Cloudflare in 17.501 s and
+landed at another origin. It reported zero PDF clues and no native GET
+handoff. Discovery then recorded `no-pdf-entry`. The download-query Reader
+landed at another origin in 4.250 s and supplied the actual GET even with
+zero DOM clues. Its next CDN response required automatic Browser recovery,
+then the existing Session stream saved and associated the 12-page publisher
+PDF (3,156,648 bytes). Click-to-association was 41.987–42.334 s. This was a
+single-side diagnostic, so it adds no paired score. The terminal observation
+does not identify the unavailable first-path request method or the site's
+internal routing decision.
+
+R024 now tries the installed Translator's generated download-query entry
+before the plain fallback. Both still use the normal Reader, Session and
+publication paths. The focused regression verifies that the first entry's
+observed GET can complete the original Paper and that a missing continuation
+allows the existing plain entry to work. A paired repeat on the revised
+order is required to measure the change under fresh, independently verified
+access.
 
 Project Euclid was restricted to public publisher Open Access. F21's normal
 article redirected to the short page after the user completed separate

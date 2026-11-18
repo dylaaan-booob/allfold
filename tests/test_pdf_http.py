@@ -272,7 +272,7 @@ def test_missing_pii_queries_handle_only_and_keeps_original_target_binding():
         result = PdfDiscovery(paper, io=PdfDiscoveryIO(http)).run(lambda c: (
             candidates.append(c) or CandidateResult.pdf(transfer_complete=True)))
     assert seen == ['https://doi.org/api/handles/10.1234/abc']
-    assert candidates[0].url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    assert candidates[0].url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'
     assert candidates[0].target is paper
     assert (result.pdf_source, result.fallback_used) == ('P2', False)
 
@@ -327,7 +327,7 @@ def test_new_host_template_failure_still_reaches_its_configured_metadata_api():
 
 @pytest.mark.parametrize('landing,expected', [
     ('https://www.sciencedirect.com/science/article/pii/S1234567812345678',
-     'https://www.sciencedirect.com/science/article/pii/S1234567812345678/pdfft'),
+     'https://www.sciencedirect.com/science/article/pii/S1234567812345678/pdfft?download=true'),
     ('https://ieeexplore.ieee.org/document/12345',
      'https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=12345&ref='),
 ])

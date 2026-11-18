@@ -98,7 +98,9 @@ Optional Reader work after an HTML response waits for the batch's other direct
 entries; it resumes with its original response/context if needed. A valid response
 chain, including the existing ScienceDirect article-backlink recovery, stays in
 its source. Query variants of the same rule/endpoint remain that source's
-fallbacks rather than interrupting its Reader. Refresh never repeats tried P1/P2 URLs, restarts the
+fallbacks rather than interrupting its Reader. R024's generated ScienceDirect
+entry starts with `/pdfft?download=true` and keeps plain `/pdfft` as a fallback.
+Refresh never repeats tried P1/P2 URLs, restarts the
 missing-input API sequence or turns an action/refresh locator into a stable GET.
 It retains the current Document's observed content URL and identifiers. After
 its current P3/P4 clues, these may qualify previously unavailable templates before
