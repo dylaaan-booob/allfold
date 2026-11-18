@@ -14,6 +14,10 @@ const profile=process.argv[2],root=path.resolve(__dirname,'../..');
 app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
+const failFixture=error=>{console.error(error);app.exit(1);};
+// The delayed writer assertions can throw outside the fixture promise.
+// Report them to the runner instead of opening Electron's error dialog.
+process.once('uncaughtException',failFixture);
 app.whenReady().then(async()=>{
   const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],solves=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0,canceledSolver=false;payload.write('%PDF-');
   const serve=async(req,res)=>{
@@ -284,4 +288,4 @@ app.whenReady().then(async()=>{
     console.log('BODY STREAM PASS '+JSON.stringify(cases.map(({path,status})=>({path,status}))));
   }finally {Readable.fromWeb=realFromWeb;fs.openSync=realOpen;fs.write=realWrite;fs.fsync=realFsync;fs.close=realClose;await browser.close();window.destroy();
     await Promise.all([server,secureServer].map(listener=>{listener.closeAllConnections();return new Promise(resolve=>listener.close(resolve));}));}
-}).then(()=>app.exit(0)).catch(error=>{console.error(error);app.exit(1);});
+}).then(()=>app.exit(0)).catch(failFixture);

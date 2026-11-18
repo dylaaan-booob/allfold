@@ -1204,6 +1204,14 @@ Electron checks. The complete associated PR
 [Safety run 44233215459](https://github.com/dylaaan-booob/allfold/actions/runs/44233215459/job/134563028600)
 also passed. Newer commits require their own PR check.
 
+The diagnostic-only `976015c` passed JavaScript and Python in its associated
+[Safety run 44235173287](https://github.com/dylaaan-booob/allfold/actions/runs/44235173287/job/134569445454).
+Electron completed 253 tests. The isolated body-stream process reached its
+existing 60 s deadline after the last logged `disk-flush` case, ahead of the
+`slow-writer` terminal. The runner captured no internal error for that wait.
+The fixture now surfaces an uncaught timer assertion directly to the runner.
+The focused body-stream fixture passed locally with the same assertions and limits.
+
 ## Native partition-context repair and real retests
 
 [Community and fixed-version research](partitioned-cookie-research.md) supports
