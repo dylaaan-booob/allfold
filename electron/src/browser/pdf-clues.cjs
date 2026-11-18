@@ -56,4 +56,18 @@ function qualifyReader(reader,identity) {
   if(!kind || !identity || !(validDOI(identity.doi)||articleURL(identity.confirmed_article_url)))invalid();
   return kind;
 }
-module.exports={boundedPdfClues,qualifyReader,publicClueURL};
+function readerDiagnosticFields(reader,result) {
+  if(reader?.rule_id!=='R024' || !result.pdf_clues)return {};
+  const entry=new URL(reader.url),landing=new URL(result.pdf_clues.landing_url);
+  let relation='other-origin';
+  if(landing.origin===entry.origin) {
+    relation='other-path';
+    if(landing.pathname===entry.pathname)relation='reader';
+    else if(landing.pathname==='/science/article/pii/'+reader.identifier)relation='article';
+  }
+  const navigation=result.reader_result;
+  return {reader_entry:entry.searchParams.get('download')==='true'?'download':entry.search?'other-query':'plain',
+    reader_landing:relation,reader_pdf_candidates:result.pdf_clues.candidates.length,
+    ...(navigation && {reader_request_changed:navigation.url!==reader.url,reader_context_changed:navigation.context_changed})};
+}
+module.exports={boundedPdfClues,qualifyReader,publicClueURL,readerDiagnosticFields};

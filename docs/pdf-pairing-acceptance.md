@@ -4,7 +4,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 30
-of the 31 frozen Papers have paired observations (68 pair slots including repeats).
+of the 31 frozen Papers have paired observations (69 pair slots including repeats).
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -110,8 +110,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 61 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 55 automatic and one assisted local-PDF
+At this checkpoint Allfold has 62 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 55 automatic and two assisted local-PDF
 successes, one visible attachment failure, one completed popup with no local PDF
 at the observation horizon, and ten operator interruptions with unknown product
 terminal state. These are
@@ -205,8 +205,8 @@ and 4,834,588 bytes. Both the parent and file were verified in the acceptance
 collection. There is no time difference or ratio for this asymmetric outcome.
 
 The per-attempt [challenge audit](pdf-pairing-formal-results.json) covers all
-68 recorded slots and identifies the subscription-restricted sample omitted from
-Download. The retained traces show 16 attempts with Cloudflare evidence, 49
+69 recorded slots and identifies the subscription-restricted sample omitted from
+Download. The retained traces show 17 attempts with Cloudflare evidence, 49
 without observed Cloudflare evidence and three with insufficient time bounds or
 matching traces. Earlier
 Oxford, Wiley and SIAM source classifications are retained even when a related
@@ -332,6 +332,36 @@ for a substantial part of the actual Allfold wait. The two source URLs' exact
 request forms and the corresponding Connector stages are unavailable in the
 retained traces. This single active Reader challenge point is separate from
 the three prepared first-paper points above.
+
+F27-3 repeated the original sequence in the other order on the same running
+code. Both pages showed institutional Full text separately before timing. The
+Allfold preparation Solver clicked and recovered its article. Chrome preparation
+had separate human verification. No body was previewed. Allfold's first R024
+source again reached a genuine Reader challenge. The Solver clicked and recovered
+the Page, which gave no PDF entry after 19.479 s. The second R024 source reached
+the CDN and concluded via the automatic recovery Page and Session stream.
+Allfold saved the correct 12-page publication in 50.549–50.913 s (3,156,504 bytes).
+The distinct Zotero Save verification window required the user's checkbox.
+The same publication saved locally in 54.394–54.700 s (3,155,935 bytes). The
+assisted total difference is −4.151 to −3.481 s and the ratio is 0.9241–0.9360.
+The manual time alone is unknown. Ordinary fully automatic latency remains open.
+
+The two original F27 final-code retests both spent time in an unsuccessful
+first R024 Reader before the second R024 entry succeeded. The retained exact
+DOI facts had no earlier valid P2 PDF URL. Initial article extraction ran before
+those two generated P2 entries. The implementation orders plain `/pdfft` followed
+by `/pdfft?download=true`, so the reasoned candidate identities follow from the
+two recorded R024 indices and that order. The traces do not expose full URLs.
+The installed Zotero Translator uses the download query in its generated
+canonical entry. A later non-scoring normal Browser visit to the plain `/pdfft`
+entry on the same running Session reached the actual 12-page publisher CDN
+viewer. There was no observed challenge on that visit. The earlier losses
+occurred after actual Reader verification; this comparison establishes a
+working plain URL in the current state, with the post-challenge cause still
+open. The new terminal observation captures entry class, final landing
+relation and qualified candidate count on the original source order. The
+alternative order was evaluated in an isolated fixture and is pending the
+live route evidence.
 
 Project Euclid was restricted to public publisher Open Access. F21's normal
 article redirected to the short page after the user completed separate

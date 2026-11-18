@@ -9,6 +9,7 @@ const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {validateRecovery,settleRecoveryAuthority}=require('./workflows/recovery-authority.cjs');
 const {invocationRecovery}=require('./shared/recovery-summary.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
+const {readerDiagnosticFields}=require('./browser/pdf-clues.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
 const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
@@ -199,7 +200,8 @@ async function executeOperation(message,current) {
   // can settle its original Future/Paper without depending on that observation.
   send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
   try{log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
-    duration_ms:Date.now()-started,...streamTiming,outcome:canceled?'canceled':outcome,
+    duration_ms:Date.now()-started,...streamTiming,...readerDiagnosticFields(message.data?.reader,data),
+    outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,
     step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,
     imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});}catch(_){}

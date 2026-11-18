@@ -17,6 +17,7 @@ app.whenReady().then(async()=>{
   const nativeMessages=[],native=vm.createContext({require:require('node:module').createRequire(require.resolve('../src/main.cjs')),browser,operations:new Map(),exiting:false,bridgeReady:true,AbortController,
     ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),
     ...require('../src/browser/browser-errors.cjs'),operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
+    readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
     send:message=>nativeMessages.push(JSON.parse(JSON.stringify(message)))});
   const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
   vm.runInContext(main.slice(main.indexOf('const CONTROL_ACTIONS='),main.indexOf('async function startPython(')),native);

@@ -24,6 +24,7 @@ app.whenReady().then(async()=>{
   const port=server.address().port,url='http://www.nature.com:'+port+'/redirect';
   const host=new BrowserWindow({show:false}),browser=new BrowserRuntime({hostWindow:host});
   const messages=[],native=vm.createContext({require:require('node:module').createRequire(require.resolve('../src/main.cjs')),browser,operations:new Map(),exiting:false,bridgeReady:true,AbortController,
+    readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
     ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),...require('../src/browser/browser-errors.cjs'),operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     send:message=>messages.push(JSON.parse(JSON.stringify(message)))});
   const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');

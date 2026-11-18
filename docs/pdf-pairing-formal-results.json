@@ -9047,6 +9047,192 @@
       "measurement_stratum": "publisher_entry_with_unconfirmed_entitlement",
       "comparable_body_version": false,
       "comparison_eligibility_note": "No verified local PDF on either product at the common horizon. An article PDF entry and completed Connector popup did not establish full-text access or attachment import."
+    },
+    {
+      "pair_id": "F27-3",
+      "sample_id": "F27",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T02:43:02.654Z",
+          "2026-11-18T02:43:02.757Z"
+        ],
+        "ui_preparation": "Exact F27 original restored Paper, prior attempt2 authorized deletion verified, new Download ready and no existing PDF. Both independent exact articles showed current institutional Full text, with Cloudflare handled automatically in Allfold preparation and user verification in Chrome before timing. Neither product previewed PDF. Same running production 989ad81, original access/caches retained, exchanged formal order, no competing download/build.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "local_pdf_and_association_utc": [
+          "2026-11-18T02:43:53.306Z",
+          "2026-11-18T02:43:53.567Z"
+        ],
+        "wait_seconds": [
+          50.549,
+          50.913
+        ],
+        "file_bytes": 3156504,
+        "attempt": 3,
+        "source": "P2",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3156504,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_version",
+        "source_rule": "R024",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "native_operations": [
+          {
+            "article_extract_ms": 5320,
+            "entry_responses_ms": [
+              511,
+              160
+            ],
+            "first_reader_ms": 19479,
+            "first_reader_solver_started_utc": "2026-11-18T02:43:14.922Z",
+            "first_reader_solver_clicked_utc": "2026-11-18T02:43:24.301Z",
+            "first_reader_recovered_utc": "2026-11-18T02:43:28.787Z",
+            "first_reader_after_recovery": "no-pdf-entry",
+            "second_reader_ms": 5472,
+            "cdn_challenged_response_ms": 6979,
+            "owned_cdn_verification_ready_status": 200,
+            "cdn_page_solver_observed": false,
+            "stream_request_ms": 1598,
+            "stream_response_ms": 4422,
+            "stream_first_byte_ms": 4494,
+            "stream_closed_ms": 11723
+          }
+        ],
+        "diagnostic_evidence": "Private 989ad81-f27-third-pair.zip and f27-allfold-3-file-verification.json",
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "solver_events": [
+            {
+              "time": "2026-11-18T02:43:14.922Z",
+              "event": "cloudflare_solver_started",
+              "page_id": 54
+            },
+            {
+              "time": "2026-11-18T02:43:24.301Z",
+              "event": "page_access",
+              "page_id": 54,
+              "code": "checkbox_clicked"
+            },
+            {
+              "time": "2026-11-18T02:43:28.788Z",
+              "event": "navigation_ready",
+              "page_id": 54,
+              "code": "page_ready",
+              "status": 200
+            },
+            {
+              "time": "2026-11-18T02:43:28.825Z",
+              "event": "cloudflare_solver_finished",
+              "page_id": 54,
+              "outcome": "not_executed",
+              "code": "canceled"
+            }
+          ],
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com/"
+          ],
+          "private_exports": [
+            "989ad81-f27-third-pair.zip"
+          ],
+          "native_recovery": {
+            "outcome": "First Reader real Cloudflare recovered after Solver click. It yielded no PDF entry. The second Reader yielded an assets GET access challenge, then its owned Page reached HTTP 200 and the same task closed the Session stream.",
+            "ready_utc": "2026-11-18T02:43:43.221Z"
+          }
+        }
+      },
+      "zotero": {
+        "result": "assisted_success",
+        "timing_eligible_for_parity": false,
+        "click_utc": [
+          "2026-11-18T02:44:22.659Z",
+          "2026-11-18T02:44:22.691Z"
+        ],
+        "ui_preparation": "Fresh independent F27 ScienceDirect trial tab after user finished genuine Chrome Cloudflare during article prep. Correct title/DOI, institution Full text and ScienceDirect Translator. No old save session or PDF preview. Allfold actual associated PDF complete. Ordinary dedicated collection, same code/caches, no other downloads.",
+        "human_intervention": true,
+        "translator": "ScienceDirect",
+        "parent_key": "XW3L4IE2",
+        "measurement_revision": "keys-v2",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T02:45:17.085Z",
+          "2026-11-18T02:45:17.359Z"
+        ],
+        "wait_seconds": [
+          54.394,
+          54.7
+        ],
+        "file_bytes": 3155935,
+        "attachment_key": "3PJRFFAQ",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3155935,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "assistance_during_download": true,
+        "human_intervention_note": "User passed a distinct real ScienceDirect Cloudflare checkbox after Zotero Save in its attachment monitor window. User reported passing it and supplied a screenshot. The page timestamp 02:44:35 UTC cannot establish the manual-click time. Human wait subinterval unavailable. Chrome pre-Save verification is separate and separately retained.",
+        "pdf_version": "publisher_version",
+        "source_origin": "https://pdf.sciencedirectassets.com/",
+        "acceptance_collection_membership_verified": true,
+        "diagnostic_evidence": "Private f27-third-pair-zotero-assistance.json, f27-zotero-3PJRFFAQ-file-verification.json and 989ad81-f27-third-pair.zip"
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": false,
+      "cohort": "representative_retest",
+      "configured_access_method": "CARSI ScienceDirect institutional Full text",
+      "measurement_stratum": "active_reader_cloudflare_and_zotero_assisted_save",
+      "comparable_body_version": true,
+      "compared_pdf_version": "Both verified 12-page publisher PDFs",
+      "comparison_eligibility_note": "Allfold first Reader Solver recovery repeated. Zotero required a separate human challenge after Save. The total wait is retained in the assisted stratum. Exact user wait subinterval unavailable.",
+      "assisted_wait_comparison": {
+        "difference_seconds": [
+          -4.151,
+          -3.481
+        ],
+        "ratio": [
+          0.9241,
+          0.936
+        ],
+        "context": "Includes post-Save human verification on Zotero. Excluded from normal fully automatic parity."
+      }
     }
   ],
   "coverage_gaps": [
@@ -9141,7 +9327,7 @@
       "gap": "F23/F24 established exact EBSCO Business Source Complete records with PDF entries in both products. Their Allfold normal paths received direct PubsOnline authorization denials, did not reach EBSCO, and saved known related preprints. Zotero saved EBSCO publisher and Just Accepted versions, after automatic article-detail embed preparation. Source attainment gap is repeatable across the two sampled Papers. F25 direct pages both showed the exact article and a View PDF entry. Allfold P4 reported access-authorization. Zotero Atypon Journals saved the exact parent alone; no local attachment after 600 seconds. An EBSCO exact DOI/title result was not available in the Allfold Service search. Direct PubsOnline parity is unconfirmed."
     }
   ],
-  "parity_conclusions": "In progress. IEEE and Cambridge access-matched cohorts have no slower points. Euclid F22 OA favors Allfold in one pair. ScienceDirect F26/F27 retrieval recovered; F27/F29–31 waits favor Zotero. EBSCO source attainment differs on F23/F24. Direct F25 yielded no verified pair. Remaining access and performance retests are open.",
+  "parity_conclusions": "In progress. IEEE and Cambridge prepared cohorts show no slower points. Euclid F22 OA favors Allfold in one pair. ScienceDirect F26/F27 publisher retrieval recovered, but F27 repeated its first unsuccessful Reader and F29–31 were slower. F23/F24 show an EBSCO source attainment gap. Relevant real retests and performance coverage remain open.",
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -9526,6 +9712,29 @@
       "human_intervention": false,
       "notes": "Correct article and visible HTML content/PDF entry after automatic recovery. OA and actual PDF permission are unconfirmed. No preview or timed action. Chrome trial tab creation timed out during separate preparation.",
       "diagnostic_evidence": "Private 989ad81-f10-preparation.zip"
+    },
+    {
+      "record_id": "F27_source_preparation_before_third_pair",
+      "sample_id": "F27",
+      "kind": "normal Source article preparation and trial body replacement",
+      "platform": "ScienceDirect",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "native_page_load_started_utc": "2026-11-18T02:38:47.157Z",
+      "solver_started_utc": "2026-11-18T02:38:52.579Z",
+      "solver_clicked_utc": "2026-11-18T02:38:58.225Z",
+      "native_access_recovered_utc": "2026-11-18T02:39:01.775Z",
+      "native_solver_drained_utc": "2026-11-18T02:39:01.805Z",
+      "selected_body_only_deleted_utc": [
+        "2026-11-18T02:37:49.710Z",
+        "2026-11-18T02:37:49.808Z"
+      ],
+      "restore_utc": [
+        "2026-11-18T02:37:56.212Z",
+        "2026-11-18T02:37:56.291Z"
+      ],
+      "human_intervention_during_source_access": false,
+      "notes": "Normal Reload restored the trusted Workspace controls. Exact previously saved F27 PDF removed through the confirmed product UI and the original Paper restored. Source and fresh Chrome both showed exact institutional Full text before timing. Chrome user completed its separate pre-Save captcha; timing bounds for the human step unavailable. Neither previewed PDF.",
+      "diagnostic_evidence": "Private 989ad81-f27-warm-retest-preparation.zip"
     }
   ],
   "operator_restart_context": {
@@ -9866,6 +10075,26 @@
       ],
       "result": "preparation_excluded_old_save_session",
       "notes": "Normal EBSCO search-to-detail navigation reused the existing SPA tab. The article showed the exact F24 DOI and EBSCO Discovery Layer, but the Save popup explicitly showed already saved and retained the earlier F23 title. The dedicated collection was selected and the required new F24 local record was not observed. Preserved as non-scoring because the click did not create a fresh save session. The formal F24 pair uses a new ordinary trial tab with a fresh save session."
+    },
+    {
+      "id": "F27-browser-plain-reader-entry",
+      "sample_id": "F27",
+      "side": "allfold",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "kind": "ordinary_browser_entry_diagnostic",
+      "entry": "plain R024 /pdfft for the exact article",
+      "nav_click_utc": [
+        "2026-11-18T02:51:27.874Z",
+        "2026-11-18T02:51:27.949Z"
+      ],
+      "cdn_viewer_seen_utc": "2026-11-18T02:51:32.465Z",
+      "actual_pdf_viewer_checked_utc": "2026-11-18T02:51:39.265Z",
+      "observed_pdf_page_count": 12,
+      "publisher_viewer_title_checked": true,
+      "reported_challenge": false,
+      "download_or_save_clicked": false,
+      "result": "valid_publisher_viewer",
+      "limitations": "Separate warm Browser navigation to the plain Reader entry in the same Allfold Session. It is a real viewer observation and not a managed body save. No Cloudflare was observed on this visit. Two earlier timed attempts had first-Reader Cloudflare recovery before an empty entry; the later ordinary viewer cannot explain that state. Record the added one-sided viewer warmth for any later F27 timing."
     }
   ],
   "evidence_join_corrections": [

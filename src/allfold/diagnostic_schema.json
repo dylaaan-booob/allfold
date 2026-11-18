@@ -484,6 +484,25 @@
       "minimum": 0,
       "maximum": 2147483647
     },
+    "reader_entry": {
+      "type": "string",
+      "enum": ["download", "plain", "other-query"]
+    },
+    "reader_landing": {
+      "type": "string",
+      "enum": ["reader", "article", "other-path", "other-origin"]
+    },
+    "reader_pdf_candidates": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "reader_request_changed": {
+      "type": "boolean"
+    },
+    "reader_context_changed": {
+      "type": "boolean"
+    },
     "omitted_count": {
       "type": "integer",
       "minimum": 0,

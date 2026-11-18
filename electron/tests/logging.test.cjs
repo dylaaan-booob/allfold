@@ -31,6 +31,30 @@ test('manual Service page observations retain descriptive role without URLs',t=>
   const [event]=logger.readEvents();assert.equal(event.role,'manual-service');assert.equal(event.page_id,3);
   assert.equal(event.url,undefined);
 });
+test('ScienceDirect Reader diagnostics retain route and candidate counts without URLs or context keys',t=>{
+  const {logger}=fixture(t);
+  const {readerDiagnosticFields}=require('../src/browser/pdf-clues.cjs');
+  const article='https://www.sciencedirect.com/science/article/pii/S1234567812345678';
+  const reader={rule_id:'R024',identifier:'S1234567812345678',url:article+'/pdfft'};
+  const landing={landing_url:article+'?signature=private-signature',candidates:[]};
+  const navigation={url:landing.landing_url,context_changed:false,context_key:'private-key'};
+  logger.log('info','task_finished',{request_id:'plain_reader',action:'extract_paper_pdf_clues',
+    ...readerDiagnosticFields(reader,{pdf_clues:landing,reader_result:navigation})});
+  logger.log('info','task_finished',{request_id:'download_reader',action:'extract_paper_pdf_clues',
+    ...readerDiagnosticFields({...reader,url:reader.url+'?download=true'},
+      {pdf_clues:{landing_url:'https://cdn.example/Publisher.PDF?signature=private-signature',candidates:[{}]}})});
+  const [plain,download]=logger.readEvents();
+  assert.equal(plain.reader_entry,'plain');
+  assert.equal(plain.reader_landing,'article');
+  assert.equal(plain.reader_pdf_candidates,0);
+  assert.equal(plain.reader_request_changed,true);
+  assert.equal(plain.reader_context_changed,false);
+  assert.equal(download.reader_entry,'download');
+  assert.equal(download.reader_landing,'other-origin');
+  assert.equal(download.reader_pdf_candidates,1);
+  assert.equal(download.reader_request_changed,undefined);
+  assert.doesNotMatch(JSON.stringify([plain,download]),/private-|sciencedirect\.com|cdn\.example|S1234567812345678/);
+});
 test('bounded rotation persists incompleteness across restart and files are private',t=>{
   const {logger,root}=fixture(t,{maxBytes:512,maxFiles:2});
   for(let i=0;i<12;i++)logger.log('info','manual_wait',{request_id:'request_'+i,waiting:!!(i%2)});

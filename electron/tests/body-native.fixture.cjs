@@ -219,6 +219,7 @@ app.whenReady().then(async()=>{
   const context=vm.createContext({browser,send,executeBodyNative,executeBodyStream,visitManualService,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
+    readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log:(_level,event,data)=>{
       if(event==='task_finished'&&!sentResults.has(data.request_id))prematureLogs.push(data.request_id);

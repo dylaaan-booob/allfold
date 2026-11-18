@@ -270,6 +270,13 @@ means a completed query selected none; absence means no usable query context.
 It contains no Cookie names, values or headers. It may also accompany a non-PDF
 response after resource closure and does not declare a saved body.
 
+The ScienceDirect PDF Reader terminal can record the entry class
+(`reader_entry`), landing relation (`reader_landing`) and
+`reader_pdf_candidates` from the captured Document. When the Reader observed
+a GET, booleans record request URL change and ordinary Cookie context change.
+The fields retain neither URL nor Cookie data and use the existing terminal
+diagnostic after returning the native result.
+
 Main logs successful stream/native/Open/Locate outcomes according to their actual
 result, even when an abort arrives later. Main sends that terminal result before
 the synchronous final diagnostic write, so Python settlement does not wait for it.

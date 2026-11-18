@@ -146,6 +146,7 @@ app.whenReady().then(async()=>{
   }}),executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
+    readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
     operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     associationLogContext:()=>({}),setLogLevel(){},withLogContext:(_context,run)=>run(),log(_level,event,data){
       if(event==='task_finished'&&data.action==='stream_paper_body'&&data.outcome==='stream_complete')streamTimings.push(data);
