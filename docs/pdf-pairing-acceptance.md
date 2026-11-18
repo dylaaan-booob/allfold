@@ -4,8 +4,8 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 30
-of the 31 original frozen Papers have paired observations. One untouched
-supplemental Paper also has an observation, for 72 pair slots including repeats.
+of the 31 original frozen Papers have paired observations. Two untouched
+supplemental Papers also have observations, for 73 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -40,11 +40,15 @@ transferable GET under both entry orders. The latest same-body repeat took
 The repaired F27 Reader passed verification and handed off its first entry to
 the native stream in the next live retest. The PDF was linked in 63.154–63.498 s.
 The Zotero measurement lost Desktop visibility before the observation horizon.
-After relaunch, its local parent still had no attachment. One untouched sample
-also reproduced the real fixed handoff and saved its publication automatically.
-Its Zotero Save produced no observable local item by the common horizon. The
-affected control and second untouched sample remain open.
-Workspace is retained.**
+After relaunch, its local parent still had no attachment. Two untouched samples
+also reproduced the fixed handoff and saved their publications automatically.
+Neither produced a local Zotero PDF within the common observation horizon. In
+the second case, the user passed Zotero's extra check and the helper eventually
+displayed the article while the local parent remained unattached. The final
+F26 Allfold-only control saved and associated its publisher PDF in
+21.055–21.441 s. These retests verify the repaired ScienceDirect saving path.
+Platform-wide timing parity remains unconfirmed, and the Workspace is
+retained.**
 
 ## Environment and endpoint
 
@@ -118,9 +122,9 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 65 automatic local-PDF successes, one assisted
+At this checkpoint Allfold has 66 automatic local-PDF successes, one assisted
 success and six failures. Zotero has 55 automatic and three assisted local-PDF
-successes, one visible attachment failure, two attempts with no local PDF
+successes, one visible attachment failure, three attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
@@ -138,7 +142,7 @@ is a task result but is not a publisher-version success.
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
 | EBSCO Business Source Complete | 2 matching records | Both products independently found the F23 and F24 PDF entries. Zotero saved the publisher and Just Accepted versions. Allfold's Download used verified related arXiv versions. | Allfold's configured EBSCO discovery gap repeated on two Papers. No same-version transfer comparison. |
-| ScienceDirect | 6 / 6 | F26 publication recovered on Allfold after repair and saved with Zotero assistance. F27-2 and unseen F29/F30/F31 published files saved automatically in both products. F27-3 and F27-5 obtained the publication with Zotero assistance. F27-6 saved through one Allfold Reader. Zotero's final attachment state was unobserved. F26-1/2 and F27-1 failures and the F28 matching preprints are retained. | Original F26/F27 publisher retrieval recovered. The final F27 Reader handoff worked live. All three new first pairs were slower on Allfold. Performance parity and the affected control remain open. |
+| ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. On final code, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | Functional retrieval passed on these four repaired paths. The initial F29/F30/F31 same-body pairs took longer on Allfold. The final repair observations lack a measurable same-version Zotero pair, so performance parity remains unconfirmed. |
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
 launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
@@ -415,8 +419,7 @@ isolated Electron fixture observed the normal GET then POST sequence. It
 failed on the former handoff and passed with the retained GET. When the
 verified landing had a different query, the old GET remained ineligible. A
 separate fixture navigation during the Cookie lookup confirms the previous
-response cannot authorize the replacement GET. The affected control and
-the second untouched-sample real retest remain pending.
+response cannot authorize the replacement GET.
 
 The exact Source build at `10e5038` was launched and its rebuilt UI and
 backend verified. Allfold and the fresh Chrome tab independently displayed
@@ -469,6 +472,79 @@ terminal result. The live Desktop API and observer found no matching local
 parent or PDF by the common 600 s horizon. This establishes real operation of
 the repaired handoff on another article. There is no comparable Zotero timing
 point for this sample.
+
+In the second untouched case, R024-Fresh-2, the user's preparation checkbox
+cleared on the ordinary Chrome article. Zotero's subsequent Save wrote a fresh
+local parent and presented a separate ScienceDirect attachment verification
+window. The user passed that additional check. During the same Save, empty
+Connector monitor windows repeatedly appeared, closed and put Chrome in the
+foreground. The last user-observed helper window displayed the same article
+with institutional full-text access. By the common 600 s observation bound,
+no attachment had been observed. The later readback found the same parent
+and no children. No product terminal or operator cancellation was observed.
+Raw screenshots remain private.
+
+The installed Connector 5.0.217 monitor, popup and attachment sources match
+the release commit `ce29dfa` byte for byte. The separate browser window opens
+on an initially blank monitor page. The monitor waits for an attachment
+response, with a 60 s default, and the Connector closes the window on
+settlement. A subsequent fetch of the discovered URL can enter the same
+path if challenged again. The screenshots establish the article landing and
+repeated focus changes. The exact response headers and cause of each reopening
+require a trace of the active Save. A closely matching earlier incident was
+reported to Zotero, including an article landing after verification while the
+local item had no PDF. [Monitor](https://github.com/zotero/zotero-connectors/blob/ce29dfa360d1ce17a3a1f15a9d338d638a073106/src/browserExt/browserAttachmentMonitor/browserAttachmentMonitor.js#L37) · [Popup](https://github.com/zotero/zotero-connectors/blob/ce29dfa360d1ce17a3a1f15a9d338d638a073106/src/common/botBypass.js#L188-L207) · [Attachment fetch](https://github.com/zotero/zotero-connectors/blob/ce29dfa360d1ce17a3a1f15a9d338d638a073106/src/common/itemSaver_background.js#L204-L273) · [Zotero discussion](https://forums.zotero.org/discussion/114602/cant-save-pdfs-from-sciencedirect-using-connector-from-chrome)
+
+The local Connector error list retained attachment resolver and communication
+errors with neither a Paper identity nor per-entry timestamps. Its detailed
+Debug logging was off during the original save. Those errors alone have no
+reliable attribution to this pair. A later click in the reloaded original
+tab reported `Reopening popup` and showed the prior completion with a red
+cross for its PDF. No new attachment request was observed. This records the
+original popup's later failure state outside its timing window.
+
+The supplied Connector excerpt also records `Reopening popup`, local
+`ping` and `getSelectedCollection` HTTP 200, and `delaySync` HTTP 204.
+These events came from displaying the existing save state. Its cumulative
+resolver and message errors lack Paper identifiers and timestamps. A later
+read-only library check again found the exact original Fresh-2 parent with
+zero attachments.
+
+A separate capture on a new article tab used the exact ScienceDirect
+Translator and an active Connector Debug buffer. The live RIS citation GET
+for the exact PII at `/sdfe/arp/cite` returned HTTP 403 after 1.869 s. The RIS
+import yielded zero records. The subsequent request with zero local items
+returned HTTP 201 and its popup completed with no observed parent or PDF.
+This capture stopped before any PDF request or attachment prompt. A separate
+click on the publisher's own Cite → Export citation to RIS action reached
+the same endpoint and presented a Cloudflare verification page. Chrome
+ultimately reported that it could not retrieve the offered file. The
+unresolved earlier attachment-stage case and this citation-stage failure
+are recorded separately. Connector Debug was restored to Off. The user
+then limited further work on this ScienceDirect issue to confirming
+Allfold's saving path.
+
+Allfold's subsequent normal action on the
+original R024-Fresh-2 Candidate verified the current institution article
+first. The timed extraction and sole Reader both recovered automatically. The
+verified Reader POST handed off its prior exact GET. The body Page reached
+HTTP 200 and the final stream closed in 12.718 s. The correct 14-page publisher
+file of 4,364,246 bytes was saved and associated in 79.710–80.066 s. The
+initial article operation took 39.052 s and the Reader took 19.581 s. This
+trial provides the same functional repair evidence on a different title and
+journal. Its long access and transfer wait remains in the table.
+
+On the user's narrowed scope, the preselected F26 control measured only
+Allfold. Its current institution article was verified with an automatic
+preparation challenge. The old trial PDF was deleted through Trash after
+confirmation. The same original Candidate was restored and its previous
+file confirmed absent before clicking Download. Attempt 5 reached the
+first Reader's verified asset after an automatically handled challenge.
+It retained the earlier exact GET after POST and completed the source
+without fallback. The native stream closed in 1.969 s. The original Paper
+acquired the durable association for its correct 12-page publisher PDF of
+4,834,002 bytes in 21.055–21.441 s. Earlier paired results and failures are
+preserved. This control is recorded separately from paired scores.
 
 An earlier new-order Zotero Save opened a checkbox window that later
 disappeared. The original local parent had zero attachments when rechecked,

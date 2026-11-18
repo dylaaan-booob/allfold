@@ -2294,6 +2294,45 @@
         ],
         "cache_at_selection": "Same normal Chrome profile and Source Session contexts. Article and prior Service pages accessed for preparation; body cache state unknown. No body was opened or saved.",
         "initial_repetitions": 1
+      },
+      {
+        "sample_id": "R024-Fresh-2",
+        "doi": "10.1016/j.neunet.2026.109805",
+        "paper_id": "7e1cf6ab-51c4-4088-ab3d-d850ca564166",
+        "journal": "Neural Networks",
+        "configured_service": "SCIENCEDIRECT",
+        "order": [
+          "zotero",
+          "allfold"
+        ],
+        "article_url": "https://www.sciencedirect.com/science/article/pii/S0893608026012608",
+        "access_at_freeze": "Independently prepared institutional full text on both products. No PDF navigation or preview. Chrome reported Save to Zotero (ScienceDirect).",
+        "cohort": "postfix_mechanism",
+        "frozen_at_utc": "2026-11-18T07:52:44.809Z",
+        "title": "Distributed variational bayesian meta-learning over multi-agent systems.",
+        "platform": "ScienceDirect",
+        "configured_access_method": "CARSI institutional ScienceDirect",
+        "resolver_article_url": "https://doi.org/10.1016/j.neunet.2026.109805",
+        "article_identity": "Both normal article pages showed matching title, DOI and institution full-text access.",
+        "access_preparation_layer": {
+          "allfold": "Separate session via the prior actual ScienceDirect CARSI resource entry. Exact article opened on a new explicit Browser tab. Verified institution full text.",
+          "zotero": "Separate new Chrome tab with prior legal ScienceDirect CARSI resource preparation. User completed the article checkbox before timing."
+        },
+        "oa_status_at_selection": "No Open Access label observed; measured as institutional access.",
+        "body_state": "Original Workspace Candidate, Download available, no body or prior attempt, no pending cleanup.",
+        "discovery_facts": {
+          "collection_status": "failed",
+          "prior_attempts_observed": 0,
+          "injection": false
+        },
+        "selection_reason": "Preselected before the original F27 handoff retest. An untouched Paper in the second original ScienceDirect journal exercises another title and PII with exchanged order.",
+        "planned_mechanism_tags": [
+          "ScienceDirect R024",
+          "Reader and PDF handoff when actually observed",
+          "publisher and any OA fallback verified separately"
+        ],
+        "cache_at_selection": "Separate normally prepared product sessions and new article tabs. Exact article visited on both sides; body cache state unknown. No body preview or save.",
+        "initial_repetitions": 1
       }
     ]
   }
