@@ -1151,8 +1151,8 @@ Commit3a551ea takes the existing Paper owner gate in those two late commit conte
 strict link-count/path checks remain. The existing four-parameter collection test
 now asserts the gate during the affected verification; red/green and the full
 1669-test run are retained. No new retry,scan or production completeness check was
-added. The latest full PR Safety passed in about5min50s; its Electron step took
-about3min24s. A macOS arm64 queue-capacity notice is not a product failure.
+added. That full PR Safety run passed in about 5 min 50 s. Its Electron step
+took about 3 min 24 s. The runner also reported a macOS arm64 capacity notice.
 
 At `e9bbacb`, the PR [Safety run 44231010339](https://github.com/dylaaan-booob/allfold/actions/runs/44231010339/job/134555758506)
 passed JavaScript and Python. Electron passed 253 checks and failed the
