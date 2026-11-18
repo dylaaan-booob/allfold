@@ -9519,6 +9519,21 @@
       "frontend_head_sha": "7a4ea99b824bed6d5543e4759b504f848a5d5cf1",
       "rebuilt_ui": true,
       "observation_note": "Diagnostic-only Source relaunch from the exact checkout. Original R024 entry order and Download behavior retained. New Electron Session required separate ScienceDirect institutional preparation.",
+      "normal_quit_utc": [
+        "2026-11-18T03:28:27.481Z",
+        "2026-11-18T03:28:27.493Z"
+      ],
+      "measurement_revision": "keys-v2"
+    },
+    {
+      "started_at_utc": "2026-11-18T03:31:17.380Z",
+      "ready_at_utc": "2026-11-18T03:31:18.397Z",
+      "runtime_id": "8efa8287a945f0d8f6566cd567cd7749",
+      "head_sha": "e9bbacb33f278188195a023ec210f76ecb1cf601",
+      "production_code_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
+      "frontend_head_sha": "e9bbacb33f278188195a023ec210f76ecb1cf601",
+      "rebuilt_ui": true,
+      "observation_note": "Actual source relaunch verified from the exact repository and rebuilt UI. The ScienceDirect generated download query is first. The old Electron process drained before the restart. Independent institutional state will be verified on the target.",
       "measurement_revision": "keys-v2"
     }
   ],

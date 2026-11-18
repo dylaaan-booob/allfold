@@ -1154,6 +1154,15 @@ now asserts the gate during the affected verification; red/green and the full
 added. The latest full PR Safety passed in about5min50s; its Electron step took
 about3min24s. A macOS arm64 queue-capacity notice is not a product failure.
 
+At `e9bbacb`, the PR [Safety run 44231010339](https://github.com/dylaaan-booob/allfold/actions/runs/44231010339/job/134555758506)
+passed JavaScript and Python. Electron passed 253 checks and failed the
+isolated Document Date/Abstract fixture during page load, before the date
+assertion. Its expected-success operation had a four-second synthetic deadline
+inside the separately bounded fixture process. These operations now use the
+normal task budget inside the same 85-second subprocess and 90-second test
+limits. The focused native fixture passed locally. The existing extraction,
+cancellation, page closure and snapshot assertions still run.
+
 ## Native partition-context repair and real retests
 
 [Community and fixed-version research](partitioned-cookie-research.md) supports
