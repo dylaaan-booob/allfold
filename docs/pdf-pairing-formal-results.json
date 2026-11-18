@@ -7857,7 +7857,7 @@
           ],
           "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
           "private_exports": [
-            "989ad81-f22-first-pair.zip"
+            "989ad81-f10-preparation.zip"
           ],
           "native_recovery": {
             "outcome": "Owned verification Page reached HTTP 200, closed, and the same native task completed its Session stream. No active challenge or Solver interaction was observed on this Page. No human input during Download.",
@@ -8011,7 +8011,7 @@
           ],
           "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
           "private_exports": [
-            "989ad81-f22-first-pair.zip"
+            "989ad81-f10-preparation.zip"
           ],
           "native_recovery": {
             "outcome": "Owned verification Page reached HTTP 200, closed, and the same native task completed its Session stream. No active challenge or Solver interaction was observed on this Page. No human input during Download.",
@@ -8140,7 +8140,7 @@
           ],
           "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
           "private_exports": [
-            "989ad81-f22-first-pair.zip"
+            "989ad81-f10-preparation.zip"
           ],
           "native_recovery": {
             "outcome": "Owned verification Page reached HTTP 200, closed, and the same native task completed its Session stream. No active challenge or Solver interaction was observed on this Page. No human input during Download.",
@@ -8308,7 +8308,7 @@
           ],
           "observation_note": "Source classification retained. No Solver event attributable to this attempt in the available trace.",
           "private_exports": [
-            "989ad81-f22-first-pair.zip"
+            "989ad81-f10-preparation.zip"
           ],
           "native_recovery": {
             "outcome": "Owned CDN verification Page reached normal HTTP 200 and the same native task then finished a Session stream. Solver was observed separately during article preparation. No human input during Download.",
@@ -8490,7 +8490,7 @@
             "https://pdf.sciencedirectassets.com/"
           ],
           "private_exports": [
-            "989ad81-f22-first-pair.zip"
+            "989ad81-f10-preparation.zip"
           ],
           "native_recovery": {
             "outcome": "First Reader had an actual Cloudflare challenge. Solver clicked automatically and the same Page recovered; the first reader supplied no PDF entry. Another reader yielded a challenged assets GET. Its owned verification Page reached HTTP 200 automatically without an observed widget, then its Session stream and local save completed.",
@@ -8578,7 +8578,7 @@
           "2026-11-18T01:43:51.234Z",
           "2026-11-18T01:43:51.332Z"
         ],
-        "ui_preparation": "Exact original F22 Candidate title and DOI, no current body, Download ready. Both products confirmed Project Euclid publisher Open Access and normal PDF entry. Earlier F21 hCaptcha was completed separately in Allfold site preparation. No preview or competing download.",
+        "ui_preparation": "Exact original F22 candidate title and DOI, no current body, Download ready. Both products confirmed European publisher Open Access and normal PDF entry. Source followed earlier F21-only human Imperva during access preparation. Zotero actual original PDF and parent already saved. Ordinary single Download without PDF preview. No other download or local build/test.",
         "human_intervention": false,
         "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
         "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
@@ -8692,6 +8692,361 @@
         0.3924,
         0.5302
       ]
+    },
+    {
+      "pair_id": "F23-1",
+      "sample_id": "F23",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T02:08:14.136Z",
+          "2026-11-18T02:08:14.241Z"
+        ],
+        "ui_preparation": "Same exact existing F23 Candidate DOI/title and no body. Both independent configured institution EBSCO searches yielded Business Source Complete PDF entry for the exact DOI. Both PubsOnline article views showed Request Access and abstract only. No Source PDF preview, no PDF URL supplied to product, no competing download. Chrome normal EBSCO item detail may have an automatic embed, recorded separately. Code 989ad81.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "local_pdf_and_association_utc": [
+          "2026-11-18T02:08:38.080Z",
+          "2026-11-18T02:08:38.340Z"
+        ],
+        "wait_seconds": [
+          23.839,
+          24.204
+        ],
+        "file_bytes": 9493072,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 9493072,
+          "pdf_prefix": true,
+          "page_count": 34,
+          "full_title_match": false,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "identity_verification_note": "Matches the original Paper’s saved arXiv:2205.09823 relation and all four authors. The publisher title was expanded and the preprint lacks the publisher DOI in the examined pages."
+        },
+        "pdf_version": "verified_related_arxiv_preprint",
+        "source_rule": "OPENALEX",
+        "source_origin": "https://arxiv.org/",
+        "content_version_verification": {
+          "arxiv_id": "2205.09823v2",
+          "preprint_title": "Public Signals in Network Congestion Games",
+          "original_author_count": 4,
+          "all_authors_match": true,
+          "exact_arxiv_record_id_saved_as_preprint_relation": true
+        },
+        "diagnostic_evidence": "Private 989ad81-f23-first-pair.zip, f23-allfold-1-file-verification.json and f23-allfold-1-preprint-identity-check.json",
+        "native_operations": [
+          {
+            "publisher_P4_response_ms": 1435,
+            "publisher_P4_reason": "access-authorization",
+            "document_extract_ms": 5583,
+            "arxiv_P5_stream_ms": 15540,
+            "stream_first_byte_ms": 925,
+            "stream_closed_ms": 15539
+          }
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        },
+        "actual_body_platform": "arXiv",
+        "initial_source_platform": "INFORMS PubsOnline",
+        "actual_licensed_aggregator_discovery": "No EBSCO source operation observed"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T02:09:52.661Z",
+          "2026-11-18T02:09:52.695Z"
+        ],
+        "ui_preparation": "Exact F23 DPI/DOI and title in normal authorized Chrome Business Source Complete EBSCO detail with EBSCO Discovery Layer Translator. Opening the ordinary detail automatically embedded an actual publisher first page and 29-page viewer before Save. Operator never clicked View PDF or downloaded, but this is confirmed PDF prewarming. Both independent EBSCO sessions had the PDF entry. PubsOnline direct required access on both. Allfold P5 attempt had reached its actual document+association before click.",
+        "human_intervention": false,
+        "translator": "EBSCO Discovery Layer",
+        "parent_key": "TFQABAJA",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T02:10:05.203Z",
+          "2026-11-18T02:10:05.588Z"
+        ],
+        "wait_seconds": [
+          12.508,
+          12.927
+        ],
+        "file_bytes": 2996661,
+        "attachment_key": "5FWU492U",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 2996661,
+          "pdf_prefix": true,
+          "page_count": 29,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_version_served_by_ebsco",
+        "source_origin": "https://content.ebscohost.com/",
+        "acceptance_collection_membership_verified": true,
+        "pdf_embed_rendered_before_save": true,
+        "diagnostic_evidence": "Private 989ad81-f23-first-pair.zip and f23-zotero-5FWU492U-file-verification.json",
+        "actual_body_platform": "EBSCO Business Source Complete"
+      },
+      "platform": "INFORMS PubsOnline",
+      "configured_service": "EBSCO",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "configured_access_method": "CARSI EBSCO Business Source Complete independently confirmed; PubsOnline direct requested access on both products",
+      "measurement_stratum": "authorized_aggregator_version_comparison_with_connector_pdf_embed_preparation",
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "Different body versions and cache preparation. Direct publisher rights were unavailable on both. The authorized EBSCO database had the exact DOI and a PDF entry independently on each product. Zotero received the publisher version through EBSCO. Allfold used the related arXiv version from OpenAlex after PubsOnline denied its initial source; no EBSCO source operation appeared in that Download."
+    },
+    {
+      "pair_id": "F24-1",
+      "sample_id": "F24",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T02:17:15.777Z",
+          "2026-11-18T02:17:15.860Z"
+        ],
+        "ui_preparation": "Original F24 Candidate exact DOI/title, no body and ordinary Download ready. Independent EBSCO record/PDF entry accessed on both products, no Source PDF preview. Chrome F24 Zotero from fresh independent tab completed earlier. Publisher page View PDF observed without verified entitlement. No competing downloads/additional preparation requests/builds; no URL supplied to Allfold.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "measurement_revision": "keys-v2",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T02:17:26.908Z",
+          "2026-11-18T02:17:27.180Z"
+        ],
+        "wait_seconds": [
+          11.048,
+          11.403
+        ],
+        "file_bytes": 1441301,
+        "attempt": 1,
+        "source": "P5",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1441301,
+          "pdf_prefix": true,
+          "page_count": 48,
+          "full_title_match": true,
+          "doi_match": false,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": true,
+            "All rights reserved": false
+          },
+          "manual_identity_verified": true,
+          "identity_verification_note": "Verified related arXiv record 2502.16659v1, original title and all 2 authors. Publisher DOI absent in examined preprint pages."
+        },
+        "pdf_version": "verified_related_arxiv_preprint",
+        "source_rule": "OPENALEX",
+        "source_origin": "https://arxiv.org/",
+        "content_version_verification": {
+          "arxiv_id": "2502.16659v1",
+          "original_author_count": 2,
+          "all_authors_match": true,
+          "exact_arxiv_record_id_saved_as_preprint_relation": true
+        },
+        "diagnostic_evidence": "Private 989ad81-f24-first-pair.zip, f24-allfold-1-file-verification.json and f24-allfold-1-preprint-identity-check.json",
+        "native_operations": [
+          {
+            "publisher_P4_response_ms": 1480,
+            "publisher_P4_reason": "access-authorization",
+            "document_extract_ms": 5817,
+            "arxiv_P5_stream_ms": 3257,
+            "stream_first_byte_ms": 1425,
+            "stream_closed_ms": 3256
+          }
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        },
+        "actual_body_platform": "arXiv",
+        "initial_source_platform": "INFORMS PubsOnline",
+        "actual_licensed_aggregator_discovery": "No EBSCO source operation observed"
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-18T02:16:13.089Z",
+          "2026-11-18T02:16:13.128Z"
+        ],
+        "ui_preparation": "Fresh ordinary independent F24 EBSCO article tab verified exact DOI/title. EBSCO Discovery Layer. Both products had a current exact EBSCO PDF entry from Business Source Complete. Publisher direct article showed a View PDF entry with actual entitlement unverified. New tab automatically rendered 39-page Just Accepted embed before Save. Prior SPA stale F23 save UI kept separately as excluded preparation. No manual PDF click; no competing downloads or builds.",
+        "human_intervention": false,
+        "translator": "EBSCO Discovery Layer",
+        "parent_key": "BRW63G4F",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T02:16:21.099Z",
+          "2026-11-18T02:16:21.408Z"
+        ],
+        "wait_seconds": [
+          7.971,
+          8.319
+        ],
+        "file_bytes": 1762961,
+        "attachment_key": "8SNTTUD5",
+        "link_mode": "imported_url",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": true,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1762961,
+          "pdf_prefix": true,
+          "page_count": 39,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher_just_accepted_served_by_ebsco",
+        "source_origin": "https://content.ebscohost.com/",
+        "publisher_just_accepted_stamp_verified": true,
+        "acceptance_collection_membership_verified": true,
+        "pdf_embed_rendered_before_save": true,
+        "diagnostic_evidence": "Private 989ad81-f24-first-pair.zip and f24-zotero-8SNTTUD5-file-verification.json",
+        "actual_body_platform": "EBSCO Business Source Complete"
+      },
+      "platform": "INFORMS PubsOnline",
+      "configured_service": "EBSCO",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "configured_access_method": "CARSI EBSCO Business Source Complete independently confirmed. The formal Allfold PubsOnline GET returned access-authorization before arXiv fallback.",
+      "measurement_stratum": "authorized_aggregator_version_comparison_with_connector_pdf_embed_preparation",
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "Related arXiv versus EBSCO-hosted publisher Just Accepted version. The normal EBSCO article detail automatically rendered the PDF in Chrome before Save. The stale F23 save session is separately retained from the fresh-tab actual pair."
+    },
+    {
+      "pair_id": "F25-1",
+      "sample_id": "F25",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "allfold": {
+        "result": "failure",
+        "click_utc": [
+          "2026-11-18T02:20:58.419Z",
+          "2026-11-18T02:20:58.525Z"
+        ],
+        "ui_preparation": "Untouched original F25 candidate, exact DOI/title, no existing body and normal Download. Both independent PubsOnline normal exact Just Accepted article views showed View PDF and Chrome identified Atypon Journals; actual PDF permission unverified before click and no PDF preview. Allfold's independent EBSCO exact DOI and quoted-title searches returned no exact initial match; SmartText suggestions ignored. No alternative URL supplied and no competing download/build.",
+        "human_intervention": false,
+        "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "reason": "access-authorization",
+        "terminal_observation_utc": [
+          "2026-11-18T02:21:02.904Z",
+          "2026-11-18T02:21:03.166Z"
+        ],
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        },
+        "attempt": 1,
+        "terminal_wait_seconds": [
+          4.379,
+          4.747
+        ],
+        "source_rule": "GENERIC",
+        "source_origin": "https://pubsonline.informs.org/",
+        "native_operations": [
+          {
+            "publisher_P4_response_ms": 648,
+            "publisher_P4_reason": "access-authorization",
+            "document_extract_ms": 2860
+          }
+        ],
+        "diagnostic_evidence": "Private 989ad81-f25-first-pair.zip",
+        "initial_source_platform": "INFORMS PubsOnline"
+      },
+      "zotero": {
+        "result": "no_local_pdf_observed_at_horizon",
+        "timing_eligible_for_parity": false,
+        "click_utc": [
+          "2026-11-18T02:21:51.196Z",
+          "2026-11-18T02:21:51.222Z"
+        ],
+        "ui_preparation": "Normal independently prepared F25 PubsOnline article, exact DOI and title, Just Accepted, View PDF entry and Atypon Journals Translator. Actual PDF entitlement was not established by page entry and no body preview. Normal Save in dedicated collection after Allfold had reached no-file access-authorization. No other download/build active.",
+        "human_intervention": false,
+        "translator": "Atypon Journals",
+        "parent_key": "9WBV4MZF",
+        "measurement_revision": "keys-v2",
+        "observation_horizon_seconds": 600,
+        "elapsed_when_checked_seconds": 615.633,
+        "last_child_check_utc": [
+          "2026-11-18T02:32:06.855Z",
+          "2026-11-18T02:32:06.864Z"
+        ],
+        "children_observed": 0,
+        "completed_popup_observed_utc": "2026-11-18T02:22:00.196Z",
+        "acceptance_collection_membership_verified": true,
+        "outcome_note": "Exact parent DOI saved. UI showed Full Text PDF and Saving is complete. Actual local API returned zero children beyond the common 600-second observation horizon. No operator cancellation or visible error recorded. Attachment failure stage unobserved.",
+        "diagnostic_evidence": "Private f25-zotero-horizon-no-pdf.json and 989ad81-f25-first-pair.zip",
+        "initial_source_platform": "INFORMS PubsOnline"
+      },
+      "platform": "INFORMS PubsOnline",
+      "configured_service": "EBSCO",
+      "timing_comparison_eligible": false,
+      "cohort": "representative",
+      "configured_access_method": "Direct INFORMS PubsOnline, PDF entry visible and publisher entitlement unverified before the Save/Download; no exact EBSCO hit in the Allfold Service lookup",
+      "measurement_stratum": "publisher_entry_with_unconfirmed_entitlement",
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "No verified local PDF on either product at the common horizon. An article PDF entry and completed Connector popup did not establish full-text access or attachment import."
     }
   ],
   "coverage_gaps": [
@@ -8776,9 +9131,17 @@
         "F31"
       ],
       "gap": "F26-2 extra Allfold failure retained. Final production 989ad81 restored the original F26 publisher PDF twice; F26-3 Zotero used in-Save manual verification. F27-2 was the first corrected paired comparison of the original Paper and both saved the publication. It retained an active Reader challenge solved automatically, a failed first reader entry and a much slower wait. Untouched F29/F30/F31 saved publisher versions with automatic access recovery on Allfold; each first comparable wait was slower. F28 affected retest and normal exchanged-order controls remain needed."
+    },
+    {
+      "samples": [
+        "F23",
+        "F24",
+        "F25"
+      ],
+      "gap": "F23/F24 established exact EBSCO Business Source Complete records with PDF entries in both products. Their Allfold normal paths received direct PubsOnline authorization denials, did not reach EBSCO, and saved known related preprints. Zotero saved EBSCO publisher and Just Accepted versions, after automatic article-detail embed preparation. Source attainment gap is repeatable across the two sampled Papers. F25 direct pages both showed the exact article and a View PDF entry. Allfold P4 reported access-authorization. Zotero Atypon Journals saved the exact parent alone; no local attachment after 600 seconds. An EBSCO exact DOI/title result was not available in the Allfold Service search. Direct PubsOnline parity is unconfirmed."
     }
   ],
-  "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests.",
+  "parity_conclusions": "In progress. IEEE and Cambridge access-matched cohorts have no slower points. Euclid F22 OA favors Allfold in one pair. ScienceDirect F26/F27 retrieval recovered; F27/F29–31 waits favor Zotero. EBSCO source attainment differs on F23/F24. Direct F25 yielded no verified pair. Remaining access and performance retests are open.",
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -9147,6 +9510,22 @@
       "human_intervention": false,
       "notes": "Original ScienceDirect article with exact title/DOI, OA and View PDF observed after this same Page showed the genuine challenge. This was before the formal Download; Chrome independently reached normal OA and ScienceDirect Translator. No PDF preview.",
       "diagnostic_evidence": "Private 989ad81-f31-preparation.zip"
+    },
+    {
+      "record_id": "F10_source_oxford_automatic_page_recovery",
+      "sample_id": "F10",
+      "kind": "normal_source_article_access_check",
+      "platform": "Oxford Academic",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "native_page_load_started_utc": "2026-11-18T01:56:52.375Z",
+      "native_challenge_observed_utc": "2026-11-18T01:56:54.769Z",
+      "solver_started_utc": "2026-11-18T01:56:54.769Z",
+      "solver_clicked_observed": false,
+      "native_access_recovered_utc": "2026-11-18T01:57:06.072Z",
+      "native_solver_drained_utc": "2026-11-18T01:57:06.086Z",
+      "human_intervention": false,
+      "notes": "Correct article and visible HTML content/PDF entry after automatic recovery. OA and actual PDF permission are unconfirmed. No preview or timed action. Chrome trial tab creation timed out during separate preparation.",
+      "diagnostic_evidence": "Private 989ad81-f10-preparation.zip"
     }
   ],
   "operator_restart_context": {
@@ -9476,6 +9855,17 @@
         "f26-d2-allfold-file-verification.json"
       ],
       "comparison_note": "Qualitative restore of publisher retrieval. Earlier asymmetric failure preserved. This is not a paired latency point and will warm the subsequent Allfold repeat."
+    },
+    {
+      "id": "F24-Z-preparation-stale-save-session",
+      "sample_id": "F24",
+      "target": "zotero",
+      "click_utc": [
+        "2026-11-18T02:13:45.256Z",
+        "2026-11-18T02:13:45.293Z"
+      ],
+      "result": "preparation_excluded_old_save_session",
+      "notes": "Normal EBSCO search-to-detail navigation reused the existing SPA tab. The article showed the exact F24 DOI and EBSCO Discovery Layer, but the Save popup explicitly showed already saved and retained the earlier F23 title. The dedicated collection was selected and the required new F24 local record was not observed. Preserved as non-scoring because the click did not create a fresh save session. The formal F24 pair uses a new ordinary trial tab with a fresh save session."
     }
   ],
   "evidence_join_corrections": [
@@ -9613,10 +10003,7 @@
   "cloudflare_audit": {
     "basis": "Matching Paper and action observation window in retained diagnostics. Source rows show classification and may be duplicated. A Solver terminal marked canceled can follow actual page recovery. Missing or negative trace evidence does not establish that the site presented no challenge.",
     "unstarted_samples": [
-      "F21",
-      "F23",
-      "F24",
-      "F25"
+      "F21"
     ],
     "allfold_criterion": "All real Allfold Cloudflare challenges, including preparation, are checked for automatic passage. Human Cloudflare completion is unmet. Source fallback cannot erase a detected challenge without recovery. If a verified Page arrives with normal access and no challenge remains, record the automatic Page outcome and whether Solver actually ran. Non-Cloudflare authentication and Zotero assistance are separate."
   },

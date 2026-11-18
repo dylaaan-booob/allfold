@@ -3,10 +3,11 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 27
-of the 31 frozen Papers have paired observations (65 pair slots including repeats).
+**Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 30
+of the 31 frozen Papers have paired observations (68 pair slots including repeats).
 One Project Euclid Paper is excluded from saving because it requires a
-subscription. The three INFORMS Papers are pending access checks. Twenty-five
+subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
+verified PDF on either product. Twenty-five
 earlier low-load publisher pairs, four ScienceDirect pairs and one Project Euclid
 pair have reliable local file and association endpoints. Springer has two slower
 Allfold points and one
@@ -109,10 +110,11 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 59 automatic local-PDF successes, one assisted
-success and five failures. Zotero has 53 automatic and one assisted local-PDF
-successes, one visible attachment failure and ten operator interruptions with
-unknown product terminal state. These are
+At this checkpoint Allfold has 61 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 55 automatic and one assisted local-PDF
+successes, one visible attachment failure, one completed popup with no local PDF
+at the observation horizon, and ten operator interruptions with unknown product
+terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
 is a task result but is not a publisher-version success.
 
@@ -126,7 +128,8 @@ is a task result but is not a publisher-version success.
 | Project Euclid | 2 / 3 | F20 matching related arXiv v4, with in-download Allfold hCaptcha assistance. F22 matching 30-page publisher OA saved automatically by both products. F21 subscription excluded. | F22 favors Allfold. Only one publisher OA pair measured; institutional access is outside the revised scope. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
-| INFORMS PubsOnline | 0 / 3 | Not started; configured EBSCO capability is not a platform result | Not confirmed. |
+| INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
+| EBSCO Business Source Complete | 2 matching records | Both products independently found the F23 and F24 PDF entries. Zotero saved the publisher and Just Accepted versions. Allfold's Download used verified related arXiv versions. | Allfold's configured EBSCO discovery gap repeated on two Papers. No same-version transfer comparison. |
 | ScienceDirect | 6 / 6 | F26 publication recovered on Allfold after repair and saved with Zotero assistance. F27 retest and unseen F29/F30/F31 published files saved automatically in both products. F26-1/2 and F27-1 failures and the F28 matching preprints are retained. | Original F26/F27 publisher retrieval recovered. F27's challenge-recovery retest and all three new first pairs were slower on Allfold. Other affected paths and normal controls still require retest. |
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
@@ -202,9 +205,10 @@ and 4,834,588 bytes. Both the parent and file were verified in the acceptance
 collection. There is no time difference or ratio for this asymmetric outcome.
 
 The per-attempt [challenge audit](pdf-pairing-formal-results.json) covers all
-65 recorded slots and identifies the four samples without download starts. The
-retained traces show 16 attempts with Cloudflare evidence, 46 without observed Cloudflare
-evidence and three with insufficient time bounds or matching traces. Earlier
+68 recorded slots and identifies the subscription-restricted sample omitted from
+Download. The retained traces show 16 attempts with Cloudflare evidence, 49
+without observed Cloudflare evidence and three with insufficient time bounds or
+matching traces. Earlier
 Oxford, Wiley and SIAM source classifications are retained even when a related
 PDF subsequently saved. F20's Imperva/hCaptcha handoff remains separate. An
 absent event cannot establish absence of a real challenge. The pilot table
@@ -303,6 +307,16 @@ are unavailable for these pairs. The observed request costs identify where
 Allfold spent time. Further swapped pairs are needed to attribute the paired
 difference under similar access and cache conditions.
 
+The retained Crossref facts for the six ScienceDirect samples contain an exact
+DOI, an alternative identifier, and a LinkingHub landing with the compact PII.
+These are sufficient to identify the linking record. Actual publisher routing
+is established after navigation. A bounded public F29 resolver observation
+returned HTTP 200 without a Location. The initial HTML carried a meta refresh
+to a second page on LinkingHub. An independent header-only shortcut for the
+first response would therefore leave the content destination unresolved. The
+observation did not follow the refresh or request a PDF. The saved record still
+requires qualified downstream platform evidence for the existing template.
+
 The final-code F27-2 challenge-recovery retest ran in the exchanged order after
 both products independently showed institutional Full text on the target.
 Each obtained the same 12-page publisher version. Allfold took 41.746–42.119 s
@@ -330,6 +344,53 @@ paired difference −2.261 to −1.609 s and ratio 0.3924–0.5302. Native elaps
 stream time was 1.527 s, including 0.354 s from operation start to first byte.
 There was no observed assisted step during the two timed actions. Neither
 F20's fallback nor the single F22 publisher point establishes broader parity.
+
+For F23, normal PubsOnline pages for the exact DOI showed Request Access and
+abstracts in both products. The separate EBSCO sessions independently reached
+the matching record and PDF entry on Business Source Complete. Chrome's
+normal record detail automatically rendered the publisher first page and a
+29-page PDF viewer before Save. The operator used the normal article-detail
+Translator action. The embedded body is a recorded preparation difference.
+
+On `989ad81`, Allfold's PubsOnline P4 response took 1.435 s and returned
+`access-authorization`. Document extraction took 5.583 s. P5 streamed the
+linked arXiv 2205.09823v2 and saved it in 23.839–24.204 s. The actual 34-page
+file is 9,493,072 bytes. Its earlier title and all four authors match the
+Paper's explicit related arXiv record. Zotero saved and associated the 29-page
+publisher PDF from EBSCO in 12.508–12.927 s (2,996,661 bytes). The exact title
+and DOI were verified. Both had actual local PDFs. The versions and browser
+warmth differ, so this is a source attainment result with no transfer ratio.
+
+F24 reproduced the source difference. The independently authorized Business
+Source Complete record displayed the target DOI in both products. The first
+Zotero click in the same EBSCO SPA tab surfaced F23's old saved session. That
+click is retained as an excluded preparation observation. A new ordinary tab
+produced the real F24 save. Its normal detail embedded the 39-page publisher
+Just Accepted PDF before the click. The actual file and parent arrived in
+7.971–8.319 s (1,762,961 bytes), with accurate DOI, title and Just Accepted stamp.
+The F24 PubsOnline P4 request took 1.480 s and reported `access-authorization`.
+Allfold performed a 5.817 s Article extraction, then saved the confirmed related
+arXiv 2502.16659v1 in 11.048–11.403 s (48 pages, 1,441,301 bytes). The normal
+source sequence did not enter EBSCO. The different versions and browser
+preparation are recorded without a paired transfer score.
+
+F25's ordinary EBSCO DOI and exact-title searches returned no exact initial
+record in Allfold. PubsOnline showed the exact Just Accepted article and a View
+PDF entry in both products. There was no marked OA or verified PDF access before
+the pair. Allfold recorded `access-authorization` without a file in
+4.379–4.747 s. Zotero Atypon Journals saved the exact parent in the trial
+collection. Its popup displayed Full Text PDF and Saving is complete, but the
+parent still had zero children at the check 615.633 s after click. This is a
+missing local PDF at the common 600 s horizon. The action was not manually
+canceled and no precise internal attachment error time was observed.
+
+Allfold's observed Download path did not discover the licensed EBSCO record.
+The installed EBSCO Discovery Layer Translator (`660fcf3e-3414-41b8-97a5-e672fc2e491d`,
+revision 2026-10-01 19:50:00) starts with a loaded EBSCO record and profile,
+reads its download links, and passes the attachment to Zotero. Its exact branch
+for F23 was unobserved. EBSCO's entitlement API uses separately provisioned
+client credentials and a profile token. The established browser session alone
+does not establish API access. [EBSCO API authentication](https://developer.ebsco.com/entitlement-api/docs/use-the-client-credentials-grant)
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
