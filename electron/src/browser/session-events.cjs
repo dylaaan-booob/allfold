@@ -13,6 +13,9 @@ function withoutMarkers(headers={}) {
   return Object.fromEntries(Object.entries(headers).filter(([name])=>!PRIVATE_HEADERS.has(name.toLowerCase())));
 }
 
+const cookiePairs=value=>value.split(';').map(pair=>pair.trim()).filter(Boolean);
+const cookieName=pair=>pair.split('=',1)[0];
+
 // Electron has one listener slot per webRequest event. Only this Session lifetime
 // installs native listeners; consumers receive synchronous, ordered scoped hooks.
 class SharedSessionEvents {
@@ -62,13 +65,15 @@ class SharedSessionEvents {
           state.requestHeaders=withPartitionCookies(state.requestHeaders,details.url,
             request.controlled.initialURL,request.controlled.partitionCookies);
         const controlled=request?.controlled;
-        if(controlled?.navigationCookie!==undefined && controlled.initialURL===details.url && details.method==='GET') {
+        if(controlled?.navigationCookies && controlled.initialURL===details.url && details.method==='GET') {
           // This was the Chromium-selected header for this exact top-level
           // GET in the same Session. Consume it before any redirect can reuse it.
           const key=Object.keys(state.requestHeaders).find(name=>name.toLowerCase()==='cookie') || 'Cookie';
-          delete state.requestHeaders[key];
-          if(controlled.navigationCookie)state.requestHeaders[key]=controlled.navigationCookie;
-          delete controlled.navigationCookie;
+          const original=cookiePairs(state.requestHeaders[key] || '');
+          const names=new Set(original.map(cookieName));
+          const missing=controlled.navigationCookies.filter(pair=>!names.has(cookieName(pair)));
+          if(missing.length)state.requestHeaders[key]=[...original,...missing].join('; ');
+          delete controlled.navigationCookies;
         }
       }
       if(event==='headersReceived')state.responseHeaders=details.responseHeaders;
@@ -135,10 +140,18 @@ class SharedSessionEvents {
     const check=()=>{if(this.closed)throw Error('Browser Session is closed');checkCanceled(signal);
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');validate();};
     check();await this.cooldown.wait(url,{signal,deadline,validate:check});check();
+    let navigationCookies;
+    if(typeof context.navigationCookie==='string' && !/[\r\n]/.test(context.navigationCookie)) {
+      // The Page may have drained or a cooldown elapsed. Match only values
+      // still in this Session for the observed URL at dispatch time.
+      const current=await this.session.cookies.get({url});check();
+      const active=new Set(current.map(({name,value})=>name+'='+value));
+      navigationCookies=cookiePairs(context.navigationCookie).filter(pair=>active.has(pair));
+    }
     const token=randomBytes(24).toString('hex'),requests=[];
     const identity=Object.freeze({...owner.association || owner,attempt_id:attemptId,
       page_id:document?.pageId,document_id:document?.documentId});
-    const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,navigationCookie:context.navigationCookie,
+    const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,navigationCookies,
       validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
     // The deadline belongs to this physical request, including its response body.

@@ -39,27 +39,37 @@ app.whenReady().then(async()=>{
     }
     if(req.url==='/unrelated-ready'){
       const headers={'content-type':'text/html'};
-      if(req.headers.accept==='application/pdf')headers['cf-mitigated']='challenge';
-      res.writeHead(req.headers.accept==='application/pdf'?403:200,headers);
-      res.end('<title>Unrelated article</title><main>Ordinary HTML</main>');return;
+      if(req.headers.accept==='application/pdf'){
+        res.writeHead(403,{...headers,'cf-mitigated':'challenge'});res.end('<title>Just a moment...</title>');return;
+      }
+      res.writeHead(302,{location:'/unrelated-article'});res.end();return;
+    }
+    if(req.url==='/unrelated-article'){
+      res.writeHead(200,{'content-type':'text/html'});res.end('<title>Unrelated article</title><main>Ordinary HTML</main>');return;
     }
     if(req.url==='/pending-challenge'){
       res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
       res.end('<title>Just a moment...</title>');return;
     }
     if(input.pathname==='/protected.pdf'&&!req.headers.cookie?.includes('fixture_access=ok')){
+      if(input.searchParams.get('Signature')==='second'){
+        res.writeHead(200,{'content-type':'text/html'});
+        res.end('<title>Just a moment...</title><script>window._cf_chl_opt = {};</script>'
+          +'<a id="fixture-check" href="/fixture-check">Finish</a>');return;
+      }
       res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
-      res.end('<title>Just a moment...</title><a id="fixture-check" href="/fixture-check">Continue</a>'
+      res.end('<title>Just a moment...</title><a id="fixture-check" href="?Signature=second">Continue</a>'
         +'<img src="'+origin.replace('pdf.','other.')+'/unrelated-image">');return;
     }
     if(req.url==='/fixture-check'){
       res.writeHead(302,{'set-cookie':'fixture_access=ok; Path=/protected.pdf; Secure; HttpOnly; SameSite=None; Partitioned',location:'/protected.pdf?Signature=renewed'});res.end();return;
     }
     if(input.pathname==='/protected.pdf'){
-      if(input.searchParams.get('Signature')!=='renewed'){
+      if(!['renewed','inline'].includes(input.searchParams.get('Signature'))){
         res.writeHead(403,{'content-type':'text/html'});res.end('<title>Expired signature</title>');return;
       }
-      res.writeHead(200,{'content-type':'text/html','content-disposition':'attachment; filename=article.pdf'});res.end(payload);return;
+      res.writeHead(200,{'content-type':'text/html',...(input.searchParams.get('Signature')==='renewed'
+        ?{'content-disposition':'attachment; filename=article.pdf'}:{})});res.end(payload);return;
     }
     if(req.url==='/background-cloudflare'){res.writeHead(200,{'content-type':'text/html'});res.end('<html><title>View PDF</title><article><h1>View PDF</h1><p>access denied and captcha research</p></article><input type="password"><iframe hidden src="https://newassets.hcaptcha.com/captcha"></iframe><nav><a href="/login">Sign in</a></nav><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></html>');return;}
     if(req.url.startsWith('/redirect')){res.writeHead(302,{location:'/body?Signature=A%2FB'});res.end();return;}
@@ -104,12 +114,17 @@ app.whenReady().then(async()=>{
   browser.partition.setCertificateVerifyProc((request,callback)=>callback(request.hostname==='pdf.example.org'
     && new X509Certificate(request.certificate.data).fingerprint256===fingerprint?0:-3));
   const fetch=browser.sessionEvents.fetch.bind(browser.sessionEvents);
-  browser.sessionEvents.fetch=(url,...args)=>{
-    if(new URL(url).searchParams.get('Signature')==='renewed')
-      assert.ok(solves.length===1&&!browser.tabs.has(solves[0]),'Browser and its Solver drain before the actual renewed GET');
-    return fetch(url,...args);
+  browser.sessionEvents.fetch=async(url,options,context)=>{
+    if(new URL(url).searchParams.get('Signature')==='renewed'){
+      assert.ok(solves.length===2 && solves[0]===solves[1] && !browser.tabs.has(solves[0]),
+        'Both verification pages are observed on the same tab and the tab drains before streaming');
+      if(context.navigationCookie)
+        await browser.partition.cookies.set({url,name:'fixture_recent',value:'rotated',path:'/protected.pdf',secure:true});
+    }
+    return fetch(url,options,context);
   };
   await browser.partition.cookies.set({url:origin,name:'fixture_session',value:'selected-session',sameSite:'unspecified'});
+  await browser.partition.cookies.set({url:secureOrigin+'/protected.pdf',name:'fixture_recent',value:'original',path:'/protected.pdf',secure:true});
   for(const [host,name] of [['academic.oup.com','publisher_only'],['watermark02.silverchair.com','cdn_only'],['ieeexplore.ieee.org','reader_only'],['other.example.org','fallback_only']])
     await browser.partition.cookies.set({url:origin.replace('pdf.example.org',host),name,value:'selected-session',sameSite:'unspecified'});
   const python=spawn(path.join(root,'.venv/bin/python'),['-u',path.join(root,'tests/electron_body_stream_fixture.py'),profile,origin,secureOrigin],
@@ -210,14 +225,19 @@ app.whenReady().then(async()=>{
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,33);assert.equal(slowWitness,true);
-    assert.equal(solves.length,1);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,34);assert.equal(slowWitness,true);
+    assert.equal(solves.length,2);
     assert.equal(browser.tabs.has(solves[0]),false,'challenge page is destroyed before the managed retry settles');
     const protectedRequests=requests.filter(r=>r.url.startsWith('/protected.pdf?Signature='));
-    assert.deepEqual(protectedRequests.map(r=>r.headers.accept==='application/pdf'),[true,false,false,true,true,false,true]);
-    assert.deepEqual(protectedRequests.map(r=>r.headers.cookie?.includes('fixture_access=ok')),[false,false,true,true,false,true,true]);
-    assert.deepEqual(protectedRequests.map(r=>new URL(r.url,origin).searchParams.get('Signature')),['fixture','fixture','renewed','renewed','renewed','renewed','renewed']);
-    assert.deepEqual(protectedRequests.map(r=>r.headers.referer),[secureOrigin+'/article',secureOrigin+'/article',secureOrigin+'/protected.pdf?Signature=fixture',secureOrigin+'/protected.pdf?Signature=fixture',secureOrigin+'/article',secureOrigin+'/article',secureOrigin+'/article']);
+    assert.deepEqual(protectedRequests.map(r=>r.headers.accept==='application/pdf'),[true,false,false,false,true,true,false,true,true,false,true]);
+    assert.deepEqual(protectedRequests.map(r=>r.headers.cookie?.includes('fixture_access=ok')),[false,false,false,true,true,false,true,true,false,true,true]);
+    assert.deepEqual(protectedRequests.map(r=>new URL(r.url,origin).searchParams.get('Signature')),
+      ['fixture','fixture','second','renewed','renewed','renewed','renewed','renewed','inline','inline','inline']);
+    assert.deepEqual(protectedRequests.map(r=>new URL(r.headers.referer).pathname+new URL(r.headers.referer).search),
+      ['/article','/article','/protected.pdf?Signature=fixture','/protected.pdf?Signature=second','/protected.pdf?Signature=second',
+        '/article','/article','/article','/article','/article','/article']);
+    assert.match(protectedRequests[7].headers.cookie,/fixture_recent=rotated/);
+    assert.doesNotMatch(protectedRequests[7].headers.cookie,/fixture_recent=original/);
     assert.equal(requests.filter(r=>r.url==='/unrelated-ready').length,2,'ordinary unchallenged HTML cannot trigger a new stream');
     assert.equal(requests.filter(r=>r.url==='/unrelated-image').length,0,'recovery page cannot reach unrelated origins');
     assert.equal(requests.filter(r=>r.url==='/fixture-check').length,1);
@@ -249,7 +269,7 @@ app.whenReady().then(async()=>{
     assert.equal(browser.tabs.size,0,'all temporary pages drain before body completion');
     for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);
       if(request.url.startsWith('/cookie-progress'))continue; // Exact evolving values checked above.
-      if(protectedRequests.includes(request) || request.url==='/fixture-check')continue; // Browser challenge sequence checked above.
+      if(protectedRequests.includes(request) || ['/fixture-check','/unrelated-article'].includes(request.url))continue; // Browser challenge sequence checked above.
       const cookie=request.headers.host.startsWith('academic.')?'publisher_only':request.headers.host.startsWith('watermark02.')?'cdn_only':request.headers.host.startsWith('ieeexplore.')?'reader_only':request.headers.host.startsWith('other.')?'fallback_only':'fixture_session';
       assert.equal(request.headers.cookie,cookie+'=selected-session');
       assert.equal(request.headers.referer,cookie==='fixture_session'&&request.url!=='/cross-referer'?origin+'/article':request.url==='/cross-referer'?origin.replace('pdf.','other.')+'/':origin+'/');}

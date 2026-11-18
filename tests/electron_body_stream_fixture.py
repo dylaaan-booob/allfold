@@ -185,6 +185,7 @@ async def main():
         cases.extend([
             ('protected-cdn',secure_origin+'/protected.pdf?Signature=fixture',None),
             ('protected-cdn-warm',secure_origin+'/protected.pdf?Signature=renewed',None),
+            ('protected-cdn-inline',secure_origin+'/protected.pdf?Signature=inline',None),
             ('unrelated-ready',origin+'/unrelated-ready',None),
             ('pending-challenge',origin+'/pending-challenge',None),
             ('background-cloudflare',origin+'/background-cloudflare',None),
@@ -251,7 +252,7 @@ async def main():
                 assert saved.download.reason == reason
             if path=='background-cloudflare':assert not saved.download.reason.startswith('access-')
             if path=='pending-challenge':assert result.status=='cancelled'
-            success = path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress','protected-cdn','protected-cdn-warm'}
+            success = path.startswith('protected-cdn') or path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:

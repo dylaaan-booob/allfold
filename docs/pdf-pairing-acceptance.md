@@ -207,9 +207,11 @@ The scoped repair sends a challenged ordinary GET to the existing Browser
 observer when it has no fixed Reader route. It keeps the original Service
 binding and the actual recovered GET, including a renewed URL or Referer.
 The isolated Electron fixture uses HTTPS, actual Chromium partitioned cookies
-and a synthetic Solver response. It exercises first verification, a warm
-response before a Document commits, a renewed signature, an attachment with
-HTML MIME, and local Paper association. It also checks ordinary 403/HTML,
+and a synthetic Solver response. It exercises consecutive verification pages,
+including a second challenge observed in the Document, a warm response before
+Document commit, a renewed signature, HTML-MIME PDF attachments and inline
+bodies, and local Paper association. It preserves an ordinary Cookie rotated
+before the stream. It also checks ordinary 403/HTML,
 unrelated origin refusal, and cancellation while the Solver waits. The temporary
 Page drains before the stream, and the Cookie context stays in the same native
 task and Session. Cloudflare documents why the partition matters. [Cloudflare

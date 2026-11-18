@@ -111,9 +111,7 @@ async function recoverBodyAccess(browser,destination,referer,{signal,deadline,ve
     const value=name=>headers.find(([key])=>key.toLowerCase()===name)?.[1]?.[0] || '';
     const mime=value('content-type').split(';')[0].trim().toLowerCase();
     const attachment=/^\s*attachment(?:\s*;|\s*$)/i.test(value('content-disposition'));
-    const restoredSamePath=(sawChallenge || tab.challenge?.kind==='cloudflare')
-      && new URL(mainRequest.url).pathname===destination.pathname;
-    if(!attachment && !restoredSamePath && !['application/pdf','application/octet-stream'].includes(mime))return;
+    if(!attachment && !['application/pdf','application/octet-stream'].includes(mime))return;
     // Bound to the owned successful request. MIME/attachment can indicate a
     // body entry, but only the separate Session stream can prove PDF bytes.
     bodyRequest=mainRequest;
@@ -124,27 +122,26 @@ async function recoverBodyAccess(browser,destination,referer,{signal,deadline,ve
   // The task owner drains the page and Solver before replying to Python. Keep
   // the request scope in place until that physical page has gone away.
   tab.view.webContents.once('destroyed',()=>{requestGuard.dispose();requestHeaders.dispose();headerGuard.dispose();});
+  let doc;
   try {
-    await browser.navigate(destination.href,{tab,signal:navigationSignal,deadline,onWaiting,
+    doc=await browser.navigate(destination.href,{tab,signal:navigationSignal,deadline,onWaiting,
       httpReferrer:referer?{url:referer,policy:'strict-origin-when-cross-origin'}:undefined});}
   catch(error){if(!reachedHeaders.signal.aborted)throw error;}
   checkCanceled(signal);verify();
   if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
+  // HTML without download headers must reach the normal access probe. A
+  // second challenge may only be visible in the rendered document.
+  if(!bodyRequest && doc?.status>=200 && doc.status<300 && doc.url.split('#')[0]===mainRequest?.url
+    && (sawChallenge || tab.challenge?.kind==='cloudflare' || mainRequest.url===destination.href.split('#')[0]))
+    bodyRequest=mainRequest;
   if(!bodyRequest || bodyRequest.referer!==null && !publicClueURL(bodyRequest.referer))
     throw new BrowserFailure('navigation','pdf_target_refused');
-  browser.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:bodyStatus});
+  if(bodyStatus)browser.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:bodyStatus});
   // Read only the partition of this actual Page in the same native owner.
   // Neither Cookie values nor the scoped view leave the stream invocation.
   const partitionCookies=await readPartitionCookies(browser,bodyRequest.url,tab.view.webContents.getURL(),
     {signal,validate:verify,page:tab});
-  let navigationCookie;
-  // A warm binary response can arrive before any Document commits. Respect
-  // the exact native GET's selection and omit cookies since removed/rotated.
-  if(!partitionCookies && typeof bodyRequest.cookie==='string' && !/[\r\n]/.test(bodyRequest.cookie)) {
-    const current=await waitFor(()=>browser.partition.cookies.get({url:bodyRequest.url}),signal,deadline);
-    const active=new Set(current.map(({name,value})=>name+'='+value));
-    navigationCookie=bodyRequest.cookie.split(';').map(value=>value.trim()).filter(value=>active.has(value)).join('; ');
-  }
+  const navigationCookie=!partitionCookies?bodyRequest.cookie:undefined;
   await browser.closePage(tab);
   return {url:bodyRequest.url,referer:bodyRequest.referer,partitionCookies,navigationCookie};
 }
