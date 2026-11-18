@@ -411,6 +411,16 @@ separate fixture navigation during the Cookie lookup confirms the previous
 response cannot authorize the replacement GET. The original, affected control
 and untouched-sample real retests remain pending.
 
+The exact Source build at `10e5038` was launched and its rebuilt UI and
+backend verified. Allfold and the fresh Chrome tab independently displayed
+F27 institutional full text. Allfold recovered its preparation verification
+automatically and the user completed Chrome's separate preparation checkbox.
+Computer Use then timed out switching to the Allfold Workspace, binding to
+the running native app and checking the desktop inventory. The Source
+Workspace API showed the restored original Paper with Download available
+and no body. No new Download or Zotero Save had started in that final-code
+pair at this checkpoint.
+
 An earlier new-order Zotero Save opened a checkbox window that later
 disappeared. The original local parent had zero attachments when rechecked,
 and the user requested a fresh trial. This click is retained as a non-scoring
@@ -479,7 +489,11 @@ revision 2026-10-01 19:50:00) starts with a loaded EBSCO record and profile,
 reads its download links, and passes the attachment to Zotero. Its exact branch
 for F23 was unobserved. EBSCO's entitlement API uses separately provisioned
 client credentials and a profile token. The established browser session alone
-does not establish API access. [EBSCO API authentication](https://developer.ebsco.com/entitlement-api/docs/use-the-client-credentials-grant)
+does not establish API access. The configured EBSCO Service uses the generic
+EBSCOhost root through CARSI. EBSCO documents browser outbound search from
+an already identified institutional profile. Verification of that search
+route under the actual prepared Service and its exact record-to-PDF handoff
+remain open. [EBSCO API authentication](https://developer.ebsco.com/entitlement-api/docs/use-the-client-credentials-grant) · [EBSCO profile search](https://connect.ebsco.com/s/article/Stacks-Outbound-Searches-to-the-New-EDS?language=en_US)
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
@@ -1213,6 +1227,13 @@ existing 60 s deadline after the last logged `disk-flush` case, ahead of the
 `slow-writer` terminal. The runner captured no internal error for that wait.
 The fixture now surfaces an uncaught timer assertion directly to the runner.
 The focused body-stream fixture passed locally with the same assertions and limits.
+
+The Reader repair at `e4edc0a` passed the three full local checks. The
+`10e5038` follow-up passed JavaScript syntax and 26 affected Electron checks,
+including the native replacement-navigation regression. Its complete
+[PR Safety run 44237650306](https://github.com/dylaaan-booob/allfold/actions/runs/44237650306/job/134577573323)
+passed all three required steps. This is the production code launched for
+the pending real retest.
 
 ## Native partition-context repair and real retests
 

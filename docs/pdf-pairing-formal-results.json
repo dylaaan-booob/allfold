@@ -9716,6 +9716,21 @@
       "frontend_head_sha": "976015cacdaf224e909b1c2f5fcb3fd72e42dff9",
       "rebuilt_ui": true,
       "observation_note": "Native diagnostic checkout with unchanged reversed entry order. UI rebuilt and prior process drained before launch. Separate current institution login required before the targeted diagnostic.",
+      "normal_quit_utc": [
+        "2026-11-18T04:26:55.625Z",
+        "2026-11-18T04:26:55.636Z"
+      ],
+      "measurement_revision": "keys-v2"
+    },
+    {
+      "started_at_utc": "2026-11-18T04:29:08.275Z",
+      "ready_at_utc": "2026-11-18T04:29:09.354Z",
+      "runtime_id": "e50967a645cb139a04cc0aad0a51dce3",
+      "head_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "frontend_head_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "rebuilt_ui": true,
+      "observation_note": "Exact reviewed source and rebuilt UI. The old runtime drained before launch. The repaired Reader preserves the exact original asset GET after verification only while the same Document is current. Separate current institutional access is prepared before measurement.",
       "measurement_revision": "keys-v2"
     }
   ],
