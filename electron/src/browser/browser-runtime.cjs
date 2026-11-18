@@ -911,8 +911,8 @@ class BrowserRuntime {
         ?matchingScienceDirectAssetGet(data.reader.identifier,lastReaderGet,pdf.landing_url):null;
       const readerCookies=readerKind && (lastRequest?.method==='GET' || retainedGet)
         ?await waitFor(()=>this.sessionEvents.cookieContext(data.reader.url),signal,deadline):null;
-      const handoff=readerRequest?.method==='GET'?readerRequest:
-        retainedGet && readerRequest===lastRequest && this.documentCurrent(doc)?retainedGet:null;
+      let handoff=readerRequest?.method==='GET'?readerRequest:null;
+      if(retainedGet)handoff=readerRequest===lastRequest && this.documentCurrent(doc)?retainedGet:null;
       return {outcome:'retrieved',...(metadata?{metadata:result.metadata,metadata_status,
           extraction_diagnostics:result.diagnostics} : {}),
         ...(readerKind && handoff?{reader_result:{url:handoff.url,referer:handoff.referer,

@@ -10552,7 +10552,7 @@
     "sciencedirect_reader_handoff": {
       "diagnostic_original_order": "F27-D4 on 7a4ea99: plain entry automatically recovered other-origin with zero candidates and no GET, query entry had native GET and delivered publisher PDF.",
       "actual_reversed_order": "F27-5 on 1e011af: download query automatically recovered other-origin with zero candidates and no GET, plain entry had native GET and delivered publisher PDF.",
-      "current_status": "F27-D6 confirmed the last native request was POST on a settled Reader at the exact original PDF asset. The prior genuine GET existed and its URL matched the final asset. Targeted repair and live retest pending.",
+      "current_status": "F27-D6 confirmed the lost already observed GET at the exact original asset. The repair and isolated Electron fixture retain that GET under the same verified Document. Real retests of the original, affected controls and untouched samples remain pending.",
       "observed_cause": "The previous valid GET matched the final verified asset exactly. The last main-frame POST replaced it in the Reader handoff tracker, leaving no GET. No POST was replayed."
     }
   },

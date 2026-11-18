@@ -22,6 +22,9 @@ app.whenReady().then(async()=>{
     }
     if(current.pathname===new URL(readerAsset).pathname) {
       response.setHeader('content-type','text/html');
+      if(current.searchParams.get('case')==='replacement') {
+        response.end('<!doctype html><h1>Replacement Document</h1>');return;
+      }
       const action=current.searchParams.get('case')==='different'?current.pathname+'?case=changed':current.pathname+current.search;
       response.end(request.method==='GET'
         ?'<!doctype html><form method="post" action="'+action+'"></form><script>document.forms[0].submit()</script>'
@@ -235,6 +238,17 @@ app.whenReady().then(async()=>{
     assert.equal(changedAsset.outcome,'retrieved',JSON.stringify(changedAsset));
     assert.equal(changedAsset.pdf_clues.landing_url,readerAsset+'?case=changed');
     assert.equal(changedAsset.reader_result,undefined,'a verified landing with a different query cannot reuse the old GET');
+    const cookieContext=browser.sessionEvents.cookieContext;
+    let cookieReads=0,replacedReader;
+    browser.sessionEvents.cookieContext=async entry=>{
+      if(++cookieReads===2)await browser.taskTab.view.webContents.loadURL(readerAsset+'?case=replacement');
+      return cookieContext.call(browser.sessionEvents,entry);
+    };
+    try {replacedReader=await verifiedReader('same');}
+    finally {browser.sessionEvents.cookieContext=cookieContext;}
+    assert.equal(cookieReads,2);
+    assert.equal(replacedReader.pdf_clues.landing_url,readerAsset+'?case=same');
+    assert.equal(replacedReader.reader_result,undefined,'a new navigation during the cookie read has no verified handoff');
     const unsafe=await invoke('extract_paper_pdf_clues',{reader:{...sdReader,url:sdReaderURL.replace('redirect-reader=1','internal-redirect=1')}});assert.ok(unsafe.diagnostic);assert.ok(!requests.some(item=>item.url==='/forbidden'),'internal redirect is blocked before its request');
     page='<!doctype html><body><iframe src="/reader-next/IEEE.PDF?signature=AbC"></iframe></body>';
     const ieeeReader={target:data.identity,rule_id:'R025',platform:'ieee',url:'http://ieeexplore.ieee.org:'+port+'/stamp/stamp.jsp?tp=&arnumber=12345',identifier:'12345',source_url:'https://ieeexplore.ieee.org/document/12345',stage:'P2'};

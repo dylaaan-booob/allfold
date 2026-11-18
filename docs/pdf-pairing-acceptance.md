@@ -36,7 +36,7 @@ remain in the table. F27 saved the publication in both products on subsequent
 repeats. The first Allfold Reader recovered from verification with no
 transferable GET under both entry orders. The latest same-body repeat took
 37.464–37.811 s on Allfold and 26.725–27.021 s on Zotero with human assistance.
-Reader handoff investigation and other affected retests remain open.
+The Reader handoff repair still needs affected real retests.
 Workspace is retained.**
 
 ## Environment and endpoint
@@ -406,8 +406,10 @@ the same owned Reader settles at the verified PII asset and has no DOM clue.
 The existing Session stream owns the next request and body validation. The
 isolated Electron fixture observed the normal GET then POST sequence. It
 failed on the former handoff and passed with the retained GET. When the
-verified landing had a different query, the old GET remained ineligible.
-The production original and untouched-sample retests remain pending.
+verified landing had a different query, the old GET remained ineligible. A
+separate fixture navigation during the Cookie lookup confirms the previous
+response cannot authorize the replacement GET. The original, affected control
+and untouched-sample real retests remain pending.
 
 An earlier new-order Zotero Save opened a checkbox window that later
 disappeared. The original local parent had zero attachments when rechecked,
