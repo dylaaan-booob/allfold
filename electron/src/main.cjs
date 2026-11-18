@@ -122,7 +122,7 @@ async function executeOperation(message,current) {
   const started=Date.now(),context={request_id:message.id,action:message.action};
   log('debug','task_started',context);
   let stage='navigation';
-  let data,resultPageId,streamTiming;
+  let data,resultPageId,streamTiming,readerNavigation;
   const recovery=invocationRecovery();
   const verifyRecovery=options=>validateRecovery(current,send,options);
   try {
@@ -176,7 +176,8 @@ async function executeOperation(message,current) {
         } else if(['extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)) {
           if(!Number.isSafeInteger(message.data?.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
           return await browser[message.action==='extract_paper_metadata'?'extractPaperMetadata':'extractPaperPdfClues'](message.data,{signal:controller.signal,deadline:message.data.deadline_ms,
-            onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic)});
+            onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic),
+            observeReaderNavigation:observed=>{readerNavigation=observed;}});
         } else if(message.action === 'search_journal_cover') {
           return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'wos_query' || message.action === 'wos_export') {
@@ -200,7 +201,7 @@ async function executeOperation(message,current) {
   // can settle its original Future/Paper without depending on that observation.
   send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
   try{log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
-    duration_ms:Date.now()-started,...streamTiming,...readerDiagnosticFields(message.data?.reader,data),
+    duration_ms:Date.now()-started,...streamTiming,...readerDiagnosticFields(message.data?.reader,data,readerNavigation),
     outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,
     step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,

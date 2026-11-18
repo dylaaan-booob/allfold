@@ -854,12 +854,12 @@ class BrowserRuntime {
     }
     return this.extractPaperDocument(data,{...options,metadata:false});
   }
-  async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata}={}) {
+  async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata,observeReaderNavigation}={}) {
     if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only')))throw new BrowserFailure('navigation','document_operation_failed');
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
     const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
-    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies;
+    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies,lastGetURL;
     try {
       let doc;
       if(readerKind) {
@@ -871,7 +871,10 @@ class BrowserRuntime {
           if(signal?.aborted || Date.now()>=deadline || !publicClueURL(details.url)) {
             readerFailure=new BrowserFailure('navigation',signal?.aborted?'canceled':'pdf_target_refused');return {cancel:true};
           }
-          if(details.resourceType==='mainFrame')readerRequest={id:details.id,url:details.url,method:details.method,referer:null};
+          if(details.resourceType==='mainFrame') {
+            readerRequest={id:details.id,url:details.url,method:details.method,referer:null};
+            if(readerKind==='sciencedirect' && details.method==='GET')lastGetURL=details.url;
+          }
         });
         headerGuard=this.sessionEvents.subscribe('beforeSendHeaders',details=>{
           if(details.webContentsId===tab.id && details.id===readerRequest?.id)
@@ -896,6 +899,7 @@ class BrowserRuntime {
         }catch(error){checkCanceled(signal);break;}
       }
       checkCanceled(signal);verifyAccess();
+      if(readerKind==='sciencedirect')try {observeReaderNavigation?.({method:readerRequest?.method,lastGetURL});}catch(_) {}
       const metadata_status=!result.metadata?'failed':result.diagnostics?.some(code=>
         ['date_scan_failed','abstract_candidate_failed','abstract_budget_exceeded'].includes(code))?'partial':'complete';
       const readerCookies=readerKind && readerRequest?.method==='GET'

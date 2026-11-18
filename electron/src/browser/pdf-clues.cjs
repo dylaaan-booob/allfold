@@ -56,7 +56,7 @@ function qualifyReader(reader,identity) {
   if(!kind || !identity || !(validDOI(identity.doi)||articleURL(identity.confirmed_article_url)))invalid();
   return kind;
 }
-function readerDiagnosticFields(reader,result) {
+function readerDiagnosticFields(reader,result,observed) {
   if(reader?.rule_id!=='R024' || !result.pdf_clues)return {};
   const entry=new URL(reader.url),landing=new URL(result.pdf_clues.landing_url);
   let relation='other-origin';
@@ -67,6 +67,14 @@ function readerDiagnosticFields(reader,result) {
   }
   const fields={reader_entry:entry.searchParams.get('download')==='true'?'download':entry.search?'other-query':'plain',
     reader_landing:relation,reader_pdf_candidates:result.pdf_clues.candidates.length};
+  if(observed) {
+    const get=observed.lastGetURL?new URL(observed.lastGetURL):null;
+    const samePath=get && get.origin===landing.origin && get.pathname===landing.pathname;
+    fields.reader_last_method=observed.method==='GET'?'get':observed.method==='POST'?'post':observed.method?'other':'unobserved';
+    fields.reader_last_get_relation=!get?'unobserved':!samePath?'other':get.search===landing.search?'exact':'same-path';
+    fields.reader_target_asset=landing.origin==='https://pdf.sciencedirectassets.com'
+      && landing.pathname.endsWith('/1-s2.0-'+reader.identifier+'/main.pdf');
+  }
   const navigation=result.reader_result;
   if(navigation) {
     const request=new URL(navigation.url);

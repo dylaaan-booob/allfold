@@ -503,6 +503,17 @@
     "reader_context_changed": {
       "type": "boolean"
     },
+    "reader_last_method": {
+      "type": "string",
+      "enum": ["get", "post", "other", "unobserved"]
+    },
+    "reader_last_get_relation": {
+      "type": "string",
+      "enum": ["exact", "same-path", "other", "unobserved"]
+    },
+    "reader_target_asset": {
+      "type": "boolean"
+    },
     "omitted_count": {
       "type": "integer",
       "minimum": 0,

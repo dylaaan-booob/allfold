@@ -9233,6 +9233,173 @@
         ],
         "context": "Includes post-Save human verification on Zotero. Excluded from normal fully automatic parity."
       }
+    },
+    {
+      "pair_id": "F27-5",
+      "sample_id": "F27",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
+      "runtime_head_sha": "e9bbacb33f278188195a023ec210f76ecb1cf601",
+      "allfold": {
+        "result": "automatic_success",
+        "timing_eligible_for_parity": true,
+        "click_utc": [
+          "2026-11-18T03:56:52.448Z",
+          "2026-11-18T03:56:52.533Z"
+        ],
+        "ui_preparation": "Exact original institutional F27 Candidate restored from product Trash after its approved trial body deletion. Native Source independently displayed current matching DOI/title and Full text before click. The user authenticated via normal CARSI before timing. No body preview. Revised R024 order on production 1e011af. New Zotero PDF already physically saved and associated; no other download or build.",
+        "human_intervention": false,
+        "runtime_head_sha": "e9bbacb33f278188195a023ec210f76ecb1cf601",
+        "production_code_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
+        "frontend_head_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
+        "measurement_revision": "keys-v2",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T03:57:29.997Z",
+          "2026-11-18T03:57:30.259Z"
+        ],
+        "wait_seconds": [
+          37.464,
+          37.811
+        ],
+        "file_bytes": 3156518,
+        "attempt": 5,
+        "source": "P2",
+        "fallback_used": 1,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3156518,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher PDF",
+        "source_rule": "R024",
+        "source_origin": "https://pdf.sciencedirectassets.com",
+        "diagnostic_evidence": [
+          "1e011af-f27-revised-order-pair.zip",
+          "f27-allfold-5-file-verification.json"
+        ],
+        "native_operations": {
+          "article_clues_ms": 5006,
+          "first": {
+            "entry": "download",
+            "initial_response_ms": 384,
+            "reader_duration_ms": 14899,
+            "landing": "other-origin",
+            "dom_pdf_candidates": 0,
+            "native_get_handoff": false,
+            "result": "no-pdf-entry"
+          },
+          "second": {
+            "entry": "plain",
+            "initial_response_ms": 137,
+            "reader_duration_ms": 3852,
+            "landing": "other-origin",
+            "dom_pdf_candidates": 0,
+            "native_get_handoff": true,
+            "cdn_challenged_response_ms": 3917,
+            "native_stream_ms": 8722,
+            "native_stream_first_byte_ms": 4749
+          }
+        },
+        "cloudflare_observation": {
+          "evidence": "challenge_observed",
+          "source_challenge_origins": [
+            "https://pdf.sciencedirectassets.com"
+          ],
+          "first_reader_auto_verified": {
+            "solver_started_utc": "2026-11-18T03:57:01.962Z",
+            "checkbox_clicked_utc": "2026-11-18T03:57:09.650Z",
+            "page_ready_utc": "2026-11-18T03:57:13.315Z",
+            "status": 200,
+            "solver_terminal": "canceled after verified page reached ready state"
+          },
+          "native_recovery": "Second Reader supplied the GET. Following the challenged CDN response the owned Page automatically reached HTTP 200. No Solver click on that Page or user action was observed before current Session stream and association."
+        }
+      },
+      "zotero": {
+        "result": "assisted_success",
+        "click_utc": [
+          "2026-11-18T03:55:32.361Z",
+          "2026-11-18T03:55:32.382Z"
+        ],
+        "ui_preparation": "After the prior unscored Save's auxiliary window disappeared, the original trial parent had no attachment and the popup was gone. A new ordinary Chrome article tab had exact F27 DOI/title, independent institutional Full text and ScienceDirect Translator. No body preview. Original Allfold Paper ready and idle. Dedicated acceptance collection and fresh Connector save.",
+        "human_intervention": true,
+        "translator": "ScienceDirect",
+        "parent_key": "65MJY36K",
+        "measurement_revision": "keys-v2",
+        "timing_eligible_for_parity": false,
+        "assistance_during_download": true,
+        "human_intervention_note": "The user explicitly confirmed completing the checkbox in this latest separate ScienceDirect attachment window after Save. CUA saw the challenge page then window closure, and did not independently capture the checkbox click. Exact manual segment unavailable.",
+        "local_pdf_and_association_utc": [
+          "2026-11-18T03:55:59.107Z",
+          "2026-11-18T03:55:59.382Z"
+        ],
+        "wait_seconds": [
+          26.725,
+          27.021
+        ],
+        "file_bytes": 3157088,
+        "attachment_key": "TQKCRWEJ",
+        "link_mode": "imported_url",
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 3157088,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": true,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "pdf_version": "publisher PDF",
+        "source_origin": "https://pdf.sciencedirectassets.com",
+        "acceptance_collection_membership_verified": true,
+        "diagnostic_evidence": [
+          "f27-fifth-zotero-assistance.json",
+          "f27-zotero-TQKCRWEJ-file-verification.json"
+        ]
+      },
+      "platform": "ScienceDirect",
+      "configured_service": "SCIENCEDIRECT",
+      "timing_comparison_eligible": false,
+      "cohort": "representative_retest",
+      "configured_access_method": "carsi",
+      "measurement_stratum": "allfold_active_reader_challenge_and_zotero_assisted_after_normal_preparation",
+      "comparable_body_version": true,
+      "compared_pdf_version": "12-page publisher version with exact title and DOI on both sides",
+      "comparison_eligibility_note": "The user verified a Zotero Save-stage Cloudflare checkbox. Assisted total waits are retained separately. This pair does not contribute to the automatic same-version platform timing claim.",
+      "assisted_wait_comparison": {
+        "difference_seconds": [
+          10.443,
+          11.086
+        ],
+        "ratio": [
+          1.3865,
+          1.4148
+        ],
+        "manual_time_unavailable": true
+      }
     }
   ],
   "coverage_gaps": [
@@ -9327,7 +9494,7 @@
       "gap": "F23/F24 established exact EBSCO Business Source Complete records with PDF entries in both products. Their Allfold normal paths received direct PubsOnline authorization denials, did not reach EBSCO, and saved known related preprints. Zotero saved EBSCO publisher and Just Accepted versions, after automatic article-detail embed preparation. Source attainment gap is repeatable across the two sampled Papers. F25 direct pages both showed the exact article and a View PDF entry. Allfold P4 reported access-authorization. Zotero Atypon Journals saved the exact parent alone; no local attachment after 600 seconds. An EBSCO exact DOI/title result was not available in the Allfold Service search. Direct PubsOnline parity is unconfirmed."
     }
   ],
-  "parity_conclusions": "In progress. IEEE and Cambridge prepared cohorts show no slower points. Euclid F22 OA favors Allfold in one pair. ScienceDirect F26/F27 publisher retrieval recovered, but F27 repeated its first unsuccessful Reader and F29–31 were slower. F23/F24 show an EBSCO source attainment gap. Relevant real retests and performance coverage remain open.",
+  "parity_conclusions": "In progress. IEEE and Cambridge prepared cohorts show no slower points. Euclid F22 OA favors Allfold in one pair. ScienceDirect F26/F27 publisher retrieval recovered, but F27 repeated its first unsuccessful Reader and F29–31 were slower. F23/F24 show an EBSCO source attainment gap. Relevant real retests and performance coverage remain open. Reversing the two generated F27 candidates reproduced the first-Reader post-verification handoff gap and moved the successful fallback to the plain entry. This is a recovery issue rather than demonstrated entry-order improvement.",
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -9531,9 +9698,9 @@
       "runtime_id": "8efa8287a945f0d8f6566cd567cd7749",
       "head_sha": "e9bbacb33f278188195a023ec210f76ecb1cf601",
       "production_code_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
-      "frontend_head_sha": "e9bbacb33f278188195a023ec210f76ecb1cf601",
+      "frontend_head_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
       "rebuilt_ui": true,
-      "observation_note": "Actual source relaunch verified from the exact repository and rebuilt UI. The ScienceDirect generated download query is first. The old Electron process drained before the restart. Independent institutional state will be verified on the target.",
+      "observation_note": "Rebuilt the UI at production commit 1e011af. The source launch checkout e9bbacb adds only a report wording change. The old Electron process drained before the restart. Independent F27 institutional full text was verified after normal CARSI login.",
       "measurement_revision": "keys-v2"
     }
   ],
@@ -10140,7 +10307,10 @@
         "2026-11-18T03:19:30.216Z",
         "2026-11-18T03:19:30.474Z"
       ],
-      "elapsed_seconds": [41.987, 42.334],
+      "elapsed_seconds": [
+        41.987,
+        42.334
+      ],
       "rule": "R024",
       "stage": "P2",
       "article_clue_read_ms": 5206,
@@ -10177,6 +10347,24 @@
       "result": "automatic_success_diagnostic_only",
       "limitations": "Original-order Source only. No corresponding Zotero Save in this diagnostic. The first Reader reported no reusable GET or clues after recovery. No observation identifies the exact method of the final first-Reader navigation or the site's internal reason.",
       "private_evidence": "7a4ea99-f27-reader-observation.zip and f27-allfold-4-file-verification.json"
+    },
+    {
+      "id": "F27-4-zotero-verification-window-ended",
+      "sample_id": "F27",
+      "side": "zotero",
+      "click_utc": [
+        "2026-11-18T03:49:08.613Z",
+        "2026-11-18T03:49:08.638Z"
+      ],
+      "parent_key": "VK7FXI48",
+      "translator": "ScienceDirect",
+      "collection_membership": "dedicated local acceptance collection",
+      "attachment_monitor": "Independent ScienceDirect Cloudflare page after Save. The unchecked box was observed at 2026-11-18T03:49:44.386Z. The user later reported that the window had disappeared and requested a new Save. No completed user verification was reported.",
+      "local_children_count": 0,
+      "local_observation_utc_approx": "2026-11-18T03:53:27Z",
+      "result": "operator_excluded_unobserved_terminal",
+      "allfold_download_started": false,
+      "notes": "Original click and trial parent retained. The evidence establishes observed absence of a local attachment at the specified time. The exact product terminal and reason for the window disappearing remain unobserved. A fresh tab and independent save session are required for the repeat."
     }
   ],
   "evidence_join_corrections": [
@@ -10284,6 +10472,11 @@
         "local_python_passed": 1670
       },
       "live_cua_preparation": "Actual 989ad81 Source restored independent ScienceDirect institution Full text on F26 and OA entry on F29. Separate Chrome trial windows each showed a user verification challenge before the next paired click."
+    },
+    "sciencedirect_reader_handoff": {
+      "diagnostic_original_order": "F27-D4 on 7a4ea99: plain entry automatically recovered other-origin with zero candidates and no GET, query entry had native GET and delivered publisher PDF.",
+      "actual_reversed_order": "F27-5 on 1e011af: download query automatically recovered other-origin with zero candidates and no GET, plain entry had native GET and delivered publisher PDF.",
+      "current_status": "Entry reversal did not resolve the recurring first Reader handoff. Method and relation to the final asset remain unobserved. Investigation and attributable real retest remain open."
     }
   },
   "priority_investigation": {

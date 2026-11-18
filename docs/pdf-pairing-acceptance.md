@@ -4,7 +4,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
 **Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 30
-of the 31 frozen Papers have paired observations (69 pair slots including repeats).
+of the 31 frozen Papers have paired observations (70 pair slots including repeats).
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -32,10 +32,11 @@ F26 saved the publication automatically on Allfold and with user assistance on
 Zotero. All three new ScienceDirect first pairs saved the same publication in both
 products and showed slower Allfold waits. F28 saved the same related preprint on
 both products. F27's original Allfold CDN failure and unobserved Zotero terminal
-remain in the table. Both products saved the publication in its revised pair,
-where Allfold automatically solved a Reader challenge and used a second source.
-That pair was slower on Allfold. Further coverage and affected retests remain
-required.
+remain in the table. F27 saved the publication in both products on subsequent
+repeats. The first Allfold Reader recovered from verification with no
+transferable GET under both entry orders. The latest same-body repeat took
+37.464–37.811 s on Allfold and 26.725–27.021 s on Zotero with human assistance.
+Reader handoff investigation and other affected retests remain open.
 Workspace is retained.**
 
 ## Environment and endpoint
@@ -110,8 +111,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 62 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 55 automatic and two assisted local-PDF
+At this checkpoint Allfold has 63 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 55 automatic and three assisted local-PDF
 successes, one visible attachment failure, one completed popup with no local PDF
 at the observation horizon, and ten operator interruptions with unknown product
 terminal state. These are
@@ -130,7 +131,7 @@ is a task result but is not a publisher-version success.
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
 | EBSCO Business Source Complete | 2 matching records | Both products independently found the F23 and F24 PDF entries. Zotero saved the publisher and Just Accepted versions. Allfold's Download used verified related arXiv versions. | Allfold's configured EBSCO discovery gap repeated on two Papers. No same-version transfer comparison. |
-| ScienceDirect | 6 / 6 | F26 publication recovered on Allfold after repair and saved with Zotero assistance. F27 retest and unseen F29/F30/F31 published files saved automatically in both products. F26-1/2 and F27-1 failures and the F28 matching preprints are retained. | Original F26/F27 publisher retrieval recovered. F27's challenge-recovery retest and all three new first pairs were slower on Allfold. Other affected paths and normal controls still require retest. |
+| ScienceDirect | 6 / 6 | F26 publication recovered on Allfold after repair and saved with Zotero assistance. F27-2 and unseen F29/F30/F31 published files saved automatically in both products. F27-3 and F27-5 obtained the publication with Zotero assistance. F26-1/2 and F27-1 failures and the F28 matching preprints are retained. | Original F26/F27 publisher retrieval recovered. F27 reproduced the first Reader handoff gap after reversing both entries. All three new first pairs were slower on Allfold. Reader handoff and other affected controls still require investigation or retest. |
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
 launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
@@ -371,17 +372,35 @@ landed at another origin in 4.250 s and supplied the actual GET even with
 zero DOM clues. Its next CDN response required automatic Browser recovery,
 then the existing Session stream saved and associated the 12-page publisher
 PDF (3,156,648 bytes). Click-to-association was 41.987–42.334 s. This was a
-single-side diagnostic, so it adds no paired score. The terminal observation
-does not identify the unavailable first-path request method or the site's
-internal routing decision.
+single-side diagnostic, so it adds no paired score. The first Reader's final
+request method and the site's internal routing decision remain unobserved.
 
-R024 now tries the installed Translator's generated download-query entry
-before the plain fallback. Both still use the normal Reader, Session and
-publication paths. The focused regression verifies that discovery forwards
-the observed GET with the original Paper target and Referer, and advances to
-the plain entry when the first Reader supplies no continuation. A paired
-repeat on the revised order is required to measure the change under fresh,
-independently verified access.
+`1e011af` reversed the two generated entries to test whether using the
+installed Translator's download-query entry first eliminated the lost
+handoff. Its focused fixture checks discovery's GET, original Paper target,
+Referer and plain-entry fallback. The live F27-5 repeat established independent
+institutional full text and exact article identity on both sides before saving.
+On the revised order the download-query Reader was first. It spent 14.899 s,
+automatically passed the new Cloudflare checkbox and became ready at HTTP 200.
+Its other-origin landing still supplied zero qualified PDF clues and no native
+GET handoff. The plain Reader ran second, spent 3.852 s and supplied the actual
+GET. The owned CDN recovery and Session stream saved the 12-page publication
+for the original Paper. Swapping entries moved the same failure to the first
+path. The recurring loss follows the challenged Reader completion in these
+observations. The last request method, the most recent GET's relationship to
+the final landing and the target asset match are now recorded as bounded
+classifications on the existing event.
+
+An earlier new-order Zotero Save opened a checkbox window that later
+disappeared. The original local parent had zero attachments when rechecked,
+and the user requested a fresh trial. This click is retained as a non-scoring
+diagnostic with unknown product terminal. The installed Connector's monitor
+uses a 60 s default and closes the popup after settlement, so window closure
+alone supplies no attachment outcome. The subsequent fresh Zotero Save in
+F27-5 imported the 12-page publisher PDF after user verification in its own
+attachment window. Allfold took 37.464–37.811 s and Zotero took 26.725–27.021 s.
+The assisted total difference is +10.443 to +11.086 s and the ratio is
+1.3865–1.4148. The duration of the human step alone is unknown.
 
 Project Euclid was restricted to public publisher Open Access. F21's normal
 article redirected to the short page after the user completed separate
@@ -1162,6 +1181,10 @@ inside the separately bounded fixture process. These operations now use the
 normal task budget inside the same 85-second subprocess and 90-second test
 limits. The focused native fixture passed locally. The existing extraction,
 cancellation, page closure and snapshot assertions still run.
+At `568534c` all three local checks passed, including 1,672 Python and 254
+Electron checks. The complete associated PR
+[Safety run 44233215459](https://github.com/dylaaan-booob/allfold/actions/runs/44233215459/job/134563028600)
+also passed. Newer commits require their own PR check.
 
 ## Native partition-context repair and real retests
 

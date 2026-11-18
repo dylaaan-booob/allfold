@@ -274,6 +274,10 @@ The ScienceDirect PDF Reader terminal can record the entry class
 (`reader_entry`), landing relation (`reader_landing`) and
 `reader_pdf_candidates` from the captured Document. When the Reader observed
 a GET, booleans record request URL change and ordinary Cookie context change.
+The terminal can also distinguish the last main-frame method
+(`reader_last_method`), the most recent observed GET's relation to the
+captured landing (`reader_last_get_relation`) and whether that landing matches
+the requested ScienceDirect PDF asset (`reader_target_asset`).
 The fields retain neither URL nor Cookie data and use the existing terminal
 diagnostic after returning the native result.
 
