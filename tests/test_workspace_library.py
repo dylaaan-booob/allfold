@@ -28,6 +28,7 @@ def test_workspace_reads_only_sqlite_and_keeps_identity_only_body(tmp_path):
 
 
 def test_http_run_initializes_single_library_then_reopens_local_read_and_trash(tmp_path, monkeypatch):
+    from uuid import UUID
     import httpx
     from fastapi.testclient import TestClient
     from allfold.web.app import create_app
@@ -69,7 +70,17 @@ def test_http_run_initializes_single_library_then_reopens_local_read_and_trash(t
         assert item['ordinary_dates'] == ['2026-04-02', '2026-09-12', '2026-10-03']
         assert not (workspace / 'Papers').exists() and not (workspace / 'Inbox.base').exists()
         workspace_id, paper_id = snapshot['workspace_id'], item['id']
-        fields = client.get(f'/api/papers/{paper_id}/fields', params={'workspace_id': workspace_id}).json()
+        # Run joins its publication, while the Paper's own collection may still
+        # be closing SQLite resources. The local read/edit phase starts after
+        # that exact collection settles.
+        registry = app.state.workspace_tasks.current()
+        with registry.paper_gate():
+            collection = registry._tasks.get(UUID(paper_id))
+        if collection is not None:
+            collection.future.result(5)
+        fields_response = client.get(f'/api/papers/{paper_id}/fields', params={'workspace_id': workspace_id})
+        assert fields_response.status_code == 200, fields_response.text
+        fields = fields_response.json()
         # Local actions do not need the global Browser owner or Run slot.
         owner = app.state.browser_task_lock.acquire('fixture')
         try:

@@ -220,6 +220,14 @@ Cookie documentation](https://developers.cloudflare.com/fundamentals/reference/p
 Publisher acceptance of the repair remains open until the original and unseen
 real samples complete.
 
+At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
+fixture. The local field read lacked a `revision` before its response status
+was checked. Twelve isolated local repetitions passed, and the runner did not
+retain the failed HTTP response. The fixture now explicitly waits for the
+captured Paper collection to settle before its separate local read/edit phase
+and asserts the HTTP status. Production code and test coverage are unchanged.
+[Failed PR run](https://github.com/dylaaan-booob/allfold/actions/runs/44211591848)
+
 **Measurement load:** the original external observer requested full JSON for the
 newest20 Zotero items at nominal250ms. An idle A/B check measured Zotero CPU at
 20.9–26.6% with it and0% paused. At19:40:21 UTC on16 November it changed to a

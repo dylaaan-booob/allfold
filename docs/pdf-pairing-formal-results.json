@@ -2,8 +2,8 @@
   "status": "formal_in_progress",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
-  "production_code_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b",
-  "runtime_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+  "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+  "runtime_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -7849,6 +7849,17 @@
         "F19"
       ],
       "gap": "All three frozenSIAM Papers now have version-matched publisher PDFs from normal UI pairs on actual69b9a41, including previously untouchedF19. Original arXiv fallbacks and parent-only interruption retained. Each new first paired point is slower beyond timing precision; exchanged-order repeats/transfer diagnosis outstanding. No SIAM parity claim."
+    },
+    {
+      "samples": [
+        "F26",
+        "F27",
+        "F28",
+        "F29",
+        "F30",
+        "F31"
+      ],
+      "gap": "ScienceDirect F26-2 extra Allfold failure before recovery work is preserved. Final production build has not yet been scored. Original and unseen affected samples require real reruns, with the F26 Chrome verification recorded separately."
     }
   ],
   "parity_conclusions": "In progress: corrected low-load pairs and original affected measurements retained separately. Platform conclusions await controls and access-matched retests. ScienceDirect F26-2 has an additional Allfold failure after matched-viewer access preparation. Zotero saved the correct publisher body; no paired time comparison exists.",
@@ -8022,9 +8033,20 @@
       "runtime_id": "a011d5af7bad18975c017599e9c88dc2",
       "started_at_utc": "2026-11-17T23:26:59.530Z",
       "reason": "User reported a reboot and signed back into CARSI in Chrome. Port18767 was free; rebuilt UI from the clean checkout and launched the actual source app. Only report/JSON changes separate this checkout from tested production69b9a41. Independent Electron in-memory Session reset by normal process start; Chrome existing profile/cache not cleared. Workspace72Papers/24bodies/0Trash and no active operations confirmed; F26 has no body. Zotero10.0.9 local collection API200, Chrome157.0.8103.79 and Connector5.0.217 bundles verified. Fresh access and actual Translator verification pending UI."
+    },
+    {
+      "started_at_utc": "2026-11-18T00:56:26.017Z",
+      "ready_at_utc": "2026-11-18T00:56:26.987Z",
+      "runtime_id": "18e4131259e347bc6924436d358a72d7",
+      "head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "rebuilt_ui": true,
+      "observation_note": "Exact repo Source and rebuilt UI verified at readiness before any formal test. Normal relaunch establishes a separate in-memory Electron Session.",
+      "measurement_revision": "keys-v2"
     }
   ],
-  "frontend_head_sha": "40d4356d89959dc559618df21f539e730285cd21",
+  "frontend_head_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
   "preparation_sessions": [
     {
       "runtime_id": "97a7ee2badf06ed80594e7f0b80bb712",
@@ -8539,6 +8561,28 @@
       "policy": "Verified native mainFrame security origin; sameorigin Strict/Lax permitted, crossorigin explicitSameSiteNone only. Native selected-partition metadata preserves ordinary header order and known longer-path priority; ordinary-first ties, unknown current same-name metadata not displaced.",
       "final_local_evidence": "JS64;Python1669/2existingwarnings36.61s;Electron253/0skips118.623s. Private checks/partition-cookie-metadata-*.log; filtered-metadata native red/green retained.",
       "commit_sha": "69b9a41d442c4b5a1ad4c1bce99b3d325332fd6b"
+    },
+    "body_challenge_recovery": {
+      "production_code_sha": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+      "status": "Implemented, isolated red/green and scoped reviews complete. Real original and unseen retests outstanding.",
+      "local_checks": {
+        "javascript_files": 64,
+        "python_passed": 1670,
+        "python_warnings": 2,
+        "electron_passed": 253
+      },
+      "before_pair": "F26-2",
+      "reported_failure": "No owned Page or Solver action for the challenged CDN requests",
+      "after_scope": "Actual continued GET, partition state within the same native owner, successive verification and verified local body association in synthetic HTTPS fixture.",
+      "ci_followup": {
+        "production_head": "989ad81876c48bb43ba93967b016210b3d4e0ab7",
+        "failed_pull_request_run": 44211591848,
+        "failed_test": "tests/test_workspace_library.py::test_http_run_initializes_single_library_then_reopens_local_read_and_trash",
+        "observation": "KeyError revision at the field response. HTTP status was absent from that failure output. Twelve local isolated repetitions passed.",
+        "change": "Align the fixture local field phase with the actual captured collection settlement and assert status before reading fields. No production change.",
+        "local_python_passed": 1670
+      },
+      "live_cua_preparation": "Actual 989ad81 Source restored independent ScienceDirect institution Full text on F26 and OA entry on F29. Separate Chrome trial windows each showed a user verification challenge before the next paired click."
     }
   },
   "priority_investigation": {
