@@ -115,6 +115,11 @@ follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](brow
 completed Date/Abstract. Known Reader entry/HTML parsers retain their platform
 qualification. Actual ordinary GET HTTP redirects use the common Session chain;
 their target need not match a filename, PII or publisher CDN list.
+An R024 Reader can settle after a verification POST at its exact ScienceDirect
+PDF asset. With a current HTTP 200 Document and no PDF clue, it can hand off
+the previously observed main-frame GET for the same origin, path and query
+with that GET's Referer. The ordinary Session transfer still validates the
+body and owns any required access recovery.
 Unknown pages are not a crawler. Login/access refusals, missing entries and Reader failures are recorded for that source and allow other qualified candidates after actual cleanup. Only the fixed qualified native entries execute actions; inapplicable
 entries are finite condition skips, not pending or successful transfers, and do
 not manufacture `fallback_used`.

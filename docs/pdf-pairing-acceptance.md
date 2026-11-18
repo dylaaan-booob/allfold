@@ -391,6 +391,24 @@ observations. The last request method, the most recent GET's relationship to
 the final landing and the target asset match are now recorded as bounded
 classifications on the existing event.
 
+The targeted F27-D6 Source diagnostic on `976015c` observed the cause. The
+first Reader spent 10.894 s and reached the exact target PDF asset at HTTP
+200 after the Solver checked the challenge. The last main-frame request was
+POST. An earlier genuine GET in that same owned Reader matched the final PDF
+location exactly. The handoff kept only the last request, so it dropped the
+earlier GET and produced `no-pdf-entry`. The next Reader again produced the
+GET and saved the verified 12-page publication. Its full 23.052–23.360 s
+Source-only wait remains diagnostic evidence. The observations use bounded
+classifications with no recorded asset URL or its query.
+
+The repair retains that exact earlier main-frame GET and its Referer when
+the same owned Reader settles at the verified PII asset and has no DOM clue.
+The existing Session stream owns the next request and body validation. The
+isolated Electron fixture observed the normal GET then POST sequence. It
+failed on the former handoff and passed with the retained GET. When the
+verified landing had a different query, the old GET remained ineligible.
+The production original and untouched-sample retests remain pending.
+
 An earlier new-order Zotero Save opened a checkbox window that later
 disappeared. The original local parent had zero attachments when rechecked,
 and the user requested a fresh trial. This click is retained as a non-scoring

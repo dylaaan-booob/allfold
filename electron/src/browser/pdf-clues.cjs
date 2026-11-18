@@ -56,6 +56,17 @@ function qualifyReader(reader,identity) {
   if(!kind || !identity || !(validDOI(identity.doi)||articleURL(identity.confirmed_article_url)))invalid();
   return kind;
 }
+function scienceDirectAsset(identifier,landing) {
+  return landing.origin==='https://pdf.sciencedirectassets.com'
+    && landing.pathname.endsWith('/1-s2.0-'+identifier+'/main.pdf');
+}
+function matchingScienceDirectAssetGet(identifier,request,landingURL) {
+  if(request?.method!=='GET')return null;
+  const landing=new URL(landingURL),get=new URL(request.url);
+  if(!scienceDirectAsset(identifier,landing) || get.origin!==landing.origin
+    || get.pathname!==landing.pathname || get.search!==landing.search)return null;
+  return request;
+}
 function readerDiagnosticFields(reader,result,observed) {
   if(reader?.rule_id!=='R024' || !result.pdf_clues)return {};
   const entry=new URL(reader.url),landing=new URL(result.pdf_clues.landing_url);
@@ -72,8 +83,7 @@ function readerDiagnosticFields(reader,result,observed) {
     const samePath=get && get.origin===landing.origin && get.pathname===landing.pathname;
     fields.reader_last_method=observed.method==='GET'?'get':observed.method==='POST'?'post':observed.method?'other':'unobserved';
     fields.reader_last_get_relation=!get?'unobserved':!samePath?'other':get.search===landing.search?'exact':'same-path';
-    fields.reader_target_asset=landing.origin==='https://pdf.sciencedirectassets.com'
-      && landing.pathname.endsWith('/1-s2.0-'+reader.identifier+'/main.pdf');
+    fields.reader_target_asset=scienceDirectAsset(reader.identifier,landing);
   }
   const navigation=result.reader_result;
   if(navigation) {
@@ -84,4 +94,4 @@ function readerDiagnosticFields(reader,result,observed) {
   }
   return fields;
 }
-module.exports={boundedPdfClues,qualifyReader,publicClueURL,readerDiagnosticFields};
+module.exports={boundedPdfClues,qualifyReader,publicClueURL,matchingScienceDirectAssetGet,readerDiagnosticFields};

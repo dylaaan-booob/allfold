@@ -9701,6 +9701,21 @@
       "frontend_head_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
       "rebuilt_ui": true,
       "observation_note": "Rebuilt the UI at production commit 1e011af. The source launch checkout e9bbacb adds only a report wording change. The old Electron process drained before the restart. Independent F27 institutional full text was verified after normal CARSI login.",
+      "normal_quit_utc": [
+        "2026-11-18T04:07:03.124Z",
+        "2026-11-18T04:07:03.134Z"
+      ],
+      "measurement_revision": "keys-v2"
+    },
+    {
+      "started_at_utc": "2026-11-18T04:07:44.474Z",
+      "ready_at_utc": "2026-11-18T04:07:45.943Z",
+      "runtime_id": "f7a714858204975f50fb836ca6fe05f0",
+      "head_sha": "976015cacdaf224e909b1c2f5fcb3fd72e42dff9",
+      "production_code_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
+      "frontend_head_sha": "976015cacdaf224e909b1c2f5fcb3fd72e42dff9",
+      "rebuilt_ui": true,
+      "observation_note": "Native diagnostic checkout with unchanged reversed entry order. UI rebuilt and prior process drained before launch. Separate current institution login required before the targeted diagnostic.",
       "measurement_revision": "keys-v2"
     }
   ],
@@ -10365,6 +10380,67 @@
       "result": "operator_excluded_unobserved_terminal",
       "allfold_download_started": false,
       "notes": "Original click and trial parent retained. The evidence establishes observed absence of a local attachment at the specified time. The exact product terminal and reason for the window disappearing remain unobserved. A fresh tab and independent save session are required for the repeat."
+    },
+    {
+      "id": "F27-D6-reader-method",
+      "sample_id": "F27",
+      "side": "allfold",
+      "source_checkout_sha": "976015cacdaf224e909b1c2f5fcb3fd72e42dff9",
+      "production_code_sha": "1e011afadf4a8ef801d843af50c8f8d9bf1f3eed",
+      "runtime_id": "f7a714858204975f50fb836ca6fe05f0",
+      "attempt": 6,
+      "platform": "ScienceDirect",
+      "click_utc": [
+        "2026-11-18T04:10:40.124Z",
+        "2026-11-18T04:10:40.170Z"
+      ],
+      "file_and_association_complete_utc": [
+        "2026-11-18T04:11:03.222Z",
+        "2026-11-18T04:11:03.484Z"
+      ],
+      "elapsed_seconds": [
+        23.052,
+        23.36
+      ],
+      "rule": "R024",
+      "stage": "P2",
+      "access": "Independently verified current institutional Full text following normal CARSI login before timing. No previews or competing download.",
+      "first_reader": {
+        "entry": "download",
+        "duration_ms": 10894,
+        "solver_started_utc": "2026-11-18T04:10:46.612Z",
+        "solver_clicked_utc": "2026-11-18T04:10:52.146Z",
+        "page_ready_utc": "2026-11-18T04:10:55.150Z",
+        "status": 200,
+        "landing": "other-origin",
+        "pdf_clues": 0,
+        "last_main_frame_method": "post",
+        "last_get_relation": "exact",
+        "landing_matches_original_asset": true,
+        "native_get_handoff": false,
+        "discovery_outcome": "no-pdf-entry"
+      },
+      "second_reader": {
+        "entry": "plain",
+        "duration_ms": 1728,
+        "status": 200,
+        "last_main_frame_method": "get",
+        "last_get_relation": "exact",
+        "landing_matches_original_asset": true,
+        "native_get_handoff": true,
+        "native_stream_ms": 4469
+      },
+      "human_assistance_during_download": false,
+      "result": "automatic_success_diagnostic_only",
+      "body_version": "publisher PDF",
+      "file_verified": true,
+      "pages": 12,
+      "size_bytes": 3140376,
+      "private_evidence": [
+        "976015c-f27-reader-method.zip",
+        "f27-allfold-6-file-verification.json"
+      ],
+      "finding": "The previous valid GET matched the final verified asset exactly. The last main-frame POST replaced it in the Reader handoff tracker, leaving no GET. No POST was replayed."
     }
   ],
   "evidence_join_corrections": [
@@ -10476,7 +10552,8 @@
     "sciencedirect_reader_handoff": {
       "diagnostic_original_order": "F27-D4 on 7a4ea99: plain entry automatically recovered other-origin with zero candidates and no GET, query entry had native GET and delivered publisher PDF.",
       "actual_reversed_order": "F27-5 on 1e011af: download query automatically recovered other-origin with zero candidates and no GET, plain entry had native GET and delivered publisher PDF.",
-      "current_status": "Entry reversal did not resolve the recurring first Reader handoff. Method and relation to the final asset remain unobserved. Investigation and attributable real retest remain open."
+      "current_status": "F27-D6 confirmed the last native request was POST on a settled Reader at the exact original PDF asset. The prior genuine GET existed and its URL matched the final asset. Targeted repair and live retest pending.",
+      "observed_cause": "The previous valid GET matched the final verified asset exactly. The last main-frame POST replaced it in the Reader handoff tracker, leaving no GET. No POST was replayed."
     }
   },
   "priority_investigation": {

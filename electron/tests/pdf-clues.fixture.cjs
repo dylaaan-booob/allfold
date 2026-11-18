@@ -4,13 +4,30 @@ const assert=require('node:assert/strict'),http=require('node:http'),fs=require(
 const {randomUUID}=require('node:crypto');
 app.commandLine.appendSwitch('no-proxy-server');
 const fixtureHosts=['oce.ovid.com','assets.ovid.com','www.nature.com','journals.lww.com','www.sciencedirect.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','academic.oup.com','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
+const readerAsset='https://pdf.sciencedirectassets.com/1-s2.0-S1234567812345678/main.pdf';
+fixtureHosts.push(new URL(readerAsset).hostname);
 app.commandLine.appendSwitch('host-resolver-rules',fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1').join(', '));
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 app.whenReady().then(async()=>{
   let page='',requests=[],delayedPDF,challengeResponse=false;
-  const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer});
+  const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
+    const current=new URL(request.url,'http://fixture.invalid');
+    const handoff=current.searchParams.get('verify-reader');
+    if(handoff==='same' || handoff==='different') {
+      response.setHeader('content-type','text/html');
+      response.end('<!doctype html><script>location.replace('+JSON.stringify(readerAsset+'?case='+handoff)+')</script>');
+      return;
+    }
+    if(current.pathname===new URL(readerAsset).pathname) {
+      response.setHeader('content-type','text/html');
+      const action=current.searchParams.get('case')==='different'?current.pathname+'?case=changed':current.pathname+current.search;
+      response.end(request.method==='GET'
+        ?'<!doctype html><form method="post" action="'+action+'"></form><script>document.forms[0].submit()</script>'
+        :'<!doctype html><h1>Verified reader</h1>');
+      return;
+    }
     if(request.url==='/snapshot-resource'){response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});response.end('resource');return;}
     if(request.url==='/snapshot-script'){response.end('');return;}
     if(request.url==='/hydrated-pdf'){delayedPDF=response;return;}
@@ -39,7 +56,7 @@ app.whenReady().then(async()=>{
   const article=(head='',body='')=>'<!doctype html><head>'+head+'</head><body><article><h1>Paper</h1><p>Published 2020-05-02</p><div class="abstract">A complete result.</div>'+body+'</article></body>';
   try {
     await browser.ready;
-    browser.partition.protocol.handle('https',request=>{const target=new URL(request.url);assert.ok(fixtureHosts.includes(target.hostname));return fetch('http://127.0.0.1:'+port+target.pathname+target.search);});
+    browser.partition.protocol.handle('https',request=>{const target=new URL(request.url);assert.ok(fixtureHosts.includes(target.hostname));return fetch('http://127.0.0.1:'+port+target.pathname+target.search,{method:request.method});});
     page=article('<meta name="fulltext_pdf_url" content="/Full.pdf"><meta name="citation_pdf_url" content="Case.PDF?sig=A%2FB&amp;k=2"><meta name="citation_pdf_url" content="Case.PDF?sig=A%2FB&amp;k=2">','<a data-track-action="download pdf" href="/platform.PDF">PDF</a>');
     const composite=await invoke('extract_paper_metadata',{});
     assert.equal(composite.outcome,'retrieved',JSON.stringify(composite));assert.equal(composite.metadata.abstract,'A complete result.');
@@ -203,6 +220,21 @@ app.whenReady().then(async()=>{
     const sdReader={target:data.identity,rule_id:'R024',platform:'sciencedirect',url:sdReaderURL,identifier:pii,source_url:'https://www.sciencedirect.com/science/article/pii/'+pii,stage:'P2'};
     const redirected=await invoke('extract_paper_pdf_clues',{reader:sdReader});assert.equal(redirected.outcome,'retrieved',JSON.stringify(redirected));assert.equal(redirected.pdf_clues.landing_url,sdReaderURL.replace('redirect-reader=1','final=1'));
     assert.equal(redirected.pdf_clues.candidates[0].stage,'P2');assert.equal(redirected.pdf_clues.candidates[0].url,'http://www.sciencedirect.com:'+port+'/science/article/pii/'+pii+'/Relative.PDF?signature=A%2FB&key=2');
+    const readerIdentity={confirmed_article_url:sdReader.source_url};
+    const verifiedReader=mode=>invoke('extract_paper_pdf_clues',{identity:readerIdentity,
+      reader:{...sdReader,target:readerIdentity,url:sdReaderURL.replace('redirect-reader=1','verify-reader='+mode)}});
+    const verified=await verifiedReader('same');
+    assert.equal(verified.outcome,'retrieved',JSON.stringify(verified));
+    assert.equal(verified.pdf_clues.landing_url,readerAsset+'?case=same');
+    assert.deepEqual(verified.pdf_clues.candidates,[]);
+    const assetPath=new URL(readerAsset).pathname;
+    assert.deepEqual(requests.filter(request=>request.url.startsWith(assetPath)).map(request=>request.method),['GET','POST']);
+    assert.equal(verified.reader_result?.url,readerAsset+'?case=same','the exact earlier asset GET survives verification');
+    assert.equal(verified.reader_result.referer,null,'no unobserved Referer is added to the earlier GET');
+    const changedAsset=await verifiedReader('different');
+    assert.equal(changedAsset.outcome,'retrieved',JSON.stringify(changedAsset));
+    assert.equal(changedAsset.pdf_clues.landing_url,readerAsset+'?case=changed');
+    assert.equal(changedAsset.reader_result,undefined,'a verified landing with a different query cannot reuse the old GET');
     const unsafe=await invoke('extract_paper_pdf_clues',{reader:{...sdReader,url:sdReaderURL.replace('redirect-reader=1','internal-redirect=1')}});assert.ok(unsafe.diagnostic);assert.ok(!requests.some(item=>item.url==='/forbidden'),'internal redirect is blocked before its request');
     page='<!doctype html><body><iframe src="/reader-next/IEEE.PDF?signature=AbC"></iframe></body>';
     const ieeeReader={target:data.identity,rule_id:'R025',platform:'ieee',url:'http://ieeexplore.ieee.org:'+port+'/stamp/stamp.jsp?tp=&arnumber=12345',identifier:'12345',source_url:'https://ieeexplore.ieee.org/document/12345',stage:'P2'};

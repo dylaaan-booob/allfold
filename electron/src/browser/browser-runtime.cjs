@@ -6,7 +6,7 @@ const {configureBrowserIdentity} = require('./browser-identity.cjs');
 const {validDOI,articleURL}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
 const {BodyActionRuntime}=require('./body-action-runtime.cjs');
-const {qualifyReader,publicClueURL}=require('./pdf-clues.cjs');
+const {qualifyReader,publicClueURL,matchingScienceDirectAssetGet}=require('./pdf-clues.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
@@ -859,7 +859,7 @@ class BrowserRuntime {
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
     const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
-    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies,lastGetURL;
+    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies,lastReaderGet;
     try {
       let doc;
       if(readerKind) {
@@ -873,7 +873,7 @@ class BrowserRuntime {
           }
           if(details.resourceType==='mainFrame') {
             readerRequest={id:details.id,url:details.url,method:details.method,referer:null};
-            if(readerKind==='sciencedirect' && details.method==='GET')lastGetURL=details.url;
+            if(readerKind==='sciencedirect' && details.method==='GET')lastReaderGet=readerRequest;
           }
         });
         headerGuard=this.sessionEvents.subscribe('beforeSendHeaders',details=>{
@@ -899,14 +899,23 @@ class BrowserRuntime {
         }catch(error){checkCanceled(signal);break;}
       }
       checkCanceled(signal);verifyAccess();
-      if(readerKind==='sciencedirect')try {observeReaderNavigation?.({method:readerRequest?.method,lastGetURL});}catch(_) {}
+      if(readerKind==='sciencedirect')try {
+        observeReaderNavigation?.({method:readerRequest?.method,lastGetURL:lastReaderGet?.url});
+      }catch(_) {}
       const metadata_status=!result.metadata?'failed':result.diagnostics?.some(code=>
         ['date_scan_failed','abstract_candidate_failed','abstract_budget_exceeded'].includes(code))?'partial':'complete';
-      const readerCookies=readerKind && readerRequest?.method==='GET'
+      // A verification POST can finish at the exact PDF that Chromium already
+      // requested by GET. Preserve that observed GET and its Referer.
+      const lastRequest=readerRequest;
+      const retainedGet=readerKind==='sciencedirect' && lastRequest?.method==='POST' && doc.status===200 && !pdf.candidates.length
+        ?matchingScienceDirectAssetGet(data.reader.identifier,lastReaderGet,pdf.landing_url):null;
+      const readerCookies=readerKind && (lastRequest?.method==='GET' || retainedGet)
         ?await waitFor(()=>this.sessionEvents.cookieContext(data.reader.url),signal,deadline):null;
+      const handoff=readerRequest?.method==='GET'?readerRequest:
+        retainedGet && readerRequest===lastRequest && this.documentCurrent(doc)?retainedGet:null;
       return {outcome:'retrieved',...(metadata?{metadata:result.metadata,metadata_status,
           extraction_diagnostics:result.diagnostics} : {}),
-        ...(readerKind && readerRequest?.method==='GET'?{reader_result:{url:readerRequest.url,referer:readerRequest.referer,
+        ...(readerKind && handoff?{reader_result:{url:handoff.url,referer:handoff.referer,
           context_changed:priorCookies!==readerCookies,context_key:readerCookies}}:{}),
         pdf_clues:readerKind?{...pdf,candidates:pdf.candidates.map(candidate=>({...candidate,stage:data.reader.stage,rule_id:data.reader.rule_id}))}:pdf};
     } catch(error){throw readerFailure || error;}
