@@ -10722,6 +10722,148 @@
         "diagnostic_locator": "Private F12-2 bounded click and dedicated collection parent/attachment horizon receipts."
       },
       "comparison": "The original Allfold Paper acquired the correct publisher Accepted Manuscript. A matching Zotero parent appeared without a new PDF through the observation horizon. The first operator interruption and this file outcome are preserved separately. No paired wait difference or ratio."
+    },
+    {
+      "pair_id": "F08-2",
+      "sample_id": "F08",
+      "platform": "Oxford Academic",
+      "configured_service": "OXFORD JOURNALS",
+      "configured_access_method": "Independently verified Oxford Academic institutional access on the exact article.",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+      "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "runtime_id": "905debf26383004f101889ecd2ac826b",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "cohort": "representative_retest",
+      "order_provenance": "F08-2 Allfold first planned before either action in exchange of original F08-1 order.",
+      "measurement_stratum": "ordinary_institutional_repeat",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "trial_body_replacement": {
+        "prior_attempt": 1,
+        "prior_bytes": 982280,
+        "prior_body_version": "arXiv:2502.17741v2, 18 March 2025; preprint, 61 pages",
+        "paper_body_absent": true,
+        "prior_file_absent": true,
+        "same_candidate_available": true,
+        "delete_click_utc": [
+          "2026-11-19T06:12:58.909Z",
+          "2026-11-19T06:12:59.088Z"
+        ],
+        "restore_click_utc": [
+          "2026-11-19T06:13:04.856Z",
+          "2026-11-19T06:13:04.949Z"
+        ]
+      },
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T06:14:08.781Z",
+          "2026-11-19T06:14:08.871Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T06:14:39.392Z",
+          "2026-11-19T06:14:39.651Z"
+        ],
+        "wait_seconds": [
+          30.521,
+          30.87
+        ],
+        "attempt": 2,
+        "rule": "R020",
+        "source": "P2",
+        "source_origin": "https://watermark02.silverchair.com/",
+        "file_bytes": 762331,
+        "content_check": {
+          "file_exists": true,
+          "pdf_prefix": true,
+          "page_count": 19,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": true
+          }
+        },
+        "body_version": "Oxford Academic publisher PDF, 19 pages",
+        "fallback_used": true,
+        "native_final_stream_ms": 2850,
+        "native_phases_ms": {
+          "response": 1320,
+          "first_byte": 1320,
+          "closed_writer": 2849
+        },
+        "native_pdf_route_observation": {
+          "api02_initial_response_ms": [
+            280,
+            97
+          ],
+          "api02_managed_recovery_ms": [
+            13726,
+            425
+          ],
+          "initial_solver_started_utc": "2026-11-19T06:14:14.191Z",
+          "solver_checkbox_clicked_utc": "2026-11-19T06:14:20.880Z",
+          "later_current_nav_failures": [
+            {
+              "time": "2026-11-19T06:14:23.012Z",
+              "net_error": "ERR_BLOCKED_BY_CLIENT"
+            },
+            {
+              "time": "2026-11-19T06:14:23.534Z",
+              "net_error": "ERR_BLOCKED_BY_CLIENT"
+            }
+          ],
+          "first_solver_terminal": {
+            "code": "canceled",
+            "outcome": "not_executed",
+            "at_utc": "2026-11-19T06:14:23.053Z"
+          },
+          "article_clue_extract_ms": 11688,
+          "r020_responses_ms": [
+            470,
+            716
+          ]
+        },
+        "human_intervention": false,
+        "runtime_head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+        "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+        "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "Independent Allfold CARSI Oxford Journals selection. Oxford displayed the configured institution before the exact article with full article sections and PDF entry. No PDF preview. Restored the original Candidate after removing the prior trial preprint.",
+        "access_diagnosis": "The Solver clicked the verification control without user assistance. The next guarded navigation was canceled with ERR_BLOCKED_BY_CLIENT, and the actual blocked request method and origin relation were unobserved. Publication was saved from subsequent R020 discovery.",
+        "diagnostic_locator": "Private 10e5038-f08-2-20261119 archive, original file verification and access-trace summary."
+      },
+      "zotero": {
+        "result": "no_local_pdf_observed_at_horizon",
+        "click_utc": [
+          "2026-11-19T06:16:06.170Z",
+          "2026-11-19T06:16:06.193Z"
+        ],
+        "translator": "Silverchair",
+        "popup_target_verified": true,
+        "new_parent_found": false,
+        "new_attachment_found": false,
+        "checked_utc": "2026-11-19T06:27:01.016260+00:00",
+        "observation_horizon_seconds": 600,
+        "elapsed_minimum_seconds": 654.823,
+        "product_terminal_known": false,
+        "measurement_revision": "keys-v2",
+        "human_intervention": false,
+        "preparation_human_intervention": true,
+        "preparation_human_wait_seconds": null,
+        "ui_preparation": "Chrome entered Oxford from its separate CARSI session. The user passed an earlier preparation challenge, and a later reentry displayed the configured institutional account. Exact article and Silverchair action verified. No PDF preview. Save popup showed the dedicated collection and disappeared.",
+        "diagnostic_locator": "Private F08-2 bounded click, targeted observer and verified collection horizon."
+      },
+      "comparison": "The original Allfold Paper acquired the Oxford publisher PDF after the preceding preprint and renewed site access. Zotero had no observed parent or PDF through the common horizon. The recovered version and phase costs are factual. An isolated release benefit and paired difference are unestablished."
     }
   ],
   "coverage_gaps": [
@@ -10861,7 +11003,7 @@
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
   "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
-  "checkpoint_utc": "2026-11-19T05:58:21.552603+00:00",
+  "checkpoint_utc": "2026-11-19T06:28:18.622226+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",

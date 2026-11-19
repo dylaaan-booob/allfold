@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 80 pair slots including repeats.
+supplemental Papers also have observations, for 81 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -20,9 +20,10 @@ left a parent without a PDF through the observation horizon. The F12 retry and
 Wiley F16 likewise saved the publisher PDF on Allfold and a parent without a PDF
 on Zotero after the exact article's access was reverified. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
-coverage and retests remain incomplete. In the prepared Oxford F10 repeat,
-Allfold saved the correct publisher PDF and Zotero produced no new local PDF or
-parent within 600 s. Same-version Oxford timing remains unconfirmed. F18 exposed a publisher-version/latency
+coverage and retests remain incomplete. In the prepared Oxford F10 and F08
+repeats, Allfold saved the correct publisher PDF and Zotero produced no new
+local PDF or parent within 600 s. F08 had a long discovery and recovery path.
+Same-version Oxford timing remains unconfirmed. F18 exposed a publisher-version/latency
 gap. Direct-entry and Referer repairs alone still returned a preprint. The first
 real retest of the common native partition-context repair at `69b9a41` saved the
 correct publisher PDF through P1, but was 3.832–4.644 seconds slower than Zotero.
@@ -130,9 +131,9 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 73 automatic local-PDF successes, one assisted
+At this checkpoint Allfold has 74 automatic local-PDF successes, one assisted
 success and six failures. Zotero has 58 automatic and three assisted local-PDF
-successes, one visible attachment failure, seven attempts with no local PDF
+successes, one visible attachment failure, eight attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
@@ -143,7 +144,7 @@ is a task result but is not a publisher-version success.
 | IEEE Xplore | 2 / 2 | Allfold5 publisher files,1 original failure; Zotero6 publisher files | Current F01 three controls plus F02 paired retest all correct/same-version and Allfold not slower. Old failure retained; no extrapolation beyond these2Papers. |
 | Springer Link | 3 / 3 | Allfold 14 successes. Zotero 13 successes and 1 interruption. | Earlier F03 controls have two slower points and one overlap. Independent authenticated F05-2 and F04-4 also overlap. Parity remains unconfirmed. |
 | Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
-| Oxford Academic | 3 / 3 | Allfold 1 publisher PDF, 2 related preprints and 1 original access-challenge failure. Zotero 3 interrupted saves and 1 full observation with no parent or PDF. | With both institution accounts verified, F10-2 saved on Allfold in 5.523–5.886 s. Nothing new was seen in Zotero by 600 s. Same-version timing and the remaining Oxford retests are open. |
+| Oxford Academic | 3 / 3 | Allfold saved two publisher PDFs and two related preprints, with one original access-challenge failure. Zotero had three interrupted saves and two complete observations with no new parent or PDF. | After both institution checks, Allfold saved F10-2 in 5.523–5.886 s and F08-2 in 30.521–30.870 s. The F08 recovery and discovery cost is documented below. Same-version timing and the remaining retest are open. |
 | Taylor & Francis | 3 / 3 | Allfold saved one related preprint and six publisher Accepted Manuscripts. Zotero saved three publisher Accepted Manuscripts, had two interrupted parent-only saves, and two parent-only saves through the horizon. | F11-2 favored Allfold and F11-3 favored Zotero. F13-1 favored Zotero. The F13 and F12 retries saved on Allfold alone. One further F11 control and an F13 repeat remain. Parity unconfirmed. |
 | Project Euclid | 2 / 3 | F20 matching related arXiv v4, with in-download Allfold hCaptcha assistance. F22 matching 30-page publisher OA saved automatically by both products. F21 subscription excluded. | F22 favors Allfold. Only one publisher OA pair measured; institutional access is outside the revised scope. |
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
@@ -749,6 +750,30 @@ showed the dedicated collection, then its popup disappeared. No new matching
 parent or local PDF was observed over 600 s. The internal terminal reason is
 unknown. The original F10-1 Allfold failure is retained. Access preparation and
 tested code both differed, so this observation cannot isolate a code-only gain.
+
+F08-2 exchanged the original order and independently verified the institution
+and exact article in both Oxford sessions before either click. The original
+Paper previously held the related 61-page preprint. Its new, verified publisher
+PDF has 19 pages and 762,331 bytes. The original Paper acquired it in
+30.521–30.870 s. Both access conditions and the application version differed
+from F08-1.
+
+Two API02 response operations took 0.280 and 0.097 s. The subsequent owned
+recovery operations took 13.726 and 0.425 s. The Solver clicked the verification
+control automatically. The next navigation reported `ERR_BLOCKED_BY_CLIENT`,
+and the Solver was canceled as the page closed. There was no human intervention
+during Download. An article clue navigation then took 11.688 s. R020 recorded
+two responses taking 0.470 and 0.716 s, followed by the closed PDF stream from
+`watermark02.silverchair.com` in 2.850 s, with first byte at 1.320 s.
+
+The temporary verification view limits main-frame requests to original-origin
+GETs. Ordinary Session streaming handles observed cross-origin redirects
+through a separate validated request. The live trace lacks the blocked
+request's method and origin relation, leaving the precise cancellation cause
+open. The installed Silverchair translator (2026-08-10 21:08:51) reads the
+article's PDF link. The F08 Zotero Save showed the dedicated collection, then
+the popup closed. No new local parent or attachment was observed at 654.823 s.
+There is no paired same-version timing point.
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
