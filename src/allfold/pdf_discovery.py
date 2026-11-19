@@ -430,6 +430,9 @@ class PdfDiscovery:
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
                 candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
                 yield self._ordered_entries(candidates)
+                if self._publisher_access_denied and not tried_ebsco:
+                    tried_ebsco = True
+                    yield self._ebsco_candidates()
                 if sufficient_inputs:
                     break
         # Stable body URLs already have authority to be tried. A qualified

@@ -43,6 +43,7 @@ async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>t
   for(;;) {
     verify();
     const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline:limit});
+    verify();
     if(clue.ready && settled(clue))return clue;
     await waitFor(()=>pause(signal),signal,limit);
   }
@@ -132,16 +133,28 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     search.searchParams.set('q',doi);
     // Once the authenticated results Document is readable, unrelated assets
     // need not finish before looking for the qualified record link.
-    const landing=httpsURL((await visit(search,{documentOnly:true})).url);
-    if(landing?.origin!==scope.origin || landing.pathname!==search.pathname)throw refusal('search');
-    const found=await readReady(browser,tab,{mode:'results',title},options);
+    const searchDocument=await visit(search,{documentOnly:true});
+    const contents=tab.view.webContents;
+    const navigation=tab.navigation.current;
+    const frame={pageId:searchDocument.pageId,processId:searchDocument.processId,frameToken:searchDocument.frameToken};
+    const verifySearch=()=>{
+      verify();
+      const landing=httpsURL(contents.getURL());
+      // The same document may add search filters to its query string.
+      if(landing?.origin!==scope.origin || landing.pathname!==search.pathname
+        || tab.navigation.current!==navigation || !navigation.documentReady
+        || !browser.documentCurrent(frame))throw refusal('search');
+    };
+    const found=await readReady(browser,tab,{mode:'results',title},{...options,verify:verifySearch},
+      clue=>clue.urls.length>0 || !contents.isLoadingMainFrame());
+    if(found.documentId!==searchDocument.documentId)throw refusal('search');
     const records=found.urls.map(url=>matchRecord(url,scope)).filter(Boolean);
     if(records.length!==1)throw refusal('result');
-    const contents=tab.view.webContents;
     if(contents.isLoadingMainFrame()) {
       contents.stop();
-      await waitForLoad(tab,signal,deadline,verify);
+      await waitForLoad(tab,signal,deadline,verifySearch);
     }
+    verifySearch();
     const record=records[0];
     const doc=await visit(record.url),detail=matchRecord(doc.url,scope);
     if(detail?.record!==record.record)throw refusal('contentReady');

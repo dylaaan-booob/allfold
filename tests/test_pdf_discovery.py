@@ -330,6 +330,37 @@ def test_newly_qualified_query_entries_prefer_direct_over_existing_reader():
     assert result.status == 'transferred'
 
 
+def test_queried_publisher_denial_tries_prepared_ebsco_before_document_refresh():
+    from allfold.pdf_discovery import P2Resolution
+    from allfold.pdf_rules import PdfCandidate
+
+    publisher = 'https://publisher.example.org'
+    paper = target('publisher.example.org', article_url=publisher+'/article')
+    denied, licensed = publisher+'/body.pdf', 'https://content.ebscohost.com/cds/retrieve'
+
+    class IO:
+        def query_missing(self, _, inputs, facts):
+            yield P2Resolution(replace(inputs, known_pdf_urls=(KnownPdfUrl(denied, 'API06', 'link'),)))
+
+        def ebsco_candidates(self, target):
+            return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),)
+
+        def document(self, target):
+            pytest.fail('Prepared EBSCO should be attempted before a separate publisher refresh')
+
+    seen = []
+
+    def consume(candidate):
+        seen.append(candidate.url)
+        if candidate.url == denied:
+            return CandidateResult.current(CurrentResponse(denied, 'text/html', status=403, access='authorization'))
+        return CandidateResult.pdf(transfer_complete=True)
+
+    result = PdfDiscovery(paper, io=IO()).run(consume)
+    assert seen == [denied, licensed]
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P4', True)
+
+
 def test_qualified_reader_success_needs_no_optional_identifier_query():
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     paper = target('ieeexplore.ieee.org')
