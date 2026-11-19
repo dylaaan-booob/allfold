@@ -12789,6 +12789,55 @@
     ],
     "allfold_criterion": "All real Allfold Cloudflare challenges, including preparation, are checked for automatic passage. Human Cloudflare completion is unmet. Source fallback cannot erase a detected challenge without recovery. If a verified Page arrives with normal access and no challenge remains, record the automatic Page outcome and whether Solver actually ran. Non-Cloudflare authentication and Zotero assistance are separate."
   },
+  "ebsco_repair_checkpoint": {
+    "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
+    "status": "original_paper_retests_in_progress",
+    "before_pairs": ["F23-1", "F24-1"],
+    "pending_pairs": [
+      {
+        "pair_id": "F23-2",
+        "sample_id": "F23",
+        "order": ["zotero", "allfold"],
+        "source_preparation": "Exact DOI and Business Source Complete record with PDF entry observed in each independent institution session. The normal EBSCO detail automatically loaded an embedded viewer.",
+        "timing_comparison_eligible": false,
+        "allfold": {
+          "result": "not_started",
+          "reason": "Computer Use requires specific confirmation before removing the original Paper's old trial PDF; it is in Trash."
+        },
+        "zotero": {
+          "result": "automatic_success",
+          "translator": "EBSCO Discovery Layer",
+          "click_utc": ["2026-11-19T09:44:12.428Z", "2026-11-19T09:44:12.456Z"],
+          "local_pdf_and_association_utc": ["2026-11-19T09:44:29.234Z", "2026-11-19T09:44:29.519Z"],
+          "wait_seconds": [16.778, 17.091],
+          "file_bytes": 2996661,
+          "page_count": 29,
+          "body_version": "INFORMS publisher PDF via EBSCO",
+          "verified_matching_title_and_doi": true,
+          "acceptance_collection_membership_verified": true,
+          "human_intervention": false
+        }
+      },
+      {
+        "pair_id": "F24-2",
+        "sample_id": "F24",
+        "order": ["allfold", "zotero"],
+        "source_preparation": "Each independent institution session displayed the exact DOI, matching Business Source Complete record, and PDF link. Allfold's normal detail embedded the matching PDF.",
+        "timing_comparison_eligible": false,
+        "allfold": {"result": "not_started"},
+        "zotero": {"result": "not_started"}
+      }
+    ],
+    "local_validation": {
+      "javascript_files": 65,
+      "python_passed": 1675,
+      "python_existing_warnings": 2,
+      "electron_passed": 254,
+      "electron_skipped": 0
+    },
+    "production_head_check": "https://github.com/dylaaan-booob/allfold/actions/runs/44496676668/job/135465520919",
+    "workspace_reset": "pending"
+  },
   "coverage_exclusions": [
     {
       "sample_id": "F21",

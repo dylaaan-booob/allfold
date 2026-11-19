@@ -1807,3 +1807,37 @@ not been captured. No priority header,transport replacement,dependency or UA/pro
 change has been made. Institution eligibility currently takes priority for F19.
 [RFC9218](https://www.rfc-editor.org/rfc/rfc9218.html#section-4.1),
 [Chromium156 header generation](https://github.com/chromium/chromium/blob/156.0.8078.48/net/spdy/spdy_http_utils.cc#L204)
+
+## EBSCO prepared-profile repair
+
+F23-1 and F24-1 saved verified related arXiv versions after publisher access
+was denied. Independent EBSCO Business Source Complete access was available
+for both originals, and Zotero saved the 29-page publication and the 39-page
+publisher Just Accepted manuscript, respectively. The prior Allfold discovery
+sequence did not use the Paper's assigned EBSCO Service.
+
+Production `f30bb8c` searches the prepared profile by the original DOI after
+publisher sources fail and before OpenAlex. It verifies the record and uses its
+actual PDF Viewer link. The task prevents automatic preview transfers while the
+verified Viewer supplies the GET for the current Session stream. The isolated
+public Download regression observes one licensed body GET and verifies the
+published file and original SQLite association. A separate check covers the
+independent preprint fallback after an unavailable EBSCO source. The associated
+[full PR check](https://github.com/dylaaan-booob/allfold/actions/runs/44496676668/job/135465520919)
+and all three local suites passed on the repair.
+
+For the repair retest, both products independently used the current institution
+EBSCO resource and reached the exact Business Source Complete records for F23
+and F24. Both articles displayed the DOI and PDF link. The ordinary details
+pages load an embedded PDF automatically. Title and DOI appeared in Allfold's
+F24 embed, and the actual PDF Viewer link was observed. Treat this preparation
+as potentially warm even though the operator did not click a PDF link.
+
+The planned order is F23 Zotero → Allfold and F24 Allfold → Zotero. F23's new
+normal Zotero save imported and associated the matching 29-page, 2,996,661-byte
+publisher PDF in **16.778–17.091 s**. The original Allfold Paper's old trial
+body is in Trash pending the confirmation required by Computer Use. The F23
+Allfold download and both F24 saves are pending. This checkpoint establishes
+the current Zotero file and independent source availability. EBSCO normal
+Download at the real site and its paired timing remain unconfirmed. The
+Workspace is retained for these retests.
