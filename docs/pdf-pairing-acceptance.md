@@ -5,12 +5,14 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 20 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 91 pair slots including repeats.
+supplemental Papers also have observations, for 92 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23-5 and F24-4 each saved byte-identical licensed EBSCO PDFs on
 both products. Allfold's wait was 23.198–23.865 s longer for F23 and
-44.712–45.456 s longer for F24. The follow-up source-order change still needs
-live retesting. F25 produced no
+44.712–45.456 s longer for F24. The next F24 pair on `c9fbf52` saved the same
+licensed body with a 20.123–20.821 s longer Allfold wait. The publisher returned
+an authorization denial, leaving the changed challenge branch unobserved live.
+F25 produced no
 verified PDF on either product. Twenty-five
 earlier low-load publisher pairs, four ScienceDirect pairs, one Project Euclid
 pair and the later Springer F05-2, Springer F04-4 and T&F F11-3 pairs have
@@ -136,8 +138,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 84 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 65 automatic and three assisted local-PDF
+At this checkpoint Allfold has 85 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 66 automatic and three assisted local-PDF
 successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -155,7 +157,7 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
-| EBSCO Business Source Complete | 2 matching records | Both products saved identical licensed copies in F23-5 (publisher PDF) and F24-4 (Just Accepted manuscript). Prior Allfold preprint saves remain in the table. | The Viewer repair restored the licensed saves on both originals. Both comparable waits favor Zotero. Live timing for the source-order follow-up remains open. |
+| EBSCO Business Source Complete | 2 matching records | Both products saved identical licensed copies in F23-5 (publisher PDF), F24-4 and F24-5 (Just Accepted manuscript). Prior Allfold preprint saves remain in the table. | The Viewer repair restored the licensed saves on both originals. All three comparable waits favor Zotero. F24-5 ran on the source-order revision without the publisher challenge that triggers the change. |
 | ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. On final code, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | Functional retrieval passed on these four repaired paths. The initial F29/F30/F31 same-body pairs took longer on Allfold. The final repair observations lack a measurable same-version Zotero pair, so performance parity remains unconfirmed. |
 
 ### Paired wait by platform and observed access
@@ -188,6 +190,7 @@ a longer Allfold wait.
 | SIAM, institutional, after symmetric ePDF preview | 1 / 1 | F19-3 | −0.991 to −0.062 | 0.9615–0.9975 | −0.991 to −0.062 |
 | SIAM, institutional, warm repeat of the large publisher file | 1 / 1 | F19-4 | +16.738 to +17.761 | 4.7138–5.5953 | +16.738 to +17.761 |
 | EBSCO Business Source Complete, institutional, Viewer repair retest | 2 / 2 | F24-4, F23-5 | +33.955 to +34.661 | 3.3298–3.4386 | +23.198 to +45.456 |
+| EBSCO Business Source Complete, institutional, F24 after Source restart | 1 / 1 | F24-5 | +20.123 to +20.821 | 2.9194–3.0556 | +20.123 to +20.821 |
 | ScienceDirect, OA, first saves with warm site sessions | 2 / 2 | F29-1, F31-1 | +3.973 to +4.782 | 1.2723–1.3381 | +3.513 to +5.239 |
 | ScienceDirect, institutional, first save with warm site sessions | 1 / 1 | F30-1 | +0.337 to +1.283 | 1.0198–1.0781 | +0.337 to +1.283 |
 | ScienceDirect, institutional, automatic Reader challenge recovery | 1 / 1 | F27-2 | +23.696 to +24.400 | 2.3128–2.3771 | +23.696 to +24.400 |
@@ -1787,6 +1790,19 @@ cache mismatch cannot serve as a pure network-priority throughput comparison.
 [Electron45 propagation](https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L81),
 [Session API](https://github.com/electron/electron/blob/v45.0.0/docs/api/session.md#sessionfrompartitionpartition-options)
 
+An isolated check with the same Electron 45.0.0 / Chromium 156.0.8078.48 used
+the existing controlled Session fetch and a loopback HTTP server. Each size
+used two ordinary GETs to the same fresh URL with `private, max-age=600`. The
+in-memory Session's second GET was a cache hit at 487,337 and 3,814,861 bytes.
+At the observed F19 size of 11,471,779 bytes, both GETs reached the server and
+the completed events reported `fromCache: false` twice. A separate, temporary
+disk-backed Session hit its cache on the three repeats. This reproduces the
+cache-capacity difference independently of the publisher and agrees with the
+live F19 network counters. The local fixture did not use a publisher response,
+the user's browser profile or its Workspace. The smaller first-request gaps and
+the first F19 transfer difference remain unexplained by this warm-cache result.
+Allfold's Session storage behavior remains as tested in the live pairs.
+
 ## Request-priority investigation
 
 Versioned Electron45 `fetchWithSession` does not forward `RequestInit.priority`
@@ -2013,5 +2029,22 @@ The added regression reproduced that ordering and verifies the original turn
 after the correction. Spec review confirmed the Service, Session and Paper
 boundaries. At `c9fbf52`, the local JavaScript check, 1,682 Python tests and
 254 Electron tests passed. The PR's full Safety checks passed on that revision.
-Live timing on this scheduling change remains open.
 [Safety checks on c9fbf52](https://github.com/dylaaan-booob/allfold/actions/runs/44565268319/job/135705175164)
+
+F24-5 on `c9fbf52` exchanged the order after both EBSCO resource entries and
+exact article permissions were confirmed again. Zotero first linked its new
+39-page, 1,762,961-byte Just Accepted attachment in **10.129–10.484 s**.
+Allfold linked the identical file to the restored original Paper in
+**30.607–30.950 s**. Both actions were automatic. Title, DOI, parent and
+SHA-256 equality were verified. Allfold remained **20.123–20.821 s** slower.
+
+The first Allfold P4 request took 2.210 s and returned `access-authorization`.
+There was no publisher Reader recovery to defer. The assigned EBSCO search,
+record and Viewer took 22.658 s. The Viewer supplied the attributable request
+within the 11.308 s from its Document becoming ready until Page release.
+The R073 stream took 5.647 s,
+including 2.055 s to first byte. F24's user wait decreased by 26.905–27.612 s
+from F24-4 under the observed conditions. The publisher returned different
+access responses in the two runs, leaving the scheduling change's live
+effect unverified. Matched local licensed saving is verified on both originals,
+and the EBSCO latency disadvantage remains.
