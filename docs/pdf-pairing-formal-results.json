@@ -12387,6 +12387,44 @@
       "paper_download_started": false,
       "paper_association": false,
       "diagnostic_locator": "Private record-to-viewer observation, HAR verification receipt, bridge interruption and application restart receipts."
+    },
+    {
+      "id": "F09-Client-Guard-Diagnostic",
+      "sample_id": "F09",
+      "diagnostic_only": true,
+      "side": "allfold",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "b7fe32912080237f60c8bf44cb88c7b47f95673e",
+      "runtime_variant": "Temporary local observation of guarded main-frame stops with the existing navigation policy.",
+      "access": "Fresh independent CARSI Oxford Journals entry with the institution and exact article verified before Download.",
+      "download_click_utc": [
+        "2026-11-19T06:54:43.380Z",
+        "2026-11-19T06:54:43.469Z"
+      ],
+      "file_and_paper_association_utc": [
+        "2026-11-19T06:54:48.801Z",
+        "2026-11-19T06:54:49.060Z"
+      ],
+      "wait_seconds": [5.332, 5.680],
+      "verified_file": {
+        "version": "Oxford Academic publisher PDF",
+        "pages": 26,
+        "size_bytes": 2088108,
+        "doi_match": true,
+        "title_match": true
+      },
+      "source": "P2/API02 direct publisher response and PDF stream",
+      "discovery_response_ms": 655,
+      "final_stream_ms": 4863,
+      "first_byte_ms": 2619,
+      "closed_writer_ms": 4862,
+      "human_intervention_during_download": false,
+      "verification_view_reached": false,
+      "client_block_observed": false,
+      "guard_stop_records": 0,
+      "paper_association": true,
+      "regular_source_runtime_restored": true,
+      "diagnostic_locator": "Private F09 guard diagnostic measurement, original Paper file verification, native diagnostics export and regular-source restart receipt."
     }
   ],
   "evidence_join_corrections": [

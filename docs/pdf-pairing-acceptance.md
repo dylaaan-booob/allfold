@@ -22,7 +22,9 @@ on Zotero after the exact article's access was reverified. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. In the prepared Oxford F10, F08 and
 F09 repeats, Allfold saved the correct publisher PDF and Zotero produced no new
-local PDF or parent within 600 s. F08 and F09 had long recovery paths.
+local PDF or parent within 600 s. F08 and F09 had long recovery paths. A
+separate F09 repeat saved directly after renewed Oxford access and did not
+reproduce the block.
 Same-version Oxford timing remains unconfirmed. F18 exposed a publisher-version/latency
 gap. Direct-entry and Referer repairs alone still returned a preprint. The first
 real retest of the common native partition-context repair at `69b9a41` saved the
@@ -792,6 +794,20 @@ came from the Silverchair watermark endpoint in 4.025 s, first byte at
 during Download. The repeated symptom warrants distinguishing the blocked
 request's method and origin relation before changing the guard or source
 order.
+
+In a separate Allfold-only F09 diagnostic, a temporary observation added the
+method and origin relation to any main-frame stop without changing navigation
+policy. A fresh independent CARSI entry confirmed the institution and exact
+article. The existing 26-page, 2,088,108-byte publisher file was removed using
+the product controls, and the same Paper was restored for a new Download.
+The newly saved file matched the title, DOI and publication. The verified local
+file and Paper association completed in 5.332–5.680 s. P2/API02 took 0.655 s
+to respond and the final stream took 4.863 s, with first byte at 2.619 s.
+
+The diagnostic went directly to the PDF and never opened a verification view.
+It recorded no client-side block or guard stop. The two earlier blocks remain
+unexplained. This repeat adds no paired timing point. The observation was
+removed, and the regular source build restarted with the same Workspace.
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
