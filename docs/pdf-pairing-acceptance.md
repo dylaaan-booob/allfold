@@ -692,6 +692,23 @@ which upstream response supplies the request URL. This identifies the actual
 binary host and route in the authorized viewer. A Paper Download adapter
 still needs evidence for the record-to-URL handoff under the saved Service.
 
+A later diagnostic followed the viewer's **Back to details** link to the
+exact F23 record and clicked its ordinary PDF entry. Network displayed a
+200 GET to the record PDF endpoint on `research.ebsco.com` and two 200 PDF
+responses on `content.ebscohost.com`, each reporting 2,996,661 resource
+bytes. The trace associates both request families with the visible record
+flow. The record response that would establish the URL handoff is still
+unverified.
+
+An additional sanitized HAR export was followed by an Allfold bridge
+disconnection alert. The file was initially empty and later contained two
+PDF responses, with the upstream record response absent. The diagnostics
+export returned HTTP 409 while disconnected. The source application was
+normally restarted on the same production code and configuration. The
+Workspace remained intact. The cause of the disconnection is unknown. Both
+observations were Browser diagnostics with no timed save, Paper Download,
+or new Paper association.
+
 The same resumption verified Oxford F10 on both article pages before a new
 PDF action. Allfold's Oxford Service page recovered from a Cloudflare check
 automatically, 21.044 s after the Solver started. Chrome's separate Oxford
