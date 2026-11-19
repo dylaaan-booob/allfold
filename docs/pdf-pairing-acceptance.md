@@ -1916,6 +1916,11 @@ One follow-up click on the title did not visibly open the details. These
 observations reproduce the direct-navigation stall and leave the exact
 site-side cause open. Neither action started a PDF save.
 
+After renewed access on `67e731d`, the normal Browser reached the institutional
+F23 details by following the unique result's title. The first detail
+snapshot after the usual ten-second observation wait showed the exact DOI
+and a PDF entry. This preparation had no instrumented click timestamp.
+
 The isolated Electron regression models a qualified search whose record link
 works through the site's in-page navigation while a separate document GET
 stalls. It first failed at `page_load` and passed after the browser followed
@@ -1924,3 +1929,10 @@ Document and same title before dispatch. The record still has to match the
 original DOI and provide its own PDF Viewer entry. This fixture checks a
 navigation mechanism. Live licensed saves still require evidence from both
 originals.
+
+The `67e731d` PR run passed JavaScript checking, pytest and the EBSCO Electron
+case. A native presentation fixture failed at its immediate page-switch
+assertion. The fixture now waits within its existing readiness window for
+Main to select the expected Page after real mouse input. It also waits for
+selection on the return click. The focused macOS fixture passed with both
+checks. [Failed PR run](https://github.com/dylaaan-booob/allfold/actions/runs/44536159519/job/135602012670)
