@@ -1,19 +1,32 @@
 'use strict';
 const {app,BrowserWindow}=require('electron');
-const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const {randomUUID}=require('node:crypto');
+const assert=require('node:assert/strict'),http=require('node:http'),https=require('node:https'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {randomUUID,X509Certificate}=require('node:crypto');
 app.commandLine.appendSwitch('no-proxy-server');
 const fixtureHosts=['oce.ovid.com','assets.ovid.com','www.nature.com','journals.lww.com','www.sciencedirect.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','academic.oup.com','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
 const readerAsset='https://pdf.sciencedirectassets.com/1-s2.0-S1234567812345678/main.pdf';
 fixtureHosts.push(new URL(readerAsset).hostname);
-app.commandLine.appendSwitch('host-resolver-rules',fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1').join(', '));
+const ebscoHosts=['search.ebscohost.com','research.ebsco.com','content.ebscohost.com'];
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
-app.whenReady().then(async()=>{
-  let page='',requests=[],delayedPDF,challengeResponse=false;
-  const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
+(async()=>{
+  let page='',requests=[],delayedPDF,challengeResponse=false,ebscoDOI='10.5555/fixture';
+  const ebscoProfile='https://research.ebsco.com/c/test-profile';
+  const ebscoPdf='https://content.ebscohost.com/cds/retrieve?Signature=A%2FB';
+  const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
     const current=new URL(request.url,'http://fixture.invalid');
+    const ebscoPages={
+      '/Community.aspx':'<main><h1>Institution library</h1><a href="'+ebscoProfile+'/search">EBSCO一站式检索</a></main>',
+      '/c/test-profile/search':'<main><h1>Search the library</h1><p>All databases</p></main>',
+      '/c/test-profile/search/results':'<main><h1>Search results</h1><h2><a href="/c/test-profile/search/details/record">Licensed fixture</a></h2></main>',
+      '/c/test-profile/search/details/record':'<main><h1>Licensed fixture</h1><p>DOI: '+ebscoDOI+'</p><a href="/c/test-profile/viewer/pdf/record">View PDF</a></main>',
+      '/c/test-profile/viewer/pdf/record':'<main><h1>Full text</h1><p>Institution viewer</p></main><script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>',
+    };
+    if(Object.hasOwn(ebscoPages,current.pathname)) {
+      response.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});
+      response.end('<!doctype html>'+ebscoPages[current.pathname]);return;
+    }
     const handoff=current.searchParams.get('verify-reader');
     if(handoff==='same' || handoff==='different') {
       response.setHeader('content-type','text/html');
@@ -39,8 +52,18 @@ app.whenReady().then(async()=>{
     if(request.url.startsWith('/pdfviewer/web/viewer.html')||request.url.startsWith('/arbitrary?')){response.setHeader('content-type','text/html');response.end('<body>Fixed viewer fixture</body>');return;}
     if(request.url.includes('/reader-next/')){response.setHeader('content-type','text/plain');response.end('controlled reader carrier');return;}
     if(request.url==='/redirect'){response.writeHead(302,{location:'/actual/Article'});response.end();return;}
-    response.setHeader('content-type','text/html');if(challengeResponse)response.setHeader('cf-mitigated','challenge');response.end(page);});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    response.setHeader('content-type','text/html');if(challengeResponse)response.setHeader('cf-mitigated','challenge');response.end(page);};
+  const fixture=path.resolve(__dirname,'../../tests/fixtures/http');
+  const cert=fs.readFileSync(path.join(fixture,'localhost-cert.pem'));
+  const fingerprint=new X509Certificate(cert).fingerprint256;
+  const server=http.createServer(serve);
+  const secureServer=https.createServer({cert,key:fs.readFileSync(path.join(fixture,'localhost-key.pem'))},serve);
+  await Promise.all([server,secureServer].map(listener=>new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve))));
+  app.commandLine.appendSwitch('host-resolver-rules',[
+    ...fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1'),
+    ...ebscoHosts.map(host=>'MAP '+host+' 127.0.0.1:'+secureServer.address().port),
+  ].join(', '));
+  await app.whenReady();
   const port=server.address().port,url='http://www.nature.com:'+port+'/redirect';
   const host=new BrowserWindow({show:false}),browser=new BrowserRuntime({hostWindow:host});
   const messages=[],native=vm.createContext({require:require('node:module').createRequire(require.resolve('../src/main.cjs')),browser,operations:new Map(),exiting:false,bridgeReady:true,AbortController,
@@ -285,6 +308,30 @@ app.whenReady().then(async()=>{
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader:oceReader})).diagnostic,'retained non-OCE context is refused');
     await browser.closePage(retained);
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).diagnostic,'closed preparation cannot be renewed');
+    // Use real Session webRequest callbacks for the viewer subresource.
+    browser.partition.protocol.unhandle('https');
+    browser.partition.setCertificateVerifyProc((request,callback)=>callback(ebscoHosts.includes(request.hostname)
+      && new X509Certificate(request.certificate.data).fingerprint256===fingerprint?0:-3));
+    await browser.runTask(new AbortController().signal,{...scoped,request_id:randomUUID()},async()=>{
+      retained=await browser.newTaskPage({deadline:Date.now()+4000,managed:true});
+      await browser.navigate('https://search.ebscohost.com/Community.aspx',{tab:retained,deadline:Date.now()+4000});
+      browser.retainAccessPage(retained,scoped);
+    });
+    const licensed={...scoped,target_page_id:retained.id,prepared_source:'ebsco',
+      identity:{doi:'10.5555/fixture'},target_title:'Licensed fixture'};
+    const found=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(found.outcome,'retrieved',JSON.stringify({found,requests}));
+    assert.equal(found.pdf_clues.landing_url,ebscoProfile+'/search/details/record');
+    assert.equal(found.pdf_clues.candidates[0].url,ebscoPdf);
+    assert.equal(found.pdf_clues.candidates[0].rule_id,'R073');
+    assert.ok(requests.some(request=>request.url==='/c/test-profile/search/results?q=10.5555%2Ffixture'));
+    assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve')),'the body stream owns the first sent PDF GET');
+    assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoDOI='10.5555/different';
+    const wrong=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(wrong.diagnostic && !wrong.pdf_clues,'the actual licensed record must match the Paper DOI');
+    assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/')));
+    await browser.closePage(retained);
     console.log('PDF CLUES PASS');
-  } finally {await browser.close();host.destroy();await new Promise(resolve=>server.close(resolve));}
-}).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});
+  } finally {await browser.close();host.destroy();await Promise.all([server,secureServer].map(listener=>new Promise(resolve=>listener.close(resolve))));}
+})().then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

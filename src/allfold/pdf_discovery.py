@@ -432,6 +432,11 @@ class PdfDiscovery:
                 templates.extend(c for c in self._rules(stage)
                     if (urldefrag(c.url)[0], c.action) not in self._seen)
         yield self._ordered_entries((*current_entries, *templates))
+        if self.io is not None and callable(getattr(type(self.io), 'ebsco_candidates', None)):
+            try:
+                yield self._call(self.io.ebsco_candidates, self.target)
+            except PdfSourceReadError as error:
+                self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
         if cached and cached.status in {'complete', 'partial'}:

@@ -327,12 +327,12 @@ class PdfDiscoveryIO:
             except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
 
-    def document(self, target):
+    def document(self, target, *, prepared_source=None):
         if self.context is None or not (target.identity_doi or target.article_url):
             return None
         from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
         try:
-            return read_document_pdf_clues(self.context, confirmed_article_url=target.article_url)
+            return read_document_pdf_clues(self.context, confirmed_article_url=target.article_url, prepared_source=prepared_source)
         except DocumentMetadataFailed:
             raise PdfSourceReadError('Article PDF clues were not retrieved') from None
 

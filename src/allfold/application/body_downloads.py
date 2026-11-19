@@ -30,6 +30,7 @@ class _BodyRequest:
     service_id: str | None = None
     service_reason: str | None = None
     service_ids: tuple[str, ...] = ()
+    ebsco_assigned: bool = False
 
 
 @dataclass(frozen=True)
@@ -332,6 +333,30 @@ class _BodyDiscoveryIO:
     def document(self, target):
         return self._read(lambda operation, io: io.document(target))
 
+    def ebsco_candidates(self, target):
+        request = self.reservation.body_request
+        if not request.ebsco_assigned or not target.identity_doi or target.content_type != 'journal-article':
+            return ()
+        from allfold.application.task_authority import ServiceAccessUnavailable
+        try:
+            authority = self.reservation.registry._authority(request.service_id, ())
+        except ServiceAccessUnavailable as error:
+            raise PdfSourceReadError('EBSCO access is unavailable', diagnostic=error.diagnostic,
+                service_id=request.service_id) from None
+        except (OSError, ValueError, RuntimeError):
+            raise PdfSourceReadError('EBSCO access changed', diagnostic='service-invalidated',
+                service_id=request.service_id) from None
+        if authority.native_access().target_page_id is None:
+            raise PdfSourceReadError('EBSCO needs a prepared search profile', diagnostic='service-unprepared',
+                service_id=request.service_id)
+        parsed = self._read(lambda operation, io: io.document(target, prepared_source='ebsco'), authority)
+        if parsed is None or not parsed.current_candidates:
+            raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
+                service_id=request.service_id)
+        return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url, referer=item.referer, access=authority)
+            for item in parsed.current_candidates
+            if item.stage == 'P4' and item.rule_id == 'R073' and item.action is None and item.reader_kind is None)
+
     def reader(self, candidate, response):
         # The same live parser also handles a ScienceDirect article fallback.
         def read(operation, _io):
@@ -586,7 +611,8 @@ def _discard(reservation, reason):
 
 
 def submit_body_download(host, paper, *, candidates=None, service_id=None, deadline=None, progress=None,
-                         target=None, facts=(), http_options=None, provider_authority=None, service_reason=None, service_ids=()):
+                         target=None, facts=(), http_options=None, provider_authority=None, service_reason=None, service_ids=(),
+                         ebsco_assigned=False):
     """Trusted composition entry; public callers supply identities through the service."""
     registry = host.current()
     if registry.workspace_id != paper.workspace_id:
@@ -624,7 +650,7 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
         body_request=_BodyRequest(primary, candidates, progress, target, tuple(facts), http_options, direct, provider_authority,
             paper.download.token.attempt if paper.download else 0, service_id,
             service_reason or ('service-unassigned' if service_id is None else None),
-            tuple(service_ids or ((service_id,) if service_id else ()))))
+            tuple(service_ids or ((service_id,) if service_id else ())), ebsco_assigned))
     if isinstance(reservation, PaperRecord):
         return BodyResult('completed', reservation)
     with registry.paper_gate():
@@ -719,12 +745,16 @@ class BodyDownloadService:
 
     def _service(self, paper):
         from allfold.application.workspace import paper_service_assignment, journals_for_paper
-        from allfold.config import load_config
-        journals = load_config(self.host.config_path).journals
+        from allfold.persistence.user_state import read_user_state
+        saved = read_user_state(self.host.config_path).state
+        journals = saved.journals
         service_id, assignment = paper_service_assignment(paper.metadata, journals)
         related = tuple(sorted({journal.access_service_id for journal in journals_for_paper(paper.metadata, journals)
             if journal.access_service_id}))
-        return service_id, {'ambiguous': 'service-ambiguous', 'unassigned': 'service-unassigned'}.get(assignment), related
+        ebsco = any(service.id == service_id and urlsplit(service.access_url).hostname in {
+            'search.ebscohost.com', 'research.ebsco.com', 'discovery.ebsco.com'}
+            for service in saved.access_services)
+        return service_id, {'ambiguous': 'service-ambiguous', 'unassigned': 'service-unassigned'}.get(assignment), related, ebsco
 
     def projection(self, paper, *, cleanup_pending=False):
         registry = self.host.peek()
@@ -803,7 +833,7 @@ class BodyDownloadService:
                     raise StaleWriteError('Original Download qualification changed')
         if local:
             return self.local_body(paper, action='open') if self.local_body is not None else BodyResult('local-body', paper)
-        service_id, service_reason, service_ids = self._service(paper)
+        service_id, service_reason, service_ids, ebsco = self._service(paper)
         # Keep the original optional Provider epoch without making an earlier
         # successful P1/native path depend on that unused credential.
         try:
@@ -812,7 +842,8 @@ class BodyDownloadService:
             provider_authority = error
         target, facts = saved_pdf_target(paper)
         return submit_body_download(self.host, paper, target=target, facts=facts, service_id=service_id,
-            service_reason=service_reason, service_ids=service_ids, provider_authority=provider_authority, http_options=self.http_options)
+            service_reason=service_reason, service_ids=service_ids, provider_authority=provider_authority,
+            http_options=self.http_options, ebsco_assigned=ebsco)
 
     def cancel(self, paper_id, workspace_id, task_id, attempt):
         from uuid import UUID

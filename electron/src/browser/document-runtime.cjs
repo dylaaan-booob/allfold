@@ -5,7 +5,7 @@ const {PRELOAD_DIR}=require('../shared/paths.cjs');
 const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {waitFor}=require('./browser-task.cjs');
-const {boundedPdfClues}=require('./pdf-clues.cjs');
+const {boundedPdfClues,publicClueURL}=require('./pdf-clues.cjs');
 const {validDOI,articleURL}=require('./article-identity.cjs');
 const doiCasefold=Object.freeze(require('./doi-casefold.json'));
 // Project each reply through its fixed DTO; never forward arbitrary page-owned properties.
@@ -13,6 +13,12 @@ function boundedResult(action,value) {
   const invalid=()=>{throw new BrowserFailure('navigation','page_probe_unconfirmed');};
   if(!value || typeof value!=='object')invalid();
   if(action==='pdf')return {clues:boundedPdfClues(value.clues)};
+  if(action==='ebsco') {
+    const {ready,urls,doi,pdf}=value;
+    if(![ready,doi,pdf].every(item=>typeof item==='boolean') || !Array.isArray(urls) || urls.length>2
+      || urls.some(url=>!publicClueURL(url)))invalid();
+    return {ready,urls,doi,pdf};
+  }
   if(action==='extract') {
     let content,clues;
     try {content=boundedResult('metadata',value);}
@@ -74,9 +80,15 @@ class DocumentRuntime {
     ipcMain.on('document:result',this.listener);
   }
   async call(doc,action,args={},options={}) {
-    if(!['binding','access','extract','pdf'].includes(action))throw new BrowserFailure('navigation','document_operation_failed');
+    if(!['binding','access','extract','pdf','ebsco'].includes(action))throw new BrowserFailure('navigation','document_operation_failed');
     if(!args || typeof args!=='object' || Array.isArray(args) || (action==='extract'
-      ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean' : action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind):Object.keys(args).length!==0))
+      ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean'
+      :action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind)
+      :action==='ebsco'? !['profile','results','record'].includes(args.mode)
+        || Object.keys(args).length!==({profile:1,results:2,record:3})[args.mode]
+        || args.mode!=='profile' && (typeof args.title!=='string' || !args.title.trim() || args.title.length>4096)
+        || args.mode==='record' && !validDOI(args.doi)
+      :Object.keys(args).length!==0))
       throw new BrowserFailure('navigation','document_operation_failed');
     const frame=this.browser.documentFrame(doc);
     if(!frame)throw new BrowserFailure('navigation','document_changed');

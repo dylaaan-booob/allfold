@@ -316,13 +316,14 @@ def test_inputs_are_bounded_immutable_and_target_binding_cannot_be_replaced():
 def test_adoption_catalogue_keeps_all_ids_conditions_and_source_references():
     from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 
-    assert set(RULE_CATALOG) == {f'R{i:03}' for i in range(1, 73)}
+    assert set(RULE_CATALOG) == {f'R{i:03}' for i in range(1, 74)}
     assert set(API_CATALOG) == {f'API{i:02}' for i in range(1, 18)}
     for item in (*RULE_CATALOG.values(), *API_CATALOG.values()):
         assert item.expression and item.requirements and item.access and item.adoption
         assert item.source_ids and all(re.fullmatch(r'S[0-9]{3}', source) for source in item.source_ids)
         assert item.spec_ref == 'docs/pdf-source-discovery.md#' + item.rule_id.lower()
     assert RULE_CATALOG['R009'].status == 'conditional'
+    assert RULE_CATALOG['R073'].status == 'conditional' and RULE_CATALOG['R073'].stages == ('P4',)
     assert RULE_CATALOG['R021'].status == RULE_CATALOG['R027'].status == 'extension'
     assert all(RULE_CATALOG[f'R{i:03}'].status == 'historical' for i in range(62, 73))
     assert all(API_CATALOG[f'API{i:02}'].status == 'non-pdf' for i in (5, 10, 11, 14))

@@ -4,6 +4,44 @@ const {ipcRenderer,webFrame}=require('electron');
 const documentId=Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-');
 const operations={
   binding() {return {type:document.contentType};},
+  ebsco(args) {
+    const titleKey=value=>value.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
+    const sameTitle=node=>titleKey(node.textContent || '')===titleKey(args.title || '');
+    const links=[...document.querySelectorAll('a[href]')];
+    const empty={ready:true,urls:[],doi:false,pdf:false};
+    if(args.mode==='profile') {
+      const urls=links.filter(node=>/^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(node.textContent.trim()))
+        .map(node=>node.href).slice(0,2);
+      return {...empty,urls};
+    }
+    const main=document.querySelector('main,[role="main"]') || document.body;
+    if(!main)return {...empty,ready:false};
+    if(args.mode==='results') {
+      const rows=links.filter(node=>node.closest('h2,.result-item-title,[class*="result-item-title"]')
+        && URL.canParse(node.href) && /\/search\/details\/[^/]+$/.test(new URL(node.href).pathname));
+      const urls=[...new Set(rows.filter(sameTitle).map(node=>node.href))].slice(0,2);
+      return {...empty,urls,ready:rows.length>0 || /(?:no results found|没有找到结果|未找到结果|没有检索结果)/i.test(main.innerText)};
+    }
+    const ready=[...main.querySelectorAll('h1,h2,[role="heading"]')].some(sameTitle);
+    const wanted=String(args.doi).toLowerCase();
+    const identifiers=new Set([...document.querySelectorAll('meta[name="citation_doi" i]')]
+      .map(node=>node.content.trim().toLowerCase()).filter(Boolean));
+    if(ready && !identifiers.size) {
+      for(const node of main.querySelectorAll('a[href]')) {
+        if(!URL.canParse(node.href))continue;
+        const url=new URL(node.href);
+        if(!['doi.org','dx.doi.org'].includes(url.hostname))continue;
+        try {identifiers.add(decodeURIComponent(url.pathname.slice(1)).toLowerCase());}catch { /* No DOI evidence. */ }
+      }
+      for(const match of main.innerText.matchAll(/\bDOI\s*:?\s*(10\.\d{4,9}\/[^\s<>]+)/gi))
+        identifiers.add(match[1].toLowerCase());
+    }
+    const doi=ready && identifiers.size===1 && identifiers.has(wanted);
+    const pdf=ready && [...main.querySelectorAll('a,button,[role="button"]')].some(node=>
+      /^(?:PDF(?: full text)?|(?:view|download|full[ -]text)\s+PDF|access now\s*\(PDF\)|立即获取\s*[(（]PDF[)）]|(?:查看|下载)\s*PDF|PDF\s*全文)$/i
+        .test((node.getAttribute('aria-label') || node.textContent).trim().replace(/\s+/g,' ')));
+    return {...empty,ready,doi,pdf};
+  },
   access() {
     const title=document.title;
     const visible=node=>!!node?.isConnected && node.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})
@@ -608,8 +646,10 @@ function readSnapshot(snapshot,extract,pdf,args,doiCasefold,paperDoi) {
   return {url,...content,clues};
 }
 ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,expectedURL,args,doiCasefold,targetDoi})=>{
-  if(!['binding','access','extract','pdf'].includes(action) || !args || typeof args!=='object' || Array.isArray(args)
-    || (action==='extract'?Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean':action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind):Object.keys(args).length!==0)) {
+  if(!['binding','access','extract','pdf','ebsco'].includes(action) || !args || typeof args!=='object' || Array.isArray(args)
+    || (action==='ebsco'?!['profile','results','record'].includes(args.mode)
+      :action==='extract'?Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean'
+      :action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind):Object.keys(args).length!==0)) {
     ipcRenderer.send('document:result',{id,error:'document_operation_failed'});return;
   }
   const snapshot=action==='extract'||action==='pdf',url=location.href;
@@ -621,7 +661,7 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
   try {
     const input=snapshot?await webFrame.executeJavaScript('('+captureSnapshot.toString()+')()'):null;
     const source=name=>'('+operations[name].toString().replace(/^\w+\(/,'function(')+')';
-    const code=snapshot?'('+readSnapshot.toString()+')('+JSON.stringify(input)+','+(action==='extract'?source('extract'):'null')+','+source('pdf')+','+JSON.stringify(args)+','+JSON.stringify(doiCasefold)+','+JSON.stringify(targetDoi)+')':source(action)+'()';
+    const code=snapshot?'('+readSnapshot.toString()+')('+JSON.stringify(input)+','+(action==='extract'?source('extract'):'null')+','+source('pdf')+','+JSON.stringify(args)+','+JSON.stringify(doiCasefold)+','+JSON.stringify(targetDoi)+')':source(action)+'('+JSON.stringify(args)+')';
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
     if(!snapshot && location.href!==url)throw Error('document_changed');
     ipcRenderer.send('document:result',{id,result,...(snapshot?{}:{documentId,url})});

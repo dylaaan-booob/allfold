@@ -7,6 +7,7 @@ const {validDOI,articleURL}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
 const {BodyActionRuntime}=require('./body-action-runtime.cjs');
 const {qualifyReader,publicClueURL,matchingScienceDirectAssetGet}=require('./pdf-clues.cjs');
+const {readEbscoSource}=require('./ebsco-source.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
@@ -843,6 +844,7 @@ class BrowserRuntime {
   }
   extractPaperPdfClues(data,options={}) {
     if(Object.hasOwn(data,'wantAbstract') || Object.hasOwn(data,'reader_access_only') && data.reader_access_only!==true)throw new BrowserFailure('navigation','document_operation_failed');
+    if(Object.hasOwn(data,'prepared_source'))return this.extractEbscoSource(data,options);
     if(data.reader_access_only) {
       if(data.reader || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id)
         || !Number.isSafeInteger(data.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
@@ -854,8 +856,23 @@ class BrowserRuntime {
     }
     return this.extractPaperDocument(data,{...options,metadata:false});
   }
+  async extractEbscoSource(data,options) {
+    if(data.prepared_source!=='ebsco' || data.reader || data.reader_access_only || !data.service_id
+      || !Number.isSafeInteger(data.target_page_id) || !Number.isSafeInteger(data.deadline_ms)
+      || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))
+      throw new BrowserFailure('navigation','document_operation_failed');
+    const verify=this.pinPreparedPaperAccess(data);
+    const context=this.accessContexts.get(this.accessKey(data));
+    const owner=this.operation,validateRecovery=owner.validateRecovery;
+    owner.validateRecovery=async next=>{verify();await validateRecovery?.(next);verify();};
+    try {
+      return await readEbscoSource(this,data,context.tab.view.webContents.getURL(),{...options,verify});
+    } finally {
+      owner.validateRecovery=validateRecovery;
+    }
+  }
   async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata,observeReaderNavigation}={}) {
-    if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only')))throw new BrowserFailure('navigation','document_operation_failed');
+    if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only') || Object.hasOwn(data,'prepared_source')))throw new BrowserFailure('navigation','document_operation_failed');
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
     const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};

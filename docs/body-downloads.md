@@ -105,6 +105,15 @@ missing-input API sequence or turns an action/refresh locator into a stable GET.
 It retains the current Document's observed content URL and identifiers. After
 its current P3/P4 clues, these may qualify previously unavailable templates before
 P5, still bound to the original Paper.
+
+For a journal assigned to EBSCO, a Download can try its prepared EBSCOhost
+profile before OpenAlex. The browser searches the original DOI, verifies the
+matching record and its published PDF entry, and hands off the owned viewer's
+observed PDF GET to the same Session stream. The preparation must have a
+retained EBSCO target. Account, profile and expiring PDF URLs stay out of
+saved source facts. A missing record or unavailable institution access leaves
+the independent OpenAlex fallback available.
+
 The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is
 added.

@@ -219,17 +219,20 @@ def _paper_identity(paper, confirmed_article_url):
     return identity
 
 
-def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None):
+def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None, prepared_source=None):
     """Read current PDF inputs without emitting or reopening any collection state.
 
     The caller owns a captured read-only task context with read_paper(),
     native_payload(), execute_native() and its normal authority/cleanup lifecycle.
     A reader is a trusted immutable candidate chain, never a webpage-supplied URL.
     """
-    identity = _paper_identity(context.read_paper(), confirmed_article_url)
+    paper = context.read_paper()
+    identity = _paper_identity(paper, confirmed_article_url)
     payload = context.native_payload() | {'identity': identity}
     if reader is not None:
         payload['reader'] = dict(reader) | {'target': identity}
+    if prepared_source is not None:
+        payload.update(prepared_source=prepared_source, target_title=paper.metadata.title)
     return validate_document_pdf_clues(context.execute_native('extract_paper_pdf_clues', payload).result(),
         target_doi=identity.get('doi'))
 

@@ -196,27 +196,30 @@ class ControlledNative:
             output_file=output['file'],final_url=data['url']))
 
 
-def application_host(tmp_path):
+def application_host(tmp_path, *, metadata=None):
     from safety_config_helpers import current_mapping_document
     from allfold.application.workspace_tasks import WorkspaceTaskHost
     from allfold.pdf_rules import PdfCandidate,PdfTarget
     config,*_=current_mapping_document(tmp_path)
     workspace=tmp_path/'workspace';workspace.mkdir()
-    with PaperRepository.create(workspace) as repo:paper=make_paper(repo)
+    with PaperRepository.create(workspace) as repo:
+        paper=repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(doi='10.5555/body'),
+            metadata=metadata or PaperMetadata(title='Same title')).paper
     bridge=ControlledNative();host=WorkspaceTaskHost(config,bridge=bridge)
     target=PdfTarget(str(paper.id),doi='10.5555/body',direct_identities=tuple((i.namespace,i.value) for i in paper.identities))
     candidate=PdfCandidate(target,'P1','GENERIC','generic','https://publisher.example.org/body')
     return host,workspace,paper,bridge,candidate
 
 
-def prepared_application_host(tmp_path):
+def prepared_application_host(tmp_path, *, metadata=None, service_updates=None):
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.login import LoginCoordinator
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from test_login import Native, opened
-    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+    host, workspace, paper, bridge, candidate = application_host(tmp_path, metadata=metadata)
     saved = load_user_state(host.config_path)
-    service = saved.state.access_services[0].model_copy(update={'access_method': 'manual'})
+    service = saved.state.access_services[0].model_copy(
+        update={'access_method': 'manual'} | (service_updates or {}))
     compare_write_user_state(host.config_path, replace(saved.state, access_services=(service,)), saved.revision)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
@@ -226,6 +229,83 @@ def prepared_application_host(tmp_path):
     host.login, host.browser_lock = login, lock
     authority = host._capture_authority(service.id, ())
     return host, workspace, paper, bridge, replace(candidate, access=authority)
+
+
+def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path):
+    from concurrent.futures import Future
+    from datetime import datetime, timezone
+    from pathlib import Path
+    import httpx
+    from allfold.application.body_downloads import BodyDownloadService
+    from allfold.pdf_facts import PdfCandidateFact, PdfDiscoveryFacts
+    from safety_config_helpers import A
+
+    doi = '10.5555/body'
+    now = datetime.now(timezone.utc)
+    article = 'https://publisher.example.org/doi/' + doi
+    denied = article + '/article.pdf'
+    preprint = 'https://repository.example.org/preprint.pdf'
+    record = 'https://research.ebsco.com/c/test-profile/search/details/record'
+    licensed_pdf = 'https://content.ebscohost.com/cds/retrieve?token=temporary'
+    facts = (
+        PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+            observed_at=now, target_doi=doi, landing_url=article,
+            candidates=(PdfCandidateFact(stage='P4', rule_id='GENERIC', url=denied),)),
+        PdfDiscoveryFacts(source='openalex', capability='openalex-locations', status='complete',
+            observed_at=now, target_doi=doi,
+            candidates=(PdfCandidateFact(stage='P5', rule_id='OPENALEX', url=preprint),)),
+    )
+    metadata = PaperMetadata(title='Same title', publication_type='journal', journal_issns=(A,),
+        discovery_facts=facts)
+    host, workspace, paper, bridge, bound = prepared_application_host(tmp_path, metadata=metadata,
+        service_updates={'name': 'EBSCO', 'access_url': 'https://search.ebscohost.com/'})
+
+    def execute(action, data, progress=None, **kwargs):
+        bridge.calls.append((action, data))
+        result = Future()
+        if action == 'extract_paper_pdf_clues':
+            institutional = data.get('prepared_source') == 'ebsco'
+            if institutional:
+                assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
+                assert data['identity']['doi'] == doi and data['target_title'] == metadata.title
+            result.set_result(dict(outcome='retrieved', pdf_clues=dict(status='complete',
+                observed_at='2026-11-19T08:00:00.000Z', landing_url=record if institutional else article,
+                platform='ebsco' if institutional else 'generic', content_type='journal-article',
+                identifiers=[], diagnostics=[], candidates=[dict(stage='P4', rule_id='R073',
+                    url=licensed_pdf, referer=record)] if institutional else [])))
+        elif data['url'] == denied:
+            result.set_result(dict(kind='response', outcome='response', response=dict(url=denied,
+                status=403, content_type='text/html', body='Access required', access='authorization')))
+        else:
+            assert action == 'stream_paper_body'
+            if data['url'] == licensed_pdf:
+                assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
+                assert data['referer'] == record
+                body = b'%PDF-licensed'
+            else:
+                assert data['url'] == preprint and 'service_id' not in data
+                body = b'%PDF-preprint'
+            output = data['output']
+            (Path(data['workspace_root']) / output['temporary']).write_bytes(body)
+            result.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True,
+                transfer_complete=True, size_bytes=len(body), output_file=output['file'], final_url=data['url']))
+        return result
+
+    bridge.execute = execute
+    try:
+        service = BodyDownloadService(host, http_options={'resolver': lambda *_: ('8.8.8.8',),
+            'transport': httpx.MockTransport(lambda _: httpx.Response(404))})
+        qualification = service.projection(paper)['qualification']
+        task = service.start(paper.id, paper.workspace_id, qualification=qualification)
+        result = task.future.result(3)
+        assert result.status == 'completed'
+        assert (workspace / result.paper.body.relative_path).read_bytes() == b'%PDF-licensed'
+        assert result.paper.body.pdf_source == 'P4'
+        assert all(data.get('url') != preprint for _, data in bridge.calls)
+        assert not host.browser_lock.owners
+    finally:
+        host.shutdown()
+        host.join()
 
 
 def test_service_change_stops_only_active_access_and_releases_scope_before_oa(tmp_path):

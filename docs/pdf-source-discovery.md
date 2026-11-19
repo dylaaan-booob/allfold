@@ -162,7 +162,7 @@ DOI 前缀只作辅助线索。既有目标 URL 或解析结果表明内容已�
 
 | 信息 | 用途 |
 |---|---|
-| 稳定规则编号 | 保留本材料的 `R001`–`R072`，关联来源和诊断 |
+| 稳定规则编号 | 保留本材料的 `R001`–`R073`，关联来源和诊断 |
 | Platform、Host 和内容类型 | 限定适用对象，防止跨平台替换 |
 | 所需输入 | DOI、内部 ID、文章 URL、Document 或页面状态 |
 | 规则种类 | DOI 构造、ID 解析、URL 转换、Meta、DOM、中间页解析 |
@@ -2151,6 +2151,14 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **研究证据及模块：** 源码验证；本轮未做授权下载；函数/模块：_PUBLISHER_DIRECT_TEMPLATES; Silverchair.scrape。**来源：** [S025](#s025)、[S067](#s067)、[S029](#s029)。
 
+<a id="r073"></a>
+
+#### R073 · EBSCOhost 馆藏正文
+
+期刊已分配给 EBSCO Service，且该 Service 有保留的授权目标时，在出版社候选之后、OpenAlex 之前查找馆藏正文。以实际机构入口确认检索 profile，用 Paper DOI 检索，并在唯一匹配记录上核验标题、DOI 和 PDF 入口。由普通 PDF Viewer 发出的正文 GET 交给同一 Session 的下载流，沿用原 Paper 的文件落盘及关联流程。
+
+查询、记录和临时正文地址只在本次任务中使用。缺少匹配记录或实际权限时仍可使用其他已限定来源。机构 profile 检索路径和链接的访问要求有 EBSCO 官方说明。 [S143](#s143) · [S144](#s144)
+
 
 ---
 
@@ -3782,3 +3790,15 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 网页/官方资料；许可：不适用；原研究范围：见关联记录；不含实际授权下载验证。
 
 [资料](<https://www.annualreviews.org/page/librarians/MigrationFAQ_LRC>)
+
+<a id="s143"></a>
+
+### S143 · EBSCO 机构 profile 检索入口
+
+官方资料说明如何从已登录的 EBSCO profile 取得检索路径及 `q` 参数。 [EBSCO Outbound Search](https://connect.ebsco.com/s/article/Stacks-Outbound-Searches-to-the-New-EDS?language=en_US)
+
+<a id="s144"></a>
+
+### S144 · EBSCO 记录及正文链接
+
+官方资料说明记录和正文链接的来源及订阅机构身份验证条件。 [EBSCO 用户界面链接](https://connect.ebsco.com/s/article/How-do-I-copy-links-to-content-in-the-new-EBSCO-user-interfaces?language=en_US)
