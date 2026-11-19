@@ -818,6 +818,16 @@ It recorded no client-side block or guard stop. The two earlier blocks remain
 unexplained. This repeat adds no paired timing point. The observation was
 removed, and the regular source build restarted with the same Workspace.
 
+An additional non-scoring Oxford diagnostic used the untouched Workspace Paper
+`10.1093/jrsssa/qnag123`, in the same journal as F09. The explicit institutional
+account and exact article with the PDF option were verified before Download.
+The `c9fbf52` build with the guard observer linked the correct 19-page,
+731,000-byte publisher PDF in **3.600–3.949 s**. API02 returned a response in
+0.560 s and finished the Session stream in 3.048 s, with first byte at 1.911 s.
+There was no verifier navigation or guard stop. The original F08 trial file
+was retained pending its separate deletion confirmation. The earlier blocked
+request and Oxford's paired timing gap remain unresolved.
+
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status
 was checked. Twelve isolated local repetitions passed, and the runner did not
@@ -1805,6 +1815,16 @@ the user's browser profile or its Workspace. The smaller first-request gaps and
 the first F19 transfer difference remain unexplained by this warm-cache result.
 Allfold's Session storage behavior remains as tested in the live pairs.
 
+The installed `Atypon Journals` Translator (last updated 25 October 2022)
+builds an attachment from a PDF link on the loaded article. Five verified
+local Zotero attachments across F17 to F19 stored the SIAM `/doi/pdf/` route,
+the same route family used by Allfold P1/R039. Allfold dispatched in 7–12 ms
+on the corresponding direct path. The measured F19 interval after first byte
+was 38.924 s initially, 24.533 s following renewed access, and 20.108 s on the
+warm repeat. The existing timings and network counters locate the slowdown in
+body transfer on these observations. The reason for the first-transfer
+variation remains open.
+
 ## Request-priority investigation
 
 Versioned Electron45 `fetchWithSession` does not forward `RequestInit.priority`
@@ -2073,3 +2093,17 @@ the verified file in 4.481 s, with first byte at 2.166 s. No publisher recovery
 was needed. The path succeeded on the untouched Paper ahead of the available
 repository alternative. Its delay confirms that a portion of the EBSCO
 user-wait gap exists even when publisher recovery never starts.
+
+The installed `EBSCO Discovery Layer` Translator (last updated 1 October
+2026) starts from the already loaded record and can resolve its authorized PDF
+through the details response and a download-link lookup. It also requests RIS
+for Zotero's new parent item. The four verified Zotero attachments stored
+the EBSCO content-delivery route. Connector 5.0.217 passes its resolved
+attachment URL to Desktop 10.0.9, which imports the stream under that parent.
+The full live resolver sequence was unavailable. The installed direct
+resolution mechanism does not require mounting the Viewer Document. Allfold's
+normal starting state instead has the collected Paper and DOI. It currently
+spends 11.751–25.171 s finding the exact EBSCO record and handing off from the
+Viewer in the verified samples. Obtaining a qualified direct link after the
+exact record match could reduce that stage. Its availability through the
+prepared Allfold Session and the effect on the live fallbacks remain unverified.

@@ -13422,6 +13422,46 @@
       "paper_association": true,
       "regular_source_runtime_restored": true,
       "diagnostic_locator": "Private F09 guard diagnostic measurement, original Paper file verification, native diagnostics export and regular-source restart receipt."
+    },
+    {
+      "id": "Oxford-Guard-New-D1",
+      "diagnostic_only": true,
+      "side": "allfold",
+      "doi": "10.1093/jrsssa/qnag123",
+      "title": "How reliable are self-reports of debt? Misclassification, selection, and measurement bias between survey and administrative data in the UK Household Longitudinal Study",
+      "platform": "Oxford Academic",
+      "reason": "Untouched original Paper in the same journal as F09, for a bounded observation before repeating F08. Prior F08 and F09 observations remain.",
+      "production_code_sha": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
+      "runtime_build_note": "Same production request behavior with a private read-only guard-method and origin observer.",
+      "access": "Active separate institutional Oxford selection through CARSI. Exact permitted article and original Candidate verified. No PDF preview.",
+      "click_utc": [
+        "2026-11-19T17:33:16.389Z",
+        "2026-11-19T17:33:16.477Z"
+      ],
+      "local_pdf_and_association_utc": [
+        "2026-11-19T17:33:20.077Z",
+        "2026-11-19T17:33:20.338Z"
+      ],
+      "wait_seconds": [
+        3.6,
+        3.949
+      ],
+      "result": "automatic_success",
+      "source_stage": "P2",
+      "rule": "API02",
+      "publisher_file_bytes": 731000,
+      "page_count": 19,
+      "verified_title_and_doi": true,
+      "original_paper_association_verified": true,
+      "native_timing_ms": {
+        "qualified_response": 560,
+        "stream": 3048,
+        "first_byte": 1911,
+        "writer_closed": 3047
+      },
+      "publisher_verification_view_started": false,
+      "guard_rejection_observed": false,
+      "diagnostic_locator": "Private Oxford qnag123 route trace and local file check. Exact blocked request from F08/F09 remains unknown."
     }
   ],
   "evidence_join_corrections": [
@@ -13656,9 +13696,24 @@
       "electron_skipped": 0
     },
     "production_head_check": "https://github.com/dylaaan-booob/allfold/actions/runs/44496676668/job/135465520919",
+    "matched_zotero_source_observation": {
+      "connector_version": "5.0.217",
+      "desktop_version": "10.0.9",
+      "translator": "EBSCO Discovery Layer",
+      "translator_last_updated": "2026-10-01 19:50:00",
+      "translator_sha256": "ee747c685f0c541efce467a5a45a2a919d034c9ac3a8da0bc4d5b5d179814505",
+      "verified_zotero_body_source_pairs": [
+        "F23-5",
+        "F24-4",
+        "F24-5",
+        "R073-Fresh-1"
+      ],
+      "stored_attachment_url_class": "EBSCO content delivery",
+      "mechanism": "The installed translator on a known record can obtain the PDF entry through the first-party details response and download-link lookup. It separately imports RIS. The exact live request sequence and authorized Allfold availability of that direct entry are unobserved."
+    },
     "source_order_repair_revision": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
     "source_order_repair_full_pr_check": "https://github.com/dylaaan-booob/allfold/actions/runs/44565268319/job/135705175164",
-    "source_order_repair_live_status": "F24-5 verified the licensed EBSCO save on this revision. Publisher authorization denial led to EBSCO after a 2.210 s response. No publisher verification was triggered, so the scheduling change itself was not exercised.",
+    "source_order_repair_live_status": "F24-5 verified the licensed EBSCO save on this revision. Publisher authorization denial led to EBSCO after a 2.210 s response. R073-Fresh-1 verified a licensed copy on the untouched Paper. Both publisher requests returned authorization denials, leaving the changed recovery ordering unexercised.",
     "workspace_reset": "pending"
   },
   "coverage_exclusions": [
