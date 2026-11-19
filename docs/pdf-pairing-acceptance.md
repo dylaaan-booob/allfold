@@ -5,14 +5,14 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 74 pair slots including repeats.
+supplemental Papers also have observations, for 76 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
-earlier low-load publisher pairs, four ScienceDirect pairs and one Project Euclid
-pair have reliable local file and association endpoints. Springer has two slower
-Allfold points and one
-interval overlap; T&F has one slower point requiring swapped repeats. The measured
+earlier low-load publisher pairs, four ScienceDirect pairs, one Project Euclid
+pair and the new Springer F05-2 and F04-4 pairs have reliable local file and
+association endpoints. Springer's two slower F03 points remain. F03-6, F05-2 and F04-4 overlap
+within measurement precision. T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. In the prepared Oxford F10 repeat,
 Allfold saved the correct publisher PDF and Zotero produced no new local PDF or
@@ -124,8 +124,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 67 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 55 automatic and three assisted local-PDF
+At this checkpoint Allfold has 69 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 57 automatic and three assisted local-PDF
 successes, one visible attachment failure, four attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -135,7 +135,7 @@ is a task result but is not a publisher-version success.
 | Actual platform | Papers started / planned | Local PDF observations, including repeats | Conclusion |
 | --- | --- | --- | --- |
 | IEEE Xplore | 2 / 2 | Allfold5 publisher files,1 original failure; Zotero6 publisher files | Current F01 three controls plus F02 paired retest all correct/same-version and Allfold not slower. Old failure retained; no extrapolation beyond these2Papers. |
-| Springer Link | 3 / 3 | Allfold 12 successes; Zotero 11 successes,1 interruption | Three corrected low-load controls: two slower points and one overlap. Cause unresolved; not confirmed. |
+| Springer Link | 3 / 3 | Allfold 14 successes. Zotero 13 successes and 1 interruption. | Earlier F03 controls have two slower points and one overlap. Independent authenticated F05-2 and F04-4 also overlap. Parity remains unconfirmed. |
 | Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
 | Oxford Academic | 3 / 3 | Allfold 1 publisher PDF, 2 related preprints and 1 original access-challenge failure. Zotero 3 interrupted saves and 1 full observation with no parent or PDF. | With both institution accounts verified, F10-2 saved on Allfold in 5.523–5.886 s. Nothing new was seen in Zotero by 600 s. Same-version timing and the remaining Oxford retests are open. |
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
@@ -165,6 +165,8 @@ a longer Allfold wait.
 | Cambridge Core, publisher file after rights were verified again | 1 / 1 | F07-3 | −2.250 to −1.547 | 0.4487–0.5870 | −2.250 to −1.547 |
 | Springer Link, OA, first repeat after Source restart | 1 / 1 | F03-4 | +0.489 to +1.235 | 1.2319–1.7193 | +0.489 to +1.235 |
 | Springer Link, OA, repeat in the same session | 1 / 2 | F03-5, F03-6 | +0.243 to +0.922 | 0.9454–1.4647 | −0.428 to +1.609 |
+| Springer Link, OA, F05 repeat after verified institution access | 1 / 1 | F05-2 | −0.494 to +0.186 | 0.9742–1.0099 | −0.494 to +0.186 |
+| Springer Link, institutional, F04 control with Zotero first | 1 / 1 | F04-4 | −0.723 to +0.100 | 0.9377–1.0090 | −0.723 to +0.100 |
 | Taylor & Francis, institutional | 1 / 1 | F11-2 | −1.470 to −0.820 | 0.7118–0.8293 | −1.470 to −0.820 |
 | Taylor & Francis, OA | 1 / 1 | F13-1 | +0.497 to +1.236 | 1.0972–1.2597 | +0.497 to +1.236 |
 | Wiley, OA, both copies from the publisher site | 1 / 1 | F15-1 | −1.458 to −0.663 | 0.4258–0.6940 | −1.458 to −0.663 |
@@ -810,6 +812,25 @@ copy; actual cache flags and the earlier one-stream4s outlier's phase remain
 unknown. These two declared diagnostic pairs are separate from representative
 scores and do not replace original F03-4/5/6 slower observations.
 
+For F05-2, both Springer pages confirmed institutional access and the OA
+article before the clicks. Allfold took 18.619–18.978 s and Zotero took
+18.792–19.113 s. Each local copy spans 29 pages and 7,842,498 bytes, with
+title, DOI and the item association verified. Allfold used one R001 stream
+and reached the first byte at 1.986 s from its native start. The writer
+closed at 18.760 s. Zotero's parent was first observed well before its
+imported PDF. The wait difference is −0.494 to +0.186 s and the ratio
+0.9742–1.0099. The earlier F03 slower points remain in the record.
+
+F04-4 used the reverse order with actual institutional access shown on both
+Springer pages. The new files match the same 57-page publication and each
+has 5,103,901 bytes. Allfold took 10.889–11.240 s and Zotero took
+11.140–11.612 s. The paired difference is −0.723 to +0.100 s and the ratio
+0.9377–1.0090. Allfold used one R001 stream, with first bytes at 4.358 s
+and the writer closed at 10.938 s after native start. Both products' temporary
+cache state remains unobserved. The two independent current inputs expand the
+Springer measurements while preserving the slower F03 points and original
+load-affected F04 and F05 observations.
+
 IEEE's current F01 control has3paired observations of one Paper: median paired
 difference−3.350 to−2.556s and ratio0.7457–0.7995; raw Allfold waits9.826–11.659s,
 Zotero11.684–13.950s. F02 contributes one independent current paired point.
@@ -1446,6 +1467,18 @@ including the native replacement-navigation regression. Its complete
 [PR Safety run 44237650306](https://github.com/dylaaan-booob/allfold/actions/runs/44237650306/job/134577573323)
 passed all three required steps. This is the production code launched for
 the pending real retest.
+
+The evidence-only head `7ba2285` failed in the isolated body-stream fixture.
+Its held writer check capped the Node stream at three `data` events, even
+though the native response can arrive in smaller fragments. An isolated
+reproduction produced 17 events and 917,389 consumed bytes while the fixture
+server had supplied 5,570,560 bytes. The old assertion failed. With the same
+fragmented input the actual Node reader was paused with unread response data
+and the fixture passed. The normal fixture also passed. A separate mutation
+that resumed the held reader failed the new pause assertion. The fixture
+continues to check the real writer boundary, incomplete read and durable
+completion. The production Session and save code are identical to the versions
+used for the F10, F05 and F04 retests. [Failed PR run](https://github.com/dylaaan-booob/allfold/actions/runs/44451059772/job/135314807811)
 
 ## Native partition-context repair and real retests
 

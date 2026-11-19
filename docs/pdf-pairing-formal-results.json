@@ -10000,6 +10000,222 @@
         "outcome_note": "The Save popup disappeared. No verification window or explicit error was observed. The read-only observer saw no new matching parent or PDF over the full horizon and had no reported outage. No timed failure cause assigned."
       },
       "comparison": "The original Allfold F10-1 challenge-associated failure remains. With actual confirmed institutional sessions on both products and a newer tested production SHA, Allfold now saved the correct publisher body. Zotero provided no comparable local body in this repeat. The before/after path includes separate fresh access preparation, so the difference does not establish a code-only effect."
+    },
+    {
+      "pair_id": "F05-2",
+      "sample_id": "F05",
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "configured_access_method": "Open Access article with independently confirmed institutional access.",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "runtime_id": "ba328e3b5b1752023c08fc250f07d68e",
+      "cohort": "representative_retest",
+      "measurement_stratum": "ordinary_oa_repeat_after_independent_institutional_preparation",
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "difference_seconds": [
+        -0.494,
+        0.186
+      ],
+      "ratio": [
+        0.9742,
+        1.0099
+      ],
+      "allfold": {
+        "result": "automatic_success",
+        "attempt": 2,
+        "click_utc": [
+          "2026-11-19T03:28:28.994Z",
+          "2026-11-19T03:28:29.094Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T03:28:47.713Z",
+          "2026-11-19T03:28:47.972Z"
+        ],
+        "content_check": {
+          "file_exists": true,
+          "size_bytes": 7842498,
+          "pdf_prefix": true,
+          "page_count": 29,
+          "full_title_match": true,
+          "doi_match": true,
+          "journal_label_verified": true,
+          "pdfkit_warning": false
+        },
+        "source": "P1/R001",
+        "source_origin": "https://link.springer.com/",
+        "fallback_used": false,
+        "cleanup_complete": true,
+        "native_phases_ms": {
+          "request": 11,
+          "response": 1799,
+          "first_byte": 1986,
+          "closed_writer": 18760
+        },
+        "human_intervention": false,
+        "wait_seconds": [
+          18.619,
+          18.978
+        ],
+        "file_bytes": 7842498,
+        "body_version": "Same published article, 29 pages",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "Both independent Springer institutional sessions were verified after entering Springer Link via CARSI. Exact original F05 Candidate restored after trial-only PDF deletion. Preparation ended at the article PDF entry.",
+        "diagnostic_locator": "Private 10e5038-f05-2-20261119 archive, measured endpoints and both file checks."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T03:29:29.246Z",
+          "2026-11-19T03:29:29.276Z"
+        ],
+        "parent_observed_utc": [
+          "2026-11-19T03:29:30.502Z",
+          "2026-11-19T03:29:30.958Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T03:29:48.068Z",
+          "2026-11-19T03:29:48.359Z"
+        ],
+        "content_check": {
+          "file_exists": true,
+          "size_bytes": 7842498,
+          "pdf_prefix": true,
+          "page_count": 29,
+          "full_title_match": true,
+          "doi_match": true,
+          "journal_label_verified": true,
+          "pdfkit_warning": false,
+          "link_mode": "imported_url",
+          "verified_collection_membership": true
+        },
+        "translator": "Springer Link",
+        "human_intervention": false,
+        "wait_seconds": [
+          18.792,
+          19.113
+        ],
+        "file_bytes": 7842498,
+        "body_version": "Same published article, 29 pages",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "Fresh task article in the existing Chrome profile. Verified Springer institutional access, exact OA/full-access article, Springer Link translator and dedicated collection. Preparation ended at the visible PDF entry.",
+        "acceptance_collection_membership_verified": true
+      },
+      "comparison": "Correct new publisher PDFs on both. Paired wait intervals overlap. Allfold used one direct P1 request. The earlier Springer slower points and actual cache equivalence remain open."
+    },
+    {
+      "pair_id": "F04-4",
+      "sample_id": "F04",
+      "platform": "Springer Link",
+      "configured_service": "Springer Link",
+      "configured_access_method": "Institutional access visibly confirmed on the actual article in both separate authenticated sessions.",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "runtime_id": "ba328e3b5b1752023c08fc250f07d68e",
+      "cohort": "preselected_platform_control",
+      "measurement_stratum": "independent_publisher_control_after_institution_access_confirmed",
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "difference_seconds": [
+        -0.723,
+        0.1
+      ],
+      "ratio": [
+        0.9377,
+        1.009
+      ],
+      "allfold": {
+        "result": "automatic_success",
+        "attempt": 4,
+        "click_utc": [
+          "2026-11-19T03:39:53.445Z",
+          "2026-11-19T03:39:53.540Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T03:40:04.429Z",
+          "2026-11-19T03:40:04.685Z"
+        ],
+        "content_check": {
+          "file_exists": true,
+          "size_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "journal_label_verified": true,
+          "pdfkit_warning": true
+        },
+        "source": "P1",
+        "rule": "R001",
+        "source_origin": "https://link.springer.com/",
+        "fallback_used": false,
+        "cleanup_complete": true,
+        "native_phases_ms": {
+          "request": 57,
+          "response": 4358,
+          "first_byte": 4358,
+          "closed_writer": 10938,
+          "duration": 10939
+        },
+        "human_intervention": false,
+        "wait_seconds": [
+          10.889,
+          11.24
+        ],
+        "file_bytes": 5103901,
+        "body_version": "Same published article, 57 pages",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "Independently verified institutional Springer access on the target article before timing. Prior trial body deleted through normal UI after exact confirmation and the original Candidate restored before the pair.",
+        "diagnostic_locator": "Private 10e5038-f04-4-20261119 archive, measured endpoints and both file checks."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T03:38:53.992Z",
+          "2026-11-19T03:38:54.013Z"
+        ],
+        "parent_observed_utc": [
+          "2026-11-19T03:38:57.355Z",
+          "2026-11-19T03:38:57.651Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T03:39:05.153Z",
+          "2026-11-19T03:39:05.604Z"
+        ],
+        "content_check": {
+          "file_exists": true,
+          "size_bytes": 5103901,
+          "pdf_prefix": true,
+          "page_count": 57,
+          "full_title_match": true,
+          "doi_match": true,
+          "journal_label_verified": true,
+          "pdfkit_warning": true,
+          "link_mode": "imported_url",
+          "verified_collection_membership": true
+        },
+        "translator": "Springer Link",
+        "human_intervention": false,
+        "wait_seconds": [
+          11.14,
+          11.612
+        ],
+        "file_bytes": 5103901,
+        "body_version": "Same published article, 57 pages",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "New Chrome task article tab with actual Springer institution access and correct Springer Link translator. Normal Save to dedicated collection. PDF viewing left for post-save verification.",
+        "acceptance_collection_membership_verified": true
+      },
+      "comparison": "Both saved new copies of the same Springer publisher PDF. Wait intervals overlap on this reversed-order independent control. Retained earlier F04 observations were collected with the old observer or Debug enabled."
     }
   ],
   "coverage_gaps": [
@@ -10139,7 +10355,7 @@
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
   "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
-  "checkpoint_utc": "2026-11-19T03:19:59.961343Z",
+  "checkpoint_utc": "2026-11-19T03:40:48.629201Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",

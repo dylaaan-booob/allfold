@@ -167,8 +167,15 @@ app.whenReady().then(async()=>{
   vm.runInContext(source.slice(source.indexOf('async function execute(message)'),source.indexOf('async function startPython(')),context);
   // Inject actual writer-boundary errors, without stubbing transfer or completion.
   const {Readable}=require('node:stream'),realFromWeb=Readable.fromWeb;
-  let slowBytes=0,slowReadEvents=0,slowWitness=false,firstSlowWrite=true,slowOperation;
-  Readable.fromWeb=(...args)=>{const readable=realFromWeb(...args);if(faultKind==='slow-writer')readable.on('data',chunk=>{slowBytes+=chunk.length;slowReadEvents++;});return readable;};
+  let slowBytes=0,slowWitness=false,firstSlowWrite=true,slowOperation,slowReader;
+  Readable.fromWeb=(...args)=>{
+    const readable=realFromWeb(...args);
+    if(faultKind==='slow-writer'){
+      slowReader=readable;
+      readable.on('data',chunk=>{slowBytes+=chunk.length;});
+    }
+    return readable;
+  };
   const faults=new Map(),realOpen=fs.openSync,realWrite=fs.write,realFsync=fs.fsync,realClose=fs.close;
   let faultTarget,faultKind;
   const pin=browser.pinPreparedPaperAccess.bind(browser);
@@ -180,8 +187,16 @@ app.whenReady().then(async()=>{
   fs.write=(fd,...args)=>{
     if(faults.get(fd)==='disk-write')return setImmediate(()=>args.at(-1)(Object.assign(Error('fixture ENOSPC'),{code:'ENOSPC'})));
     if(faults.get(fd)==='slow-writer') {
-      if(firstSlowWrite){firstSlowWrite=false;assert.ok(slowReadEvents<=3&&slowBytes<16*1024*1024,'writer must start before full body aggregation');
-        return setTimeout(()=>{assert.ok(slowProduced>slowBytes,'fast producer has supplied unread data');assert.ok(slowReadEvents<=3&&slowBytes<16*1024*1024,'held writer must backpressure the Node reader');slowWitness=true;realWrite(fd,...args);},100);
+      if(firstSlowWrite){
+        firstSlowWrite=false;
+        assert.ok(slowBytes<16*1024*1024,'writer must start before full body aggregation');
+        return setTimeout(()=>{
+          assert.ok(slowProduced>slowBytes,'fast producer has supplied unread data');
+          assert.ok(slowReader?.isPaused(),'held writer must pause the Node reader');
+          assert.ok(slowBytes<16*1024*1024,'held writer must leave some body unread');
+          slowWitness=true;
+          realWrite(fd,...args);
+        },100);
       }
       return setTimeout(()=>realWrite(fd,...args),3);
     }
