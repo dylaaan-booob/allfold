@@ -10113,7 +10113,7 @@
       "sample_id": "F04",
       "platform": "Springer Link",
       "configured_service": "Springer Link",
-      "configured_access_method": "Institutional access visibly confirmed on the actual article in both separate authenticated sessions.",
+      "configured_access_method": "Both products retained their independently chosen CARSI Springer Link sessions from F05-2. Institutional access was confirmed again on the actual F04 article in each product.",
       "order": [
         "zotero",
         "allfold"
@@ -10121,7 +10121,8 @@
       "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
       "runtime_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
       "runtime_id": "ba328e3b5b1752023c08fc250f07d68e",
-      "cohort": "preselected_platform_control",
+      "cohort": "representative_retest",
+      "order_provenance": "The 18 November resumption plan designated F04-4 as a supplemental control with Zotero first before either measured click. The original manifest and prior outcomes are retained.",
       "measurement_stratum": "independent_publisher_control_after_institution_access_confirmed",
       "timing_comparison_eligible": true,
       "comparable_body_version": true,

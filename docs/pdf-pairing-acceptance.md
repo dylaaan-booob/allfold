@@ -764,7 +764,7 @@ were individually checked for title, DOI, version, actual file and association.
 | F19-3 / A→Z | SIAM59-page publisher PDF,access restored in both products; symmetric ePDF diagnostic prewarming | 24.743–25.102s | 25.164–25.734s | −0.991 to−0.062s | 0.9615–0.9975 |
 | F19-4 / Z→A | Same SIAM59-page publisher version,new body/new parent,warm visits | 21.245–21.626s | 3.865–4.507s | +16.738 to+17.761s | 4.7138–5.5953 |
 
-For Springer OA, n=3 paired repeats of **one** Paper: interval median waits are
+For the three Springer OA control repeats of **F03**, interval median waits are
 2.598–2.952s(Allfold) and1.717–2.109s(Zotero), median paired difference
 +0.489 to+1.235s, median ratio1.2319–1.6079. Raw wait ranges are0.597–4.256s
 and0.734–2.960s respectively. Two slower points exceed measurement precision;
@@ -821,9 +821,12 @@ closed at 18.760 s. Zotero's parent was first observed well before its
 imported PDF. The wait difference is −0.494 to +0.186 s and the ratio
 0.9742–1.0099. The earlier F03 slower points remain in the record.
 
-F04-4 used the reverse order with actual institutional access shown on both
-Springer pages. The new files match the same 57-page publication and each
-has 5,103,901 bytes. Allfold took 10.889–11.240 s and Zotero took
+The 18 November resumption plan designated F04-4 as a supplemental repeat in
+the reverse order before either new click. Both products reused their
+independently authenticated Springer Link sessions from F05-2 and verified
+institutional access on the F04 article itself. Both new files contain the same
+57-page published version and each has 5,103,901 bytes. Allfold took
+10.889–11.240 s and Zotero took
 11.140–11.612 s. The paired difference is −0.723 to +0.100 s and the ratio
 0.9377–1.0090. Allfold used one R001 stream, with first bytes at 4.358 s
 and the writer closed at 10.938 s after native start. Both products' temporary
