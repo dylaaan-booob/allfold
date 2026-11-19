@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 83 pair slots including repeats.
+supplemental Papers also have observations, for 84 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -14,9 +14,9 @@ pair and the later Springer F05-2, Springer F04-4 and T&F F11-3 pairs have
 reliable local file and association endpoints. Springer's two slower F03
 points remain. F03-6, F05-2 and F04-4 overlap
 within measurement precision. T&F's two comparable F11 controls favor opposite
-products, and the original F13 comparison favored Zotero. In the
-two F13 repeats, Allfold saved the publisher manuscript and Zotero left a
-parent without a PDF through the observation horizon. The F12 retry and
+products, and the original F13 comparison favored Zotero. The final F11 control
+and both F13 repeats saved the publisher manuscript on Allfold. Zotero left a
+parent without a PDF through the observation horizon in each. The F12 retry and
 Wiley F16 likewise saved the publisher PDF on Allfold and a parent without a PDF
 on Zotero after the exact article's access was reverified. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
@@ -133,9 +133,9 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 76 automatic local-PDF successes, one assisted
+At this checkpoint Allfold has 77 automatic local-PDF successes, one assisted
 success and six failures. Zotero has 58 automatic and three assisted local-PDF
-successes, one visible attachment failure, ten attempts with no local PDF
+successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
@@ -147,7 +147,7 @@ is a task result but is not a publisher-version success.
 | Springer Link | 3 / 3 | Allfold 14 successes. Zotero 13 successes and 1 interruption. | Earlier F03 controls have two slower points and one overlap. Independent authenticated F05-2 and F04-4 also overlap. Parity remains unconfirmed. |
 | Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
 | Oxford Academic | 3 / 3 | Allfold saved three publisher PDFs and two related preprints, with one original access-challenge failure. Zotero had three interrupted saves and three complete observations with no new parent or PDF. | After both institution checks, Allfold saved F10-2 in 5.523–5.886 s, F08-2 in 30.521–30.870 s, and F09-2 in 54.554–54.897 s. F08 and F09 repeated the client-side block and resolved through R020. Same-version timing and the exact blocked-request diagnosis remain open. |
-| Taylor & Francis | 3 / 3 | Allfold saved one related preprint and seven publisher Accepted Manuscripts. Zotero saved three publisher Accepted Manuscripts, had two interrupted parent-only saves, and three parent-only saves through the horizon. | F11-2 favored Allfold and F11-3 favored Zotero. F13-1 favored Zotero. Both F13 repeats and the F12 retry saved on Allfold alone. One preselected F11 control remains planned. Parity unconfirmed. |
+| Taylor & Francis | 3 / 3 | Allfold saved one related preprint and eight publisher Accepted Manuscripts. Zotero saved three publisher Accepted Manuscripts, had two interrupted parent-only saves, and four parent-only saves through the horizon. | F11-2 favored Allfold and F11-3 favored Zotero. F13-1 favored Zotero. F11-4, both F13 repeats and the F12 retry produced the publisher PDF on Allfold and no local PDF on Zotero. Parity remains unconfirmed. |
 | Project Euclid | 2 / 3 | F20 matching related arXiv v4, with in-download Allfold hCaptcha assistance. F22 matching 30-page publisher OA saved automatically by both products. F21 subscription excluded. | F22 favors Allfold. Only one publisher OA pair measured; institutional access is outside the revised scope. |
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
@@ -1378,8 +1378,24 @@ F11-3 Allfold used one P1/R003 stream. It lasted 4.865 s, with the response and
 first byte at 1.847 s and the closed writer at 4.864 s. The locally installed
 `Taylor and Francis+NEJM` translator (2026-11-04 17:14:59) uses the same T&F
 DOI PDF entry after its citation request. The test did not capture Zotero's
-response and first-byte phases or either side's PDF cache flags. A saved-source
-or transport change would require evidence from another comparable control.
+response and first-byte phases or either side's PDF cache flags.
+
+F11-4 reversed the prior control order with Zotero first. Each product reused
+its independently entered CARSI Taylor & Francis session and reverified the
+institution and exact full article. A human completed the Chrome article
+check during preparation, and neither PDF was previewed. Zotero showed
+errors from Taylor and Francis+NEJM and Atypon Journals, then attempted Embedded
+Metadata. The new local parent matched the title and article URL and lacked
+a DOI field. It still had zero children at 625.26 s. The internal terminal
+state is unknown.
+
+After the Zotero observation, Allfold rechecked the exact article's rights
+and automatically saved the 27-page, 1,251,963-byte publisher Accepted
+Manuscript to the restored original Paper. The verified local file and
+association took 3.798–4.149 s. One P1/R003 stream ran for 3.809 s, with first
+byte at 1.825 s and the writer closed at 3.807 s. The completed control adds
+no same-version timing point. The F11-2 and F11-3 timing differences remain
+opposite, and publisher-level timing parity remains unconfirmed.
 
 F12-2 reused the separately prepared T&F sessions and reverified the exact
 institutional article on both. It used Allfold first, reversing F12-1's

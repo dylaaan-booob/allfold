@@ -11115,6 +11115,116 @@
         "diagnostic_locator": "Private F13-3 Zotero bounded click, read-only observer, exact new local parent and attachment horizon check."
       },
       "comparison": "Allfold saved the correct publisher manuscript in both repeated orders. This Zotero attempt created a matching parent without a local attachment through the checked horizon. There is no new same-version wait comparison."
+    },
+    {
+      "pair_id": "F11-4",
+      "sample_id": "F11",
+      "platform": "Taylor & Francis",
+      "configured_service": "Taylor & Francis期刊数据库",
+      "configured_access_method": "Independent CARSI Taylor & Francis sessions were reused after checking exact article access and institutional rights in each product.",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "b7fe32912080237f60c8bf44cb88c7b47f95673e",
+      "frontend_head_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_id": "3da58ad29377c6a700d8db4287ecd0dc",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "cohort": "representative_retest",
+      "preselected_platform_control": true,
+      "order_provenance": "The Zotero-first order was recorded at 07:05:05.646 UTC on 19 November 2026, before both actions, to reverse F11-3.",
+      "measurement_stratum": "institutional_normal_control",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "trial_body_replacement": {
+        "prior_attempt": 3,
+        "prior_bytes": 1251963,
+        "paper_body_absent": true,
+        "prior_file_absent": true,
+        "same_candidate_available": true,
+        "delete_click_utc": [
+          "2026-11-19T07:52:27.715Z",
+          "2026-11-19T07:52:27.811Z"
+        ],
+        "restore_click_utc": [
+          "2026-11-19T07:52:36.307Z",
+          "2026-11-19T07:52:36.395Z"
+        ]
+      },
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T08:05:05.817Z",
+          "2026-11-19T08:05:05.909Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T08:05:09.707Z",
+          "2026-11-19T08:05:09.966Z"
+        ],
+        "wait_seconds": [
+          3.798,
+          4.149
+        ],
+        "attempt": 4,
+        "source": "P1",
+        "rule": "R003",
+        "file_bytes": 1251963,
+        "content_check": {
+          "file_exists": true,
+          "pdf_prefix": true,
+          "page_count": 27,
+          "full_title_match": true,
+          "doi_match": true,
+          "accepted_manuscript_marker": true
+        },
+        "body_version": "Taylor & Francis publisher Accepted Manuscript",
+        "fallback_used": false,
+        "native_stream_complete_utc": "2026-11-19T08:05:09.782Z",
+        "native_duration_ms": 3809,
+        "native_phases_ms": {
+          "request": 30,
+          "response": 1824,
+          "first_byte": 1825,
+          "closed_writer": 3807
+        },
+        "human_intervention": false,
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "Previously selected Taylor & Francis through Allfold's own CARSI session. Exact article and institution were verified before the pair and rechecked after the Zotero horizon. No PDF preview. Original Paper restored without its prior body.",
+        "diagnostic_locator": "Private F11-4 click and durable association intervals, PDF identity verification, and selected native stream trace."
+      },
+      "zotero": {
+        "result": "no_local_pdf_observed_at_horizon",
+        "click_utc": [
+          "2026-11-19T07:54:04.465Z",
+          "2026-11-19T07:54:04.499Z"
+        ],
+        "parent_observed_utc": [
+          "2026-11-19T07:54:10.761Z",
+          "2026-11-19T07:54:11.028Z"
+        ],
+        "translator": "Taylor and Francis+NEJM (toolbar identification)",
+        "translator_chain": [
+          "Taylor and Francis+NEJM error",
+          "Atypon Journals error",
+          "Embedded Metadata attempted"
+        ],
+        "save_popup_observed": true,
+        "parent_identity_by_title_and_article_url": true,
+        "parent_has_doi_field": false,
+        "acceptance_collection_membership_verified": true,
+        "observed_child_count": 0,
+        "checked_utc": "2026-11-19T08:04:29.759Z",
+        "observation_horizon_seconds": 600,
+        "elapsed_minimum_seconds": 625.26,
+        "product_terminal_known": false,
+        "measurement_revision": "keys-v2",
+        "human_intervention": false,
+        "preparation_human_intervention": true,
+        "preparation_human_wait_seconds": null,
+        "ui_preparation": "New exact article in Chrome's independently prepared Taylor & Francis session. The user completed a publisher check before timing. Institution, full article and toolbar translator were reverified. No PDF preview.",
+        "diagnostic_locator": "Private F11-4 bounded click and converter sequence observation, exact new local parent and attachment horizon check."
+      },
+      "comparison": "The third F11 control saved and linked the publisher manuscript in Allfold. Zotero's matching local parent had no attachment through the checked horizon. The previous two comparable F11 timing results still favor opposite products."
     }
   ],
   "coverage_gaps": [
@@ -11151,7 +11261,7 @@
         "F12",
         "F13"
       ],
-      "gap": "The historical F11 preprint, F12 interruption and initial slower F13-1 comparable result remain. F11-2 favored Allfold and F11-3 favored Zotero for matching accepted manuscripts. F12-2, F13-2 and F13-3 saved the correct publisher manuscript in Allfold while Zotero had no local attachment through the horizon. Another F11 control is planned. Parity remains unconfirmed."
+      "gap": "The historical F11 preprint, F12 interruption and initial slower F13-1 comparable result remain. F11-2 favored Allfold and F11-3 favored Zotero for matching accepted manuscripts. F11-4, F12-2, F13-2 and F13-3 saved the correct publisher manuscript in Allfold while Zotero had no local attachment through the horizon. The planned F11 control completed without a new comparable timing point. Parity remains unconfirmed."
     },
     {
       "samples": [
@@ -11254,7 +11364,7 @@
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
   "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
-  "checkpoint_utc": "2026-11-19T07:28:36.386Z",
+  "checkpoint_utc": "2026-11-19T08:06:05.098+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -11712,14 +11822,14 @@
     "current_chrome_resource_state": "Fresh normal CARSI ScienceDirect route led to actual institutional access and recognized F26 article. Post-reboot verification was automatic."
   },
   "ci_checkpoint": {
-    "head_sha": "b40696dcfc37421218807f85d0c0ca451ccdd35f",
+    "head_sha": "704bcfe6f86c7b7fb159ee62bbb07b2ad65eca28",
     "status": "success",
     "event": "pull_request",
-    "run_id": 44476625192,
-    "job_id": 135398631824,
-    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44476625192",
-    "job_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44476625192/job/135398631824",
-    "completed_at_utc": "2026-11-19T07:09:18Z",
+    "run_id": 44480606398,
+    "job_id": 135411626338,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44480606398",
+    "job_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44480606398/job/135411626338",
+    "completed_at_utc": "2026-11-19T07:39:38Z",
     "scope": "Completed PR-associated check at the preceding evidence commit, with all required commands successful. See the PR check for later evidence commits."
   },
   "non_scoring_diagnostics": [
