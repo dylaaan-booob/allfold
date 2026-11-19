@@ -11509,6 +11509,44 @@
       },
       "pdf_actions_in_this_diagnostic": 0,
       "diagnostic_locator": "Private 10e5038-f10-f05-resumed-preparation archive and context."
+    },
+    {
+      "id": "F23-EBSCO-Official-Viewer-Native-Save",
+      "sample_id": "F23",
+      "diagnostic_only": true,
+      "side": "allfold",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "access": "Independent CARSI EBSCO session, Business Source Complete, actual configured institution",
+      "viewer_and_save_as": "Exact record title, DOI, journal and 29-page viewer. One normal Full Text / PDF download and confirmed native Save As.",
+      "save_as_click_utc": [
+        "2026-11-19T03:52:04.377Z",
+        "2026-11-19T03:52:04.671Z"
+      ],
+      "verified_file": {
+        "size_bytes": 2996661,
+        "pages": 29,
+        "doi_match": true,
+        "title_match": true,
+        "journal_match": true,
+        "pdf_prefix": true
+      },
+      "viewer_network_observation": {
+        "normal_reload_requests_for_diagnostic": 1,
+        "method": "GET",
+        "status": 200,
+        "resource_type": "fetch",
+        "content_type": "application/pdf",
+        "host": "content.ebscohost.com",
+        "path": "/cds/retrieve",
+        "resource_bytes": 2996661,
+        "network_transfer_observed": true,
+        "actual_url_supplier_unconfirmed": true,
+        "initiator_evidence": "Application JavaScript and PDF worker call stack. The request that supplies the live URL was not established."
+      },
+      "paper_download_started": false,
+      "paper_association": false,
+      "diagnostic_locator": "Private f23-ebsco-native-saved-file-diagnostic-20261119 verification and local test file."
     }
   ],
   "evidence_join_corrections": [

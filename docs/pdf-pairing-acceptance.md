@@ -672,6 +672,24 @@ Browser diagnostic before any new Paper Download or Zotero Save. The precise
 attachment request, native save completion, and Paper association remain
 unverified. No pairing time or EBSCO source fix is attributed to this diagnostic.
 
+On 19 November, a separate F23 Browser diagnostic completed the normal
+EBSCO viewer download and native Save As. The newly saved publication
+matches the exact title, DOI and journal. It has 29 pages and 2,996,661 bytes,
+the same page count and byte count as the earlier verified Zotero copy. That
+file and its action timestamps are retained privately outside the Workspace.
+The diagnostic establishes access and native file saving from the configured
+EBSCO resource. Ordinary Paper Download still requires a verified source
+handoff and the original Paper association. This run is outside the paired
+results.
+
+One later viewer reload with normal cache settings recorded a GET 200 PDF
+response from `content.ebscohost.com/cds/retrieve`. The response had
+2,996,661 resource bytes and was delivered over the network. DevTools showed
+an application/PDF worker stack as its initiator and did not establish
+which upstream response supplies the request URL. This identifies the actual
+binary host and route in the authorized viewer. A Paper Download adapter
+still needs evidence for the record-to-URL handoff under the saved Service.
+
 The same resumption verified Oxford F10 on both article pages before a new
 PDF action. Allfold's Oxford Service page recovered from a Cloudflare check
 automatically, 21.044 s after the Solver started. Chrome's separate Oxford
