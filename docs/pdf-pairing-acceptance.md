@@ -1978,3 +1978,19 @@ favors Zotero by **44.712–45.456 s**, and the stage timings identify publisher
 verification as the largest cost. The same production revision passed the
 three required commands in the PR-associated run.
 [Safety checks on 148adcc](https://github.com/dylaaan-booob/allfold/actions/runs/44548632128/job/135645967969)
+
+The measured publisher-recovery cost prompted a scheduling change. A
+publisher challenge can defer its Reader while the existing qualified direct
+entries run. If those entries yield no body, the assigned, prepared EBSCO
+source gets one attempt before publisher recovery. If EBSCO is unavailable
+or its transfer fails, the suspended publisher Reader resumes in its original
+turn. Each attempt keeps its own Service scope, and a successful stream still
+publishes to the original Paper.
+
+The isolated discovery cases reproduced publisher recovery running before
+EBSCO and now cover EBSCO success, failed transfer, an unprepared Service and
+a successful earlier direct entry. Standards review found a case where the
+new suspension could reorder two publisher Readers when EBSCO was unavailable.
+The added regression reproduced that ordering and verifies the original turn
+after the correction. Spec review confirmed the Service, Session and Paper
+boundaries. Live timing on this scheduling change remains open.

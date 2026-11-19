@@ -415,6 +415,38 @@ def test_prepared_ebsco_can_save_before_publisher_challenge_recovery(institution
     assert result.candidate.rule_id == ('R073' if institution_body == 'available' else 'GENERIC')
 
 
+def test_unavailable_ebsco_preserves_the_current_publisher_recovery_turn():
+    from types import SimpleNamespace
+
+    publisher = 'https://publisher.example.org'
+    paper = target('publisher.example.org', article_url=publisher+'/article')
+    reader_entry = publisher+'/reader'
+    publisher_pdf = publisher+'/body.pdf'
+    facts = document(paper, (PdfCandidateFact(stage='P4', rule_id='GENERIC', url=reader_entry),
+                             PdfCandidateFact(stage='P4', rule_id='GENERIC', url=publisher_pdf)))
+    seen = []
+
+    class IO:
+        def ebsco_candidates(self, target):
+            return ()
+
+        def reader(self, candidate, response):
+            if candidate.url == reader_entry:
+                pytest.fail('The current publisher recovery retains its turn')
+            return SimpleNamespace(current_candidates=(replace(candidate, recover_access=True),))
+
+    def consume(candidate):
+        seen.append(candidate.url)
+        if candidate.recover_access:
+            return CandidateResult.pdf(transfer_complete=True)
+        access = 'challenge' if candidate.url == publisher_pdf else None
+        return CandidateResult.current(CurrentResponse(candidate.url, 'text/html', access=access))
+
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert seen == [reader_entry, publisher_pdf, publisher_pdf]
+    assert result.status == 'transferred' and result.candidate.url == publisher_pdf
+
+
 def test_qualified_reader_success_needs_no_optional_identifier_query():
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     paper = target('ieeexplore.ieee.org')

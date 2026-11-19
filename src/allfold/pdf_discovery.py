@@ -693,17 +693,22 @@ class PdfDiscovery:
                     if self._state_full:
                         return
                 else:
+                    if self._initial is not None:
+                        continue
                     # Query variants of the same rule/endpoint remain that
                     # source's fallbacks, not a reason to interrupt its Reader.
                     try_prepared = publisher_challenge and not self._ebsco_attempted
                     blocked = {scope, *(item[2] for item in deferred)}
-                    if self._initial is None and (try_prepared or any(self._available_direct(item)
-                            and self._entry_scope(item) not in blocked for item in entries)):
-                        # Use the prepared institution's own source once before
-                        # spending the budget on the blocked publisher Reader.
-                        prepared_before_recovery |= try_prepared
+                    if any(self._available_direct(item) and self._entry_scope(item) not in blocked
+                            for item in entries):
                         deferred.append(active)
-                        active = None
+                    elif try_prepared:
+                        # Preserve this Reader's turn after the EBSCO attempt.
+                        deferred.appendleft(active)
+                    else:
+                        continue
+                    prepared_before_recovery |= try_prepared
+                    active = None
         finally:
             if active is not None:
                 active[0].close()
