@@ -116,7 +116,9 @@ matching title link within that verified search Document. This preserves the
 site's in-page navigation when it uses one. The browser verifies the record's
 DOI and follows its visible PDF Viewer link. The task
 blocks automatic preview requests on its page and captures the Viewer’s PDF
-GET before it is sent. The Session stream owns the body transfer and preserves
+GET before it is sent. Once the Viewer’s main Document passes access checks,
+the source can use its attributable request while other assets finish loading.
+The Session stream owns the body transfer and preserves
 the observed Referer including an absent header. The preparation must have a
 retained EBSCO target. Account, profile and expiring PDF URLs stay out of saved
 source facts. A missing record or unavailable institution access leaves the

@@ -226,7 +226,9 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     if(links.length!==1)throw refusal('contentReady');
     const reader=watchPdf(browser,tab,links[0],options);
     try {
-      const viewer=await visit(links[0]);
+      // The Viewer provides its body request once its main Document is ready.
+      // Unrelated assets can still be loading when that request is observed.
+      const viewer=await visit(links[0],{documentOnly:true});
       await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
       const candidate=reader.matching(viewer);
       if(!candidate)throw refusal('download');

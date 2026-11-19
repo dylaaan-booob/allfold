@@ -55,7 +55,8 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
           +(ebscoMode==='preview'?'<script>Promise.allSettled('+JSON.stringify(previews)
             +'.map(url=>fetch(url))).then(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'));</script>':ebscoMode==='delayed'
             ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>':''),
-      [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?requestPDF:''),
+      [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?requestPDF:'')
+        +(ebscoMode==='record-in-app'?pendingImage:''),
     };
     if(Object.hasOwn(ebscoPages,current.pathname)) {
       response.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});
@@ -372,6 +373,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(inAppRecord.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({inAppRecord,requests}));
     assert.equal(inAppRecord.pdf_clues.landing_url,'https://research.ebsco.com'+recordPath+'?db=licensed');
     assert.ok(!requests.some(request=>request.url===recordPath),'the working record route keeps the search document');
+    assert.ok(requests.some(request=>request.url==='/ebsco-pending-image'),'the verified Viewer can provide the PDF while an unrelated asset is pending');
     ebscoMode='viewer';
     const documentCall=browser.documents.call.bind(browser.documents);
     let readRaced=false;

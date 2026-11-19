@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 88 pair slots including repeats.
+supplemental Papers also have observations, for 89 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -133,8 +133,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 81 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 62 automatic and three assisted local-PDF
+At this checkpoint Allfold has 82 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 63 automatic and three assisted local-PDF
 successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -152,7 +152,7 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
-| EBSCO Business Source Complete | 2 matching records | Zotero saved the publisher and Just Accepted versions. Allfold saved related arXiv versions in four repair retests. F23-3 passed the search and then timed out opening the record. | The licensed version gap persists. There is no comparable timing point. |
+| EBSCO Business Source Complete | 2 matching records | Zotero saved the publisher and Just Accepted versions. Allfold saved related arXiv versions in five repair retests. F23-3 timed out opening the record. F23-4 passed the record and timed out waiting for the Viewer. | The licensed version gap persists. There is no comparable timing point. |
 | ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. On final code, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | Functional retrieval passed on these four repaired paths. The initial F29/F30/F31 same-body pairs took longer on Allfold. The final repair observations lack a measurable same-version Zotero pair, so performance parity remains unconfirmed. |
 
 ### Paired wait by platform and observed access
@@ -1936,3 +1936,24 @@ assertion. The fixture now waits within its existing readiness window for
 Main to select the expected Page after real mouse input. It also waits for
 selection on the return click. The focused macOS fixture passed with both
 checks. [Failed PR run](https://github.com/dylaaan-booob/allfold/actions/runs/44536159519/job/135602012670)
+
+The test and report update at `edbfd6f` passed all three required commands
+in the PR workflow. The production build used in F23-4 was `67e731d`.
+[Full PR check at edbfd6f](https://github.com/dylaaan-booob/allfold/actions/runs/44542831504/job/135625444903)
+
+F23-4 Zotero saved and associated the verified 29-page publisher PDF in
+**34.353–34.702 s**. The paired Allfold Download crossed the institution
+search and verified the record before it opened the Viewer. The record step
+before Viewer navigation took 1.776 s. About 83.227 s after Viewer navigation
+began, the source ended at `page_load` timeout. The trace contains a canceled
+Viewer XHR and a font request that was still pending at cleanup. The relation
+of the canceled XHR to the PDF handoff remains unknown.
+Allfold associated the prior 34-page preprint again in **293.834–294.191 s**.
+The direct publisher verification had also taken 35.443 s before another
+client-side block. The products again saved different editions.
+
+The next Electron regression adds a pending asset to that same Viewer. It
+reproduced a `page_load` timeout after the Viewer GET. It passes when the
+source uses the committed Viewer Document and waits for the attributable PDF
+request within the original deadline. The normal Session stream owns the
+body save. The original live retests remain open.

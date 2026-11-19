@@ -11545,6 +11545,95 @@
         "verified_matching_title_and_doi": true,
         "diagnostic_locator": "Private F23-3 Zotero durable file and parent verification."
       }
+    },
+    {
+      "pair_id": "F23-4",
+      "sample_id": "F23",
+      "cohort": "representative",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "configured_access_method": "CARSI",
+      "production_code_sha": "67e731df094e537b4460389e353f500516ba3402",
+      "runtime_head_sha": "67e731df094e537b4460389e353f500516ba3402",
+      "measurement_stratum": "Renewed and separately verified institution access on the existing EBSCO details. Both normal pages can load automatic embeds. No deliberate PDF preview during preparation.",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "The Allfold Viewer timed out after the verified record. Allfold saved the related preprint and Zotero saved the publication.",
+      "allfold": {
+        "result": "automatic_success",
+        "body_version": "Verified related arXiv preprint 2205.09823v2",
+        "requested_licensed_version_obtained": false,
+        "click_utc": [
+          "2026-11-19T14:33:53.784Z",
+          "2026-11-19T14:33:53.881Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T14:38:47.715Z",
+          "2026-11-19T14:38:47.975Z"
+        ],
+        "wait_seconds": [
+          293.834,
+          294.191
+        ],
+        "file_bytes": 9493072,
+        "page_count": 34,
+        "attempt": 4,
+        "source": "P5",
+        "rule": "OPENALEX",
+        "fallback_used": true,
+        "human_intervention": false,
+        "original_paper_association_verified": true,
+        "native_timing_ms": {
+          "publisher_P4": 2292,
+          "publisher_challenge_recovery": 35443,
+          "R073_through_viewer_timeout_and_cleanup": 96551,
+          "record_open_until_viewer_navigation_start": 1776,
+          "viewer_navigation_start_until_source_settled": 83227,
+          "generic_article_refresh": 44603,
+          "P5_stream": 113200,
+          "P5_first_byte": 1115,
+          "P5_closed_writer": 113200
+        },
+        "native_access_observation": {
+          "EBSCO_search_HTTP": 200,
+          "EBSCO_verified_record_reached": true,
+          "EBSCO_viewer_dispatched": true,
+          "EBSCO_viewer_page_load_terminal": "timeout",
+          "viewer_xhr_error": "ERR_BLOCKED_BY_CLIENT",
+          "viewer_font_pending_on_close": true,
+          "viewer_pdf_handoff_observed": false,
+          "direct_publisher_navigation_error": "ERR_BLOCKED_BY_CLIENT",
+          "direct_publisher_solver_terminal": "not_executed/canceled"
+        },
+        "diagnostic_locator": "Private F23-4 native sequence and original Paper file verification."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "translator": "EBSCO Discovery Layer",
+        "click_utc": [
+          "2026-11-19T14:31:35.805Z",
+          "2026-11-19T14:31:35.855Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T14:32:10.208Z",
+          "2026-11-19T14:32:10.507Z"
+        ],
+        "wait_seconds": [
+          34.353,
+          34.702
+        ],
+        "file_bytes": 2996661,
+        "page_count": 29,
+        "acceptance_collection_membership_verified": true,
+        "human_intervention": false,
+        "body_version": "INFORMS publisher PDF via EBSCO",
+        "verified_matching_title_and_doi": true,
+        "diagnostic_locator": "Private F23-4 Zotero durable file and parent verification."
+      }
     }
   ],
   "coverage_gaps": [
@@ -13113,10 +13202,10 @@
     "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
     "status": "initial_repair_did_not_recover_licensed_bodies",
     "before_pairs": ["F23-1", "F24-1"],
-    "observed_retests": ["F23-2", "F24-2", "F24-3", "F23-3"],
-    "latest_live_revision": "4d9b3428704f566448cd3b0c5469eb5836c455f0",
-    "latest_live_revision_check": "https://github.com/dylaaan-booob/allfold/actions/runs/44525339637/job/135564282577",
-    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened. On 4d8c045 F24-3 reached its search results then failed with document_changed before opening the record, and still saved the preprint. On 4d9b342 F23-3 passed the managed search. Record navigation timed out before the Viewer, then the original Paper received the preprint. Zotero again saved the publisher PDF.",
+    "observed_retests": ["F23-2", "F24-2", "F24-3", "F23-3", "F23-4"],
+    "latest_live_revision": "67e731df094e537b4460389e353f500516ba3402",
+    "latest_full_check_with_same_production_code": "https://github.com/dylaaan-booob/allfold/actions/runs/44542831504/job/135625444903",
+    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened. On 4d8c045 F24-3 reached its search results then failed with document_changed before opening the record, and still saved the preprint. On 4d9b342 F23-3 passed the managed search. Record navigation timed out before the Viewer, then the original Paper received the preprint. Zotero again saved the publisher PDF. F23-4 on 67e731d verified the record and then timed out waiting for the Viewer. Both editions remained the same as in F23-3.",
     "local_validation": {
       "javascript_files": 65,
       "python_passed": 1675,
