@@ -10343,6 +10343,128 @@
         "diagnostic_locator": "Private F13-2 bounded click, translator sequence and local parent/attachment horizon receipts."
       },
       "comparison": "Allfold saved the correct publisher Accepted Manuscript. The connector encountered two translator errors and the fallback produced a local parent without a PDF through the common observation horizon. F13-1 remains the comparable slower point. No new paired difference or ratio."
+    },
+    {
+      "pair_id": "F16-3",
+      "sample_id": "F16",
+      "platform": "Wiley",
+      "configured_service": "WILEY 电子书、电子期刊数据库",
+      "configured_access_method": "Open Access article with independently confirmed Wiley institutional access.",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+      "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "runtime_id": "905debf26383004f101889ecd2ac826b",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "cohort": "representative_retest",
+      "order_provenance": "Zotero first in the 18 November cross-platform resumption plan, before either click.",
+      "measurement_stratum": "ordinary_oa_repeat_after_independent_institutional_preparation",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "trial_body_replacement": {
+        "prior_attempt": 2,
+        "prior_bytes": 2195136,
+        "paper_body_absent": true,
+        "prior_file_absent": true,
+        "same_candidate_available": true,
+        "delete_click_utc": [
+          "2026-11-19T05:11:20.055Z",
+          "2026-11-19T05:11:20.143Z"
+        ],
+        "restore_click_utc": [
+          "2026-11-19T05:11:24.763Z",
+          "2026-11-19T05:11:24.869Z"
+        ]
+      },
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T05:23:25.400Z",
+          "2026-11-19T05:23:25.495Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T05:23:32.574Z",
+          "2026-11-19T05:23:32.834Z"
+        ],
+        "wait_seconds": [
+          7.079,
+          7.434
+        ],
+        "attempt": 3,
+        "rule": "R002",
+        "source": "P1",
+        "file_bytes": 2195129,
+        "content_check": {
+          "file_exists": true,
+          "pdf_prefix": true,
+          "page_count": 15,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": true,
+            "Accepted Manuscript": false,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "body_version": "Publisher Wiley open-access PDF, 15 pages",
+        "fallback_used": false,
+        "native_stream_complete_utc": "2026-11-19T05:23:32.686Z",
+        "native_duration_ms": 7125,
+        "native_phases_ms": {
+          "request": 45,
+          "response": 2228,
+          "first_byte": 2229,
+          "closed_writer": 7123
+        },
+        "human_intervention": false,
+        "runtime_head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+        "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+        "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "After normal Allfold restart, the separate CARSI portal entered Wiley. The existing product handled the publisher challenge before the exact article displayed the configured institution, full article and PDF entry. No PDF preview. Restored the original Candidate after removing the preceding trial body.",
+        "diagnostic_locator": "Private 10e5038-f16-3-20261119 archive, native preparation and original Paper file verification."
+      },
+      "zotero": {
+        "result": "no_local_pdf_observed_at_horizon",
+        "click_utc": [
+          "2026-11-19T05:12:01.007Z",
+          "2026-11-19T05:12:01.033Z"
+        ],
+        "parent_observed_utc": [
+          "2026-11-19T05:12:01.643Z",
+          "2026-11-19T05:12:01.910Z"
+        ],
+        "translator": "Wiley Online Library",
+        "translator_chain": [
+          {
+            "name": "Wiley Online Library",
+            "outcome": "translation_error_visible"
+          },
+          {
+            "name": "Embedded Metadata",
+            "outcome": "local_parent_only_observed"
+          }
+        ],
+        "parent_doi_and_collection_verified": true,
+        "observed_child_count": 0,
+        "checked_utc": "2026-11-19T05:22:32.125681+00:00",
+        "observation_horizon_seconds": 600,
+        "elapsed_minimum_seconds": 631.093,
+        "product_terminal_known": false,
+        "measurement_revision": "keys-v2",
+        "human_intervention": false,
+        "preparation_human_intervention": true,
+        "preparation_human_wait_seconds": null,
+        "ui_preparation": "The user renewed the independent Chrome CARSI session. It entered Wiley and showed the configured institution, exact article and PDF entry. No PDF preview. The installed save action chose the dedicated acceptance collection. The popup listed a PDF without a verified local attachment.",
+        "diagnostic_locator": "Private F16-3 bounded click, translator observation and exact local parent/attachment horizon receipts."
+      },
+      "comparison": "Correct Wiley publisher PDF verified on the original Allfold Paper. The normal Zotero fallback created a correct local parent without a PDF through the common horizon. No paired difference or ratio."
     }
   ],
   "coverage_gaps": [
@@ -10482,7 +10604,7 @@
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
   "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
-  "checkpoint_utc": "2026-11-19T04:38:29.601645+00:00",
+  "checkpoint_utc": "2026-11-19T05:24:44.199413+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -10690,6 +10812,17 @@
       "observation_note": "User signed back into CARSI in Chrome and reported Allfold not running. Prior source port was free. Rebuilt UI and verified the real source checkout, native instance and local API. Started Zotero Desktop with the same local collection. Read-only observation resumed before any new measured actions.",
       "measurement_revision": "keys-v2",
       "observer_restarted_at_utc": "2026-11-18T07:18:19.155Z"
+    },
+    {
+      "started_at_utc": "2026-11-19T04:58:13.431Z",
+      "ready_at_utc": "2026-11-19T04:58:14.156Z",
+      "runtime_id": "905debf26383004f101889ecd2ac826b",
+      "head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "rebuilt_ui": false,
+      "observation_note": "Normal restart after a diagnostics-only bridge interruption. Old port free; same configuration and Workspace. Existing built frontend is from identical production source. Both independent Wiley article entitlements were checked again.",
+      "measurement_revision": "keys-v2"
     }
   ],
   "frontend_head_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",

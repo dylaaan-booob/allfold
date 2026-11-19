@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 77 pair slots including repeats.
+supplemental Papers also have observations, for 78 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -14,7 +14,8 @@ pair and the new Springer F05-2 and F04-4 pairs have reliable local file and
 association endpoints. Springer's two slower F03 points remain. F03-6, F05-2 and F04-4 overlap
 within measurement precision. T&F has one comparable slower point. In the
 exchanged-order F13 repeat, Allfold saved the publisher manuscript and Zotero
-left a parent without a PDF through the observation horizon. The measured
+left a parent without a PDF through the observation horizon. Wiley F16 repeated
+that outcome after both sides reverified the exact article's access. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. In the prepared Oxford F10 repeat,
 Allfold saved the correct publisher PDF and Zotero produced no new local PDF or
@@ -126,9 +127,9 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 70 automatic local-PDF successes, one assisted
+At this checkpoint Allfold has 71 automatic local-PDF successes, one assisted
 success and six failures. Zotero has 57 automatic and three assisted local-PDF
-successes, one visible attachment failure, five attempts with no local PDF
+successes, one visible attachment failure, six attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
@@ -142,7 +143,7 @@ is a task result but is not a publisher-version success.
 | Oxford Academic | 3 / 3 | Allfold 1 publisher PDF, 2 related preprints and 1 original access-challenge failure. Zotero 3 interrupted saves and 1 full observation with no parent or PDF. | With both institution accounts verified, F10-2 saved on Allfold in 5.523–5.886 s. Nothing new was seen in Zotero by 600 s. Same-version timing and the remaining Oxford retests are open. |
 | Taylor & Francis | 3 / 3 | Allfold saved one related preprint and four publisher Accepted Manuscripts. Zotero saved two publisher Accepted Manuscripts, had two interrupted parent-only saves, and one parent-only save through the horizon. | Same-version F11 retry favored Allfold. First F13 favored Zotero. Exchanged-order F13 saved on Allfold only. Remaining controls, F13 repeat and F12 retry are open. Parity unconfirmed. |
 | Project Euclid | 2 / 3 | F20 matching related arXiv v4, with in-download Allfold hCaptcha assistance. F22 matching 30-page publisher OA saved automatically by both products. F21 subscription excluded. | F22 favors Allfold. Only one publisher OA pair measured; institutional access is outside the revised scope. |
-| Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
+| Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
 | EBSCO Business Source Complete | 2 matching records | Both products independently found the F23 and F24 PDF entries. Zotero saved the publisher and Just Accepted versions. Allfold's Download used verified related arXiv versions. | Allfold's configured EBSCO discovery gap repeated on two Papers. No same-version transfer comparison. |
@@ -945,6 +946,22 @@ restoredOff05:40:47UTC and only that diagnostic tab closed05:41:17UTC. Its paren
 M5I37TSV initially went to MyLibrary and was normally added to the trial collection
 05:43:01UTC; that membership time is not an attachment endpoint. Sensitive raw
 Debug was not copied/submitted. Both original unknown saves remain unchanged.
+
+F16-3 used the preplanned Zotero-first order after both sessions independently
+entered Wiley from CARSI and displayed the institution, exact article, and PDF
+entry. Allfold had restarted with the same production code after the diagnostic
+interruption. Its product handled a Wiley verification during preparation. The
+Chrome portal required the user's login before publisher access was reverified.
+Neither leg preopened the PDF.
+
+The normal Zotero action reported a Wiley Translator error and tried Embedded
+Metadata. A correct new parent, including its DOI, appeared in the acceptance
+collection. The popup listed a PDF, and the parent still had zero children at
+the 631.093 s check. The observation horizon was 600 s, and internal terminal
+time is unknown. Allfold then saved and associated the correct 15-page,
+2,195,129-byte Wiley PDF in 7.079–7.434 s. One P1/R002 stream took 7.125 s, with
+headers at 2.228 s, first byte at 2.229 s, and the closed writer at 7.123 s. No
+comparable time difference or ratio is available for this repeat.
 
 F17 saved verified related arxiv2409.18415v3,83pages/1226997bytes,in17.252–17.674s;
 all3authors/title and the Paper's explicit relation were checked. Its default
