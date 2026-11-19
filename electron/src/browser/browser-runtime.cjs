@@ -791,7 +791,7 @@ class BrowserRuntime {
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
       const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,
-        onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
+        onWaiting:(waiting,diagnostic,document)=>{if(waiting)onWaiting?.(diagnostic,document);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;
     } catch(error) {

@@ -353,7 +353,7 @@ class _BodyDiscoveryIO:
         if parsed is None or not parsed.current_candidates:
             raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
                 service_id=request.service_id)
-        return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url, referer=item.referer, access=authority)
+        return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url, referer=item.referer, access=authority, referer_observed=True)
             for item in parsed.current_candidates
             if item.stage == 'P4' and item.rule_id == 'R073' and item.action is None and item.reader_kind is None)
 

@@ -14,10 +14,10 @@ function boundedResult(action,value) {
   if(!value || typeof value!=='object')invalid();
   if(action==='pdf')return {clues:boundedPdfClues(value.clues)};
   if(action==='ebsco') {
-    const {ready,urls,doi,pdf}=value;
-    if(![ready,doi,pdf].every(item=>typeof item==='boolean') || !Array.isArray(urls) || urls.length>2
+    const {ready,urls,doi}=value;
+    if(![ready,doi].every(item=>typeof item==='boolean') || !Array.isArray(urls) || urls.length>2
       || urls.some(url=>!publicClueURL(url)))invalid();
-    return {ready,urls,doi,pdf};
+    return {ready,urls,doi};
   }
   if(action==='extract') {
     let content,clues;

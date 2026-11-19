@@ -13,7 +13,7 @@ from allfold.application.body_downloads import submit_body_download, BodyResult
 from allfold.models import ExternalIds
 from allfold.pdf_rules import PdfTarget, PdfCandidate
 from allfold.persistence.paper_repository import PaperRepository, PaperMetadata
-from safety_config_helpers import current_mapping_document
+from safety_config_helpers import A, current_mapping_document
 
 
 class Socket:
@@ -288,6 +288,47 @@ async def main():
         assert [value.status for value in values]==['cancelled','completed']
         assert not host.active
         print(json.dumps({'type':'fixture_pair','statuses':[value.status for value in values]}),flush=True)
+
+        # Same public operation, through an owned institution Browser record
+        # and the selected Session, with an independent preprint available.
+        saved = load_user_state(config)
+        service = service.model_copy(update={'name': 'EBSCO',
+            'access_url': 'https://research.ebsco.com/c/test-profile/search'})
+        compare_write_user_state(config, replace(saved.state, access_services=(service,)), saved.revision)
+        login.start(config, manual_service_id=service.id)
+        await asyncio.to_thread(login.join)
+        access = login.snapshot(BrowserServiceSnapshot.read(config))['services'][0]['preparation']
+        assert access.status == 'Opened' and access.page_id, access
+        doi = '10.5555/licensed'
+        ebsco_facts = (
+            PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
+                observed_at=datetime.now(timezone.utc), target_doi=doi, landing_url=origin+'/fixture-publisher',
+                candidates=(PdfCandidateFact(stage='P4', rule_id='GENERIC', url=origin+'/fixture-publisher-pdf'),)),
+            PdfDiscoveryFacts(source='openalex', capability='openalex-locations', status='complete',
+                observed_at=datetime.now(timezone.utc), target_doi=doi,
+                candidates=(PdfCandidateFact(stage='P5', rule_id='OPENALEX', url=origin+'/fixture-preprint'),)),
+        )
+        with PaperRepository.open(workspace) as repo:
+            licensed = repo.create_or_match(repo.workspace_id, direct_ids=ExternalIds(doi=doi),
+                metadata=PaperMetadata(title='Licensed fixture', journal='Biometrics', publication_type='journal',
+                    journal_issns=(A,), discovery_facts=ebsco_facts)).paper
+        state = (await client.get('/api/ui-next/workspace')).json()
+        licensed_projection = next(paper for group in state['subjects'] for journal in group['journals']
+            for paper in journal['papers'] if paper['id'] == str(licensed.id))
+        accepted = await client.post(f'/api/papers/{licensed.id}/body/download', json=dict(
+            csrf_token=state['csrf_token'], workspace_id=str(licensed.workspace_id),
+            qualification=licensed_projection['download']['qualification']))
+        assert accepted.status_code == 200, accepted.text
+        with current.paper_gate():
+            licensed_task = current._reservations[licensed.id]
+        assert (await asyncio.to_thread(licensed_task.future.result, 8)).status == 'completed'
+        with PaperRepository.open(workspace) as repo:
+            licensed = repo.get(licensed.id)
+        assert licensed.body.pdf_source == 'P4' and licensed.download.status == 'completed', licensed.download
+        assert licensed.body.source_url == 'https://content.ebscohost.com/'
+        assert (workspace / licensed.body.relative_path).read_bytes() == b'%PDF-licensed-ebsco'
+        print(json.dumps({'type':'fixture_ebsco','status':'completed','paper':str(licensed.id)}),flush=True)
+
         with PaperRepository.open(workspace) as repo:
             paper=repo.create_or_match(repo.workspace_id,direct_ids=ExternalIds(doi='10.5555/shutdown'),metadata=PaperMetadata(title='Shutdown')).paper
         target=PdfTarget(str(paper.id),doi='10.5555/shutdown',direct_identities=tuple((i.namespace,i.value) for i in paper.identities))

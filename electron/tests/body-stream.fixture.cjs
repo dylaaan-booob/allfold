@@ -7,22 +7,49 @@ const {gzipSync}=require('node:zlib');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {executeBodyStream}=require('../src/workflows/body-stream.cjs');
 const {executeLocalBody}=require('../src/workflows/local-body.cjs');
+const {visitManualService}=require('../src/workflows/browser-operations.cjs');
 const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
 const {invocationRecovery}=require('../src/shared/recovery-summary.cjs');
 const profile=process.argv[2],root=path.resolve(__dirname,'../..');
 app.setPath('userData',profile);app.setPath('sessionData',profile);
-app.commandLine.appendSwitch('host-resolver-rules','MAP *.example.org 127.0.0.1, MAP academic.oup.com 127.0.0.1, MAP watermark02.silverchair.com 127.0.0.1, MAP ieeexplore.ieee.org 127.0.0.1');
 app.commandLine.appendSwitch('no-proxy-server');app.on('window-all-closed',()=>{});
 const failFixture=error=>{console.error(error);app.exit(1);};
 // The delayed writer assertions can throw outside the fixture promise.
 // Report them to the runner instead of opening Electron's error dialog.
 process.once('uncaughtException',failFixture);
-app.whenReady().then(async()=>{
+(async()=>{
   const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],solves=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0,canceledSolver=false;payload.write('%PDF-');
+  const ebscoHosts=['research.ebsco.com','content.ebscohost.com'];
+  const ebscoPath='/c/test-profile',licensedPDF='https://content.ebscohost.com/cds/retrieve?Signature=A%2FB';
+  const licensedBytes=Buffer.from('%PDF-licensed-ebsco');
   const serve=async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     const input=new URL(req.url,origin);
+    if(req.headers.host==='doi.org') {
+      if(decodeURIComponent(input.pathname)==='/10.5555/licensed')res.writeHead(302,{location:origin+'/fixture-publisher'});
+      else res.writeHead(404);
+      res.end();return;
+    }
+    if(ebscoHosts.includes(req.headers.host)) {
+      if(req.headers.host==='content.ebscohost.com' && req.url==='/cds/retrieve?Signature=A%2FB') {
+        res.writeHead(200,{'content-type':'application/pdf'});res.end(licensedBytes);return;
+      }
+      const pages={
+        [ebscoPath+'/search']:'<main><h1>Licensed library</h1><p>All databases</p></main>',
+        [ebscoPath+'/search/results']:'<main><h1>Search results</h1><h2><a href="'+ebscoPath+'/search/details/licensed">Licensed fixture</a></h2></main>',
+        [ebscoPath+'/search/details/licensed']:'<main><h1>Licensed fixture</h1><p>DOI: 10.5555/licensed</p><a href="'+ebscoPath+'/viewer/pdf/licensed">View PDF</a></main>',
+        [ebscoPath+'/viewer/pdf/licensed']:'<meta name="referrer" content="no-referrer"><main><h1>Licensed full text</h1><p>Institution viewer</p></main><script>fetch('+JSON.stringify(licensedPDF)+').catch(()=>{});</script>',
+      };
+      res.writeHead(pages[input.pathname]?200:404,{'content-type':'text/html','cache-control':'no-store'});
+      res.end(pages[input.pathname] || '<main><h1>Missing page</h1></main>');return;
+    }
+    if(input.pathname==='/fixture-publisher') {
+      res.writeHead(200,{'content-type':'text/html'});res.end('<head><meta name="citation_doi" content="10.5555/licensed"></head><main><h1>Licensed fixture</h1><p>Publisher article</p></main>');return;
+    }
+    if(input.pathname==='/fixture-publisher-pdf') {
+      res.writeHead(403,{'content-type':'text/html'});res.end('<title>Access denied</title>');return;
+    }
     if(input.pathname==='/cookie-return') {
       res.writeHead(302,{location:origin+'/cookie-progress'+input.search});res.end();return;
     }
@@ -100,6 +127,11 @@ app.whenReady().then(async()=>{
   const secureServer=https.createServer({cert,key:fs.readFileSync(path.join(root,'tests/fixtures/http/localhost-key.pem'))},serve);
   await new Promise(resolve=>secureServer.listen(0,'127.0.0.1',resolve));
   const secureOrigin=`https://pdf.example.org:${secureServer.address().port}`;
+  app.commandLine.appendSwitch('host-resolver-rules',[
+    'MAP *.example.org 127.0.0.1','MAP academic.oup.com 127.0.0.1','MAP watermark02.silverchair.com 127.0.0.1',
+    'MAP ieeexplore.ieee.org 127.0.0.1',...['doi.org',...ebscoHosts].map(host=>'MAP '+host+' 127.0.0.1:'+secureServer.address().port),
+  ].join(', '));
+  await app.whenReady();
   const window=new BrowserWindow({show:false,webPreferences:{sandbox:true}}),browser=new BrowserRuntime({hostWindow:window,
     solveCloudflare:async(tab,{signal})=>{
       const contents=tab.view.webContents;
@@ -115,7 +147,7 @@ app.whenReady().then(async()=>{
     }});
   browser.bodyTargetResolver=async host=>{resolved.push(host);return [{address:host==='private.example.org'||host==='watermark02.silverchair.com'&&faultKind==='blocked.pdf'?'127.0.0.1':'93.184.216.34'}];};
   await browser.ready;
-  browser.partition.setCertificateVerifyProc((request,callback)=>callback(request.hostname==='pdf.example.org'
+  browser.partition.setCertificateVerifyProc((request,callback)=>callback((['doi.org','pdf.example.org',...ebscoHosts].includes(request.hostname))
     && new X509Certificate(request.certificate.data).fingerprint256===fingerprint?0:-3));
   const fetch=browser.sessionEvents.fetch.bind(browser.sessionEvents);
   browser.sessionEvents.fetch=async(url,options,context)=>{
@@ -145,9 +177,10 @@ app.whenReady().then(async()=>{
   const shell={openPath:async filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('open');return ++opened===2?'synthetic no default application':'';},
     showItemInFolder:filename=>{assert.ok(fs.statSync(filename).isFile());shellCalls.push('locate');}};
   const streamTimings=[];
+  let ebscoCase;
   const context=vm.createContext({browser,send,executeBodyStream:(browser,data,options)=>executeBodyStream(browser,data,{...options,observe:timing=>{
     options.observe(timing);throw Error('synthetic observation failure');
-  }}),executeLocalBody,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
+  }}),executeLocalBody,visitManualService,shell,validateRecovery,operations:new Map(),exiting:false,AbortController,WebSocket,
     CONTROL_ACTIONS:new Set(['cas_credentials','diagnostics_reset']),RESOURCE_ACTIONS:new Set(['invalidate_access','release_workflow_pages']),
     BrowserFailure,diagnosticFor,invocationRecovery,Date,Number,Promise,
     readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
@@ -235,6 +268,7 @@ app.whenReady().then(async()=>{
       else if(message.type==='verify_recovery_authority_result')settleRecoveryAuthority(context.operations.get(message.id),message);
       else if(message.type==='fixture_case'){cases.push(message);console.log('BODY CASE '+message.path+' '+message.status);}
       else if(message.type==='fixture_public')publicCases.push(message);
+      else if(message.type==='fixture_ebsco')ebscoCase=message;
       else if(message.type==='fixture_local')localCases.push(message);
       else if(message.type==='fixture_pair')pairs.push(message);
       else if(message.type==='fixture_drain')drains.push(message);
@@ -286,8 +320,21 @@ app.whenReady().then(async()=>{
     assert.equal(requests.filter(r=>r.url.startsWith('/cookie-return')).length,2);
     assert.equal(requests.filter(r=>r.url==='/private-leak'||r.url==='/unsafe-leak').length,0);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
+    assert.equal(ebscoCase?.status,'completed');
+    assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',ebscoCase.paper+'.pdf')),licensedBytes);
+    const deniedPublisher=requests.filter(r=>r.url==='/fixture-publisher-pdf');
+    assert.equal(deniedPublisher.length,1);
+    assert.equal(deniedPublisher[0].headers.referer,origin+'/fixture-publisher');
+    assert.equal(requests.filter(r=>r.url==='/fixture-preprint').length,0);
+    const licensedRequests=requests.filter(r=>r.headers.host==='content.ebscohost.com');
+    assert.equal(licensedRequests.length,1,'the managed stream sends the sole licensed PDF request');
+    assert.equal(licensedRequests[0].url,'/cds/retrieve?Signature=A%2FB');
+    assert.equal(licensedRequests[0].headers.referer,undefined);
+    const retained=[...browser.tabs.values()];assert.equal(retained.length,1,'only the prepared target is retained');
+    await browser.closePage(retained[0]);
     assert.equal(browser.tabs.size,0,'all temporary pages drain before body completion');
     for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);
+      if(['doi.org',...ebscoHosts].includes(request.headers.host) || ['/fixture-publisher','/fixture-publisher-pdf'].includes(request.url))continue;
       if(request.url.startsWith('/cookie-progress'))continue; // Exact evolving values checked above.
       if(protectedRequests.includes(request) || ['/fixture-check','/unrelated-article'].includes(request.url))continue; // Browser challenge sequence checked above.
       const cookie=request.headers.host.startsWith('academic.')?'publisher_only':request.headers.host.startsWith('watermark02.')?'cdn_only':request.headers.host.startsWith('ieeexplore.')?'reader_only':request.headers.host.startsWith('other.')?'fallback_only':'fixture_session';
@@ -303,4 +350,4 @@ app.whenReady().then(async()=>{
     console.log('BODY STREAM PASS '+JSON.stringify(cases.map(({path,status})=>({path,status}))));
   }finally {Readable.fromWeb=realFromWeb;fs.openSync=realOpen;fs.write=realWrite;fs.fsync=realFsync;fs.close=realClose;await browser.close();window.destroy();
     await Promise.all([server,secureServer].map(listener=>{listener.closeAllConnections();return new Promise(resolve=>listener.close(resolve));}));}
-}).then(()=>app.exit(0)).catch(failFixture);
+})().then(()=>app.exit(0)).catch(failFixture);

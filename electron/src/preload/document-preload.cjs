@@ -7,11 +7,11 @@ const operations={
   ebsco(args) {
     const titleKey=value=>value.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
     const sameTitle=node=>titleKey(node.textContent || '')===titleKey(args.title || '');
-    const links=[...document.querySelectorAll('a[href]')];
-    const empty={ready:true,urls:[],doi:false,pdf:false};
+    const links=[...document.querySelectorAll('a[href]')].filter(node=>node.checkVisibility({checkVisibilityCSS:true}));
+    const empty={ready:true,urls:[],doi:false};
     if(args.mode==='profile') {
-      const urls=links.filter(node=>/^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(node.textContent.trim()))
-        .map(node=>node.href).slice(0,2);
+      const urls=[...new Set(links.filter(node=>/^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(node.textContent.trim()))
+        .map(node=>node.href))].slice(0,2);
       return {...empty,urls};
     }
     const main=document.querySelector('main,[role="main"]') || document.body;
@@ -37,10 +37,12 @@ const operations={
         identifiers.add(match[1].toLowerCase());
     }
     const doi=ready && identifiers.size===1 && identifiers.has(wanted);
-    const pdf=ready && [...main.querySelectorAll('a,button,[role="button"]')].some(node=>
+    const urls=ready ? [...new Set(links.filter(node=>main.contains(node) &&
       /^(?:PDF(?: full text)?|(?:view|download|full[ -]text)\s+PDF|access now\s*\(PDF\)|立即获取\s*[(（]PDF[)）]|(?:查看|下载)\s*PDF|PDF\s*全文)$/i
-        .test((node.getAttribute('aria-label') || node.textContent).trim().replace(/\s+/g,' ')));
-    return {...empty,ready,doi,pdf};
+        .test((node.getAttribute('aria-label') || node.textContent).trim().replace(/\s+/g,' ')))
+      .filter(node=>URL.canParse(node.href) && /\/viewer\/pdf\/[^/]+$/.test(new URL(node.href).pathname))
+      .map(node=>node.href))].slice(0,2):[];
+    return {ready:ready && identifiers.size>0,urls,doi};
   },
   access() {
     const title=document.title;

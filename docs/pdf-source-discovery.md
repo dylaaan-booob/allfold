@@ -2155,7 +2155,7 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 #### R073 · EBSCOhost 馆藏正文
 
-期刊已分配给 EBSCO Service，且该 Service 有保留的授权目标时，在出版社候选之后、OpenAlex 之前查找馆藏正文。以实际机构入口确认检索 profile，用 Paper DOI 检索，并在唯一匹配记录上核验标题、DOI 和 PDF 入口。由普通 PDF Viewer 发出的正文 GET 交给同一 Session 的下载流，沿用原 Paper 的文件落盘及关联流程。
+期刊已分配给 EBSCO Service，且该 Service 有保留的授权目标时，在出版社候选之后、OpenAlex 之前查找馆藏正文。以实际机构入口确认检索 profile，用 Paper DOI 检索，并在唯一匹配记录上核验标题、DOI 和 PDF 入口。记录页自动预览或页面实际提供的 Viewer 发出正文 GET 后，任务从当前文档捕获请求并在发送前交给同一 Session 的下载流。流式下载沿用请求的 Referer 和原 Paper 的文件落盘及关联流程。
 
 查询、记录和临时正文地址只在本次任务中使用。缺少匹配记录或实际权限时仍可使用其他已限定来源。机构 profile 检索路径和链接的访问要求有 EBSCO 官方说明。 [S143](#s143) · [S144](#s144)
 

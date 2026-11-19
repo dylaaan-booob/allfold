@@ -11,17 +11,29 @@ const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessi
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 (async()=>{
-  let page='',requests=[],delayedPDF,challengeResponse=false,ebscoDOI='10.5555/fixture';
+  let page='',requests=[],delayedPDF,challengeResponse=false,ebscoDOI='10.5555/fixture',ebscoMode='viewer';
   const ebscoProfile='https://research.ebsco.com/c/test-profile';
   const ebscoPdf='https://content.ebscohost.com/cds/retrieve?Signature=A%2FB';
+  const recordPath='/c/test-profile/search/details/record';
+  const viewerPath='/c/test-profile/viewer/pdf/record',viewerQuery='?intent=download%20now';
+  const requestPDF='<script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>';
   const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
     const current=new URL(request.url,'http://fixture.invalid');
+    const ebscoHub='<a href="'+ebscoProfile+'/search">EBSCO一站式检索</a>';
+    const recordMetadata='<p>DOI: '+ebscoDOI+'</p><a href="'+viewerPath+viewerQuery+'">View PDF</a>';
+    if(current.pathname===recordPath && ebscoMode==='unsafe') {
+      response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
+    }
     const ebscoPages={
-      '/Community.aspx':'<main><h1>Institution library</h1><a href="'+ebscoProfile+'/search">EBSCO一站式检索</a></main>',
+      '/Community.aspx':'<main><h1>Institution library</h1>'+ebscoHub+ebscoHub+'</main>',
       '/c/test-profile/search':'<main><h1>Search the library</h1><p>All databases</p></main>',
       '/c/test-profile/search/results':'<main><h1>Search results</h1><h2><a href="/c/test-profile/search/details/record">Licensed fixture</a></h2></main>',
-      '/c/test-profile/search/details/record':'<main><h1>Licensed fixture</h1><p>DOI: '+ebscoDOI+'</p><a href="/c/test-profile/viewer/pdf/record">View PDF</a></main>',
-      '/c/test-profile/viewer/pdf/record':'<main><h1>Full text</h1><p>Institution viewer</p></main><script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>',
+      [recordPath]:ebscoMode==='expired'
+        ? '<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>'
+        : '<main><h1>Licensed fixture</h1>'+(ebscoMode==='delayed'?'' :recordMetadata)+'</main>'
+          +(ebscoMode==='preview'?requestPDF:ebscoMode==='delayed'
+            ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>':''),
+      [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?requestPDF:''),
     };
     if(Object.hasOwn(ebscoPages,current.pathname)) {
       response.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});
@@ -325,12 +337,29 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(found.pdf_clues.candidates[0].url,ebscoPdf);
     assert.equal(found.pdf_clues.candidates[0].rule_id,'R073');
     assert.ok(requests.some(request=>request.url==='/c/test-profile/search/results?q=10.5555%2Ffixture'));
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery),'keep the actual viewer action and query');
     assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve')),'the body stream owns the first sent PDF GET');
     assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='delayed';
+    const delayed=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(delayed.pdf_clues?.candidates[0]?.url,ebscoPdf,'title-only intermediate state must not stop extraction');
+    ebscoMode='preview';
+    const preview=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(preview.outcome,'retrieved',JSON.stringify({preview,requests}));
+    assert.equal(preview.pdf_clues.candidates[0].url,ebscoPdf);
+    assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve') || request.url.includes('/viewer/pdf/')));
     ebscoDOI='10.5555/different';
     const wrong=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(wrong.diagnostic && !wrong.pdf_clues,'the actual licensed record must match the Paper DOI');
     assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/')));
+    ebscoMode='expired';
+    const expired=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(expired.diagnostic?.code,'content_access_blocked',JSON.stringify(expired));
+    assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/')));
+    ebscoMode='unsafe';
+    const unsafeEbsco=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(unsafeEbsco.diagnostic && !unsafeEbsco.pdf_clues);
+    assert.ok(!requests.some(request=>request.url==='/ebsco-forbidden'),'private redirect is refused before sending');
     await browser.closePage(retained);
     console.log('PDF CLUES PASS');
   } finally {await browser.close();host.destroy();await Promise.all([server,secureServer].map(listener=>new Promise(resolve=>listener.close(resolve))));}

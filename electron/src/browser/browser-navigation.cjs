@@ -370,7 +370,7 @@ async function waitForPage(observe,{signal,deadline=Infinity,onWaiting,stage='na
     }
     if(!result.loading && !result.waiting && Number.isInteger(result.doc.status))
       throw new BrowserFailure('navigation','http_error',result.doc.status);
-    if(result.waiting)onWaiting?.(true,result.diagnostic);
+    if(result.waiting)onWaiting?.(true,result.diagnostic,result.doc);
     if(!result.recheck)await waitFor(()=>pause(signal),signal,deadline,stage,step);
   }
 }

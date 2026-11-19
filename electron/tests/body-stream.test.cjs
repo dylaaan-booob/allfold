@@ -6,6 +6,6 @@ test('public and internal body services stream selected Electron Session to dura
   const profile=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-body-stream-')));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const {stdout,stderr}=await runFixture(t,require('electron'),[path.join(__dirname,'body-stream.fixture.cjs'),profile],
-    {timeout:60000,env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
+    {timeout:60000,env:{...process.env,ELECTRON_RUN_AS_NODE:''}}).catch(error=>{throw Error((error.stderr || error.message).slice(-5500));});
   assert.match(stdout,/BODY STREAM PASS/);assert.doesNotMatch(stderr,/Check failed/);
 });
