@@ -11634,6 +11634,99 @@
         "verified_matching_title_and_doi": true,
         "diagnostic_locator": "Private F23-4 Zotero durable file and parent verification."
       }
+    },
+    {
+      "pair_id": "F24-4",
+      "sample_id": "F24",
+      "cohort": "representative",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "configured_access_method": "CARSI",
+      "production_code_sha": "148adcc97a76813ee768f8a1410b278f64b753b8",
+      "runtime_head_sha": "148adcc97a76813ee768f8a1410b278f64b753b8",
+      "measurement_stratum": "Independent verified EBSCO institution details in existing sessions. Automatic detail embeds allowed and no deliberate PDF preview. Chrome save from a new unsaved detail tab.",
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "compared_pdf_version": "39-page INFORMS Just Accepted manuscript, exact DOI and title, SHA-256 equality verified",
+      "difference_seconds": [
+        44.712,
+        45.456
+      ],
+      "ratio": [
+        4.402,
+        4.5615
+      ],
+      "allfold": {
+        "result": "automatic_success",
+        "body_version": "INFORMS publisher Just Accepted manuscript via EBSCO",
+        "requested_licensed_version_obtained": true,
+        "file_bytes": 1762961,
+        "page_count": 39,
+        "verified_matching_title_and_doi": true,
+        "human_intervention": false,
+        "click_utc": [
+          "2026-11-19T15:48:23.200Z",
+          "2026-11-19T15:48:23.306Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T15:49:21.161Z",
+          "2026-11-19T15:49:21.419Z"
+        ],
+        "wait_seconds": [
+          57.855,
+          58.219
+        ],
+        "attempt": 4,
+        "source": "P4",
+        "rule": "R073",
+        "fallback_used": true,
+        "original_paper_association_verified": true,
+        "native_timing_ms": {
+          "publisher_P4": 940,
+          "publisher_challenge_recovery": 35081,
+          "R073_search_record_viewer": 14780,
+          "R073_stream": 6912,
+          "R073_first_byte": 2050,
+          "R073_closed_writer": 6911
+        },
+        "native_access_observation": {
+          "publisher_final_navigation_net_error": "ERR_BLOCKED_BY_CLIENT",
+          "publisher_solver_outcome": "not_executed",
+          "publisher_solver_code": "canceled",
+          "EBSCO_search_HTTP": 200,
+          "EBSCO_viewer_HTTP": 200,
+          "EBSCO_attributable_PDF_request": true
+        },
+        "diagnostic_locator": "Private 148adcc-f24-4-immediate native sequence and original Paper file verification."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "body_version": "INFORMS publisher Just Accepted manuscript via EBSCO",
+        "requested_licensed_version_obtained": true,
+        "file_bytes": 1762961,
+        "page_count": 39,
+        "verified_matching_title_and_doi": true,
+        "human_intervention": false,
+        "translator": "EBSCO Discovery Layer",
+        "click_utc": [
+          "2026-11-19T15:51:43.481Z",
+          "2026-11-19T15:51:43.536Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T15:51:56.299Z",
+          "2026-11-19T15:51:56.624Z"
+        ],
+        "wait_seconds": [
+          12.763,
+          13.143
+        ],
+        "acceptance_collection_membership_verified": true,
+        "diagnostic_locator": "Private F24-4 Zotero durable file and exact parent verification."
+      }
     }
   ],
   "coverage_gaps": [
@@ -11728,7 +11821,7 @@
       "gap": "F23/F24 have exact licensed EBSCO records. Ordinary Allfold Download received direct publisher access denials and saved related preprints. Zotero saved the EBSCO publisher and Just Accepted versions. Allfold's authorized Browser viewer later saved the correct F23 publisher PDF and the active record-to-viewer trace contained PDF responses. The licensed lookup and URL handoff for ordinary Paper Download remain unverified. F25 had no EBSCO match and no local publisher PDF on either side."
     }
   ],
-  "parity_conclusions": "Ongoing acceptance. Prepared Cambridge and IEEE cohorts show no observed disadvantage within their measured strata. ScienceDirect repaired Allfold saving is verified on the original, control and two unseen Papers; no final comparable Zotero timing for these retests. Other platform gaps and Workspace Reset remain open.",
+  "parity_conclusions": "Ongoing acceptance. Prepared Cambridge and IEEE cohorts show no observed disadvantage within their measured strata. ScienceDirect repaired Allfold saving is verified on the original, control and two unseen Papers; no final comparable Zotero timing for these retests. F24-4 verified binary-identical Just Accepted copies from EBSCO, with a longer Allfold wait. Other platform gaps and Workspace Reset remain open.",
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -13200,12 +13293,12 @@
   },
   "ebsco_repair_checkpoint": {
     "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
-    "status": "initial_repair_did_not_recover_licensed_bodies",
+    "status": "f24_licensed_save_verified_f23_retest_pending",
     "before_pairs": ["F23-1", "F24-1"],
-    "observed_retests": ["F23-2", "F24-2", "F24-3", "F23-3", "F23-4"],
-    "latest_live_revision": "67e731df094e537b4460389e353f500516ba3402",
-    "latest_full_check_with_same_production_code": "https://github.com/dylaaan-booob/allfold/actions/runs/44542831504/job/135625444903",
-    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened. On 4d8c045 F24-3 reached its search results then failed with document_changed before opening the record, and still saved the preprint. On 4d9b342 F23-3 passed the managed search. Record navigation timed out before the Viewer, then the original Paper received the preprint. Zotero again saved the publisher PDF. F23-4 on 67e731d verified the record and then timed out waiting for the Viewer. Both editions remained the same as in F23-3.",
+    "observed_retests": ["F23-2", "F24-2", "F24-3", "F23-3", "F23-4", "F24-4"],
+    "latest_live_revision": "148adcc97a76813ee768f8a1410b278f64b753b8",
+    "latest_full_check_with_same_production_code": "https://github.com/dylaaan-booob/allfold/actions/runs/44548632128/job/135645967969",
+    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened. On 4d8c045 F24-3 reached its search results then failed with document_changed before opening the record, and still saved the preprint. On 4d9b342 F23-3 passed the managed search. Record navigation timed out before the Viewer, then the original Paper received the preprint. Zotero again saved the publisher PDF. F23-4 on 67e731d verified the record and then timed out waiting for the Viewer. Both editions remained the same as in F23-3. On 148adcc both F24-4 products saved the exact same 39-page Just Accepted PDF. The Allfold publisher challenge added 35.081 s before R073 succeeded. F23 remains open on that revision.",
     "local_validation": {
       "javascript_files": 65,
       "python_passed": 1675,
