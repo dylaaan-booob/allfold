@@ -362,6 +362,59 @@ def test_queried_publisher_access_failure_tries_prepared_ebsco_before_document_r
     assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P4', True)
 
 
+@pytest.mark.parametrize('institution_body', ['available', 'failed', 'unprepared', 'direct'])
+def test_prepared_ebsco_can_save_before_publisher_challenge_recovery(institution_body):
+    from types import SimpleNamespace
+
+    from allfold.pdf_discovery import PdfSourceReadError
+    from allfold.pdf_rules import PdfCandidate
+
+    publisher = 'https://publisher.example.org'
+    paper = target('publisher.example.org', article_url=publisher+'/article')
+    entry = publisher+'/body.pdf'
+    licensed = 'https://content.ebscohost.com/cds/retrieve'
+    direct = 'https://cdn.example.org/available.pdf'
+    clues = [PdfCandidateFact(stage='P4', rule_id='GENERIC', url=entry)]
+    if institution_body == 'direct':
+        clues.append(PdfCandidateFact(stage='P4', rule_id='GENERIC', url=direct))
+    facts = document(paper, clues)
+    seen = []
+
+    class IO:
+        def ebsco_candidates(self, target):
+            seen.append('EBSCO lookup')
+            if institution_body == 'unprepared':
+                raise PdfSourceReadError('EBSCO requires a prepared Service', diagnostic='service-unprepared')
+            return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),)
+
+        def reader(self, candidate, response):
+            return SimpleNamespace(current_candidates=(replace(candidate, recover_access=True),))
+
+    def consume(candidate):
+        if candidate.recover_access:
+            seen.append('publisher recovery')
+            return CandidateResult.pdf(transfer_complete=True)
+        seen.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(CurrentResponse(entry, 'text/html', status=403,
+                                                           access='challenge'))
+        if candidate.url == direct or institution_body == 'available':
+            return CandidateResult.pdf(transfer_complete=True)
+        return CandidateResult.failed()
+
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    expected = [entry, 'EBSCO lookup']
+    if institution_body == 'direct':
+        expected = [entry, direct]
+    elif institution_body != 'unprepared':
+        expected.append(licensed)
+    if institution_body in {'failed', 'unprepared'}:
+        expected.append('publisher recovery')
+    assert seen == expected
+    assert result.status == 'transferred'
+    assert result.candidate.rule_id == ('R073' if institution_body == 'available' else 'GENERIC')
+
+
 def test_qualified_reader_success_needs_no_optional_identifier_query():
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     paper = target('ieeexplore.ieee.org')

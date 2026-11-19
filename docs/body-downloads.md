@@ -107,11 +107,11 @@ its current P3/P4 clues, these may qualify previously unavailable templates befo
 P5, still bound to the original Paper.
 
 For a journal assigned to EBSCO, a Download can try its prepared EBSCOhost
-profile before OpenAlex. When a body on the established article origin remains
-blocked after access handling, EBSCO gets a turn before additional publisher
-queries and page refresh.
-When that source is unavailable, the remaining qualified publisher entries and
-OpenAlex can still run. The browser searches the original DOI and follows the
+profile before OpenAlex. After a publisher challenge on a body entry for the
+established article origin, download tries any other qualified direct entries
+first, then the prepared EBSCO source before opening a publisher recovery page.
+If the EBSCO source cannot save the PDF, the deferred publisher recovery and
+qualified fallbacks can continue. The browser searches the original DOI and follows the
 matching title link within that verified search Document. This preserves the
 site's in-page navigation when it uses one. The browser verifies the record's
 DOI and follows its visible PDF Viewer link. The task

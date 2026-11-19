@@ -184,6 +184,7 @@ class PdfDiscovery:
         self._failed, self._fallback, self._used = False, False, False
         self._document_attempted = False
         self._publisher_access_blocked = False
+        self._ebsco_attempted = False
         self._initial = tuple(candidates) if candidates is not None else None
         self._consumed = 0
         self._observe = observe
@@ -373,8 +374,9 @@ class PdfDiscovery:
             and (urldefrag(candidate.url)[0], candidate.action) not in self._seen)
 
     def _ebsco_candidates(self):
-        if self.io is None or not callable(getattr(type(self.io), 'ebsco_candidates', None)):
+        if self._ebsco_attempted or self.io is None or not callable(getattr(type(self.io), 'ebsco_candidates', None)):
             return ()
+        self._ebsco_attempted = True
         try:
             return self._call(self.io.ebsco_candidates, self.target)
         except PdfSourceReadError as error:
@@ -393,8 +395,7 @@ class PdfDiscovery:
         # A publisher access obstacle can be followed by the assigned institution
         # source before opening the article again. Later publisher clues still
         # run when that separate source cannot produce a body.
-        tried_ebsco = self._publisher_access_blocked
-        if tried_ebsco:
+        if self._publisher_access_blocked and not self._ebsco_attempted:
             yield self._ebsco_candidates()
         if (needs_p2_query(self._route, replace(self.inputs, target=self._route), known_refresh=crossref_pdf_refresh_required(self.facts))
                 and self.io is not None and callable(getattr(type(self.io), 'query_missing', None))):
@@ -430,8 +431,7 @@ class PdfDiscovery:
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
                 candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
                 yield self._ordered_entries(candidates)
-                if self._publisher_access_blocked and not tried_ebsco:
-                    tried_ebsco = True
+                if self._publisher_access_blocked and not self._ebsco_attempted:
                     yield self._ebsco_candidates()
                 if sufficient_inputs:
                     break
@@ -451,7 +451,7 @@ class PdfDiscovery:
                 templates.extend(c for c in self._rules(stage)
                     if (urldefrag(c.url)[0], c.action) not in self._seen)
         yield self._ordered_entries((*current_entries, *templates))
-        if not tried_ebsco:
+        if not self._ebsco_attempted:
             yield self._ebsco_candidates()
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
@@ -564,9 +564,11 @@ class PdfDiscovery:
             fresh_reader = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
+                publisher_blocked = False
                 if response.access in {'authorization', 'challenge'} and self._route.article_url:
                     publisher, entry = urlsplit(self._route.article_url), urlsplit(original.url)
-                    self._publisher_access_blocked |= (publisher.scheme, publisher.netloc) == (entry.scheme, entry.netloc)
+                    publisher_blocked = (publisher.scheme, publisher.netloc) == (entry.scheme, entry.netloc)
+                    self._publisher_access_blocked |= publisher_blocked
                 # Entry and Reader can have different Cookie paths. Keep both
                 # observations; either can advance, while A -> B -> A repeats.
                 if response.context_key is not None:
@@ -596,7 +598,7 @@ class PdfDiscovery:
                     # The response attempt has settled. Suspend only this local
                     # chain so other qualified direct entries can avoid Reader IO.
                     if not article_backlink:
-                        yield
+                        yield publisher_blocked and response.access == 'challenge'
                     self._current_candidate = candidate
                     self._source_attempt = attempts[lineage]
                     try:
@@ -653,6 +655,7 @@ class PdfDiscovery:
         entries = deque(candidates)
         deferred = deque()
         active = None
+        prepared_before_recovery = False
         try:
             while entries or deferred or active is not None:
                 if active is None:
@@ -662,6 +665,12 @@ class PdfDiscovery:
                         candidate = next((item for item in entries if self._available_direct(item)
                             and self._entry_scope(item) not in scopes), None)
                         if candidate is None:
+                            if prepared_before_recovery:
+                                prepared_before_recovery = False
+                                prepared = self._ebsco_candidates()
+                                if prepared:
+                                    entries.extend(prepared)
+                                    continue
                             active = deferred.popleft()
                         else:
                             entries.remove(candidate)
@@ -675,7 +684,7 @@ class PdfDiscovery:
                         active = (self._chain(candidate, consume), self._consumed, self._entry_scope(candidate))
                 chain, before, scope = active
                 try:
-                    next(chain)
+                    publisher_challenge = next(chain)
                 except StopIteration as done:
                     active = None
                     if done.value is not None:
@@ -686,10 +695,13 @@ class PdfDiscovery:
                 else:
                     # Query variants of the same rule/endpoint remain that
                     # source's fallbacks, not a reason to interrupt its Reader.
+                    try_prepared = publisher_challenge and not self._ebsco_attempted
                     blocked = {scope, *(item[2] for item in deferred)}
-                    if self._initial is None and any(self._available_direct(item)
-                            and self._entry_scope(item) not in blocked
-                            for item in entries):
+                    if self._initial is None and (try_prepared or any(self._available_direct(item)
+                            and self._entry_scope(item) not in blocked for item in entries)):
+                        # Use the prepared institution's own source once before
+                        # spending the budget on the blocked publisher Reader.
+                        prepared_before_recovery |= try_prepared
                         deferred.append(active)
                         active = None
         finally:
