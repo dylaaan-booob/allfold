@@ -2335,5 +2335,43 @@
         "initial_repetitions": 1
       }
     ]
+  },
+  "ebsco_post_fix_supplement": {
+    "selection_utc": "2026-11-19T17:03:05.777759+00:00",
+    "production_code_sha": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
+    "scope": "Separate EBSCO mechanism supplement. The original representative samples and prior supplemental choices remain frozen.",
+    "samples": [
+      {
+        "sample_id": "R073-Fresh-1",
+        "doi": "10.1287/moor.2024.0581",
+        "paper_id": "f238aaa5-fdab-4e0c-9b3f-eb4295239931",
+        "journal": "Mathematics of Operations Research",
+        "configured_service": "EBSCO",
+        "configured_access_method": "CARSI institutional EBSCO",
+        "order": [
+          "allfold",
+          "zotero"
+        ],
+        "article_url": "https://pubsonline.informs.org/doi/10.1287/moor.2024.0581",
+        "access_at_freeze": "Independent actual CARSI EBSCO sessions, exact licensed Business Source Complete records with HTML full text and a PDF option. No deliberate PDF preview or save.",
+        "cohort": "postfix_mechanism",
+        "frozen_at_utc": "2026-11-19T17:24:30.884489+00:00",
+        "title": "Fair Congested Assignment",
+        "platform": "EBSCO Business Source Complete",
+        "doi_resolver_url": "https://doi.org/10.1287/moor.2024.0581",
+        "oa_status_at_selection": "Institutional EBSCO full text and a separate repository candidate observed in OpenAlex. Actual saved edition remains to be checked.",
+        "body_state": "New original Candidate collected through a restricted OpenAlex Discover. Collection completed; Download available; no associated PDF or previous attempt.",
+        "discovery_facts": "OpenAlex locations with a repository candidate, Crossref primary article metadata and an ordinary P4 publisher clue obtained from the collected article Document. No injected URLs.",
+        "selection_reason": "Untouched article in the F23 journal, earlier DOI/issue than tested originals. Preselected by publisher metadata to check continued licensed source discovery, with no original replacement or requirement to elicit a challenge.",
+        "planned_mechanism_tags": [
+          "EBSCO R073 licensed lookup and Viewer handoff",
+          "Publisher recovery only if naturally encountered",
+          "Repository fallback distinguished by version"
+        ],
+        "cache_at_selection": "Independent existing product sessions and verified database details. The Allfold background collection visited the publisher article for metadata. No manual PDF preview.",
+        "allfold_build_at_selection": "c9fbf52 production behavior with the separately logged Oxford guard observer enabled. The observer does not change request decisions or transfers.",
+        "initial_repetitions": 1
+      }
+    ]
   }
 }
