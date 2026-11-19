@@ -3,9 +3,9 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**Status: incomplete. At the 18 November 2026 checkpoint (Asia/Shanghai), 30
+**Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 73 pair slots including repeats.
+supplemental Papers also have observations, for 74 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -14,7 +14,9 @@ pair have reliable local file and association endpoints. Springer has two slower
 Allfold points and one
 interval overlap; T&F has one slower point requiring swapped repeats. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
-coverage and retests remain incomplete. F18 exposed a publisher-version/latency
+coverage and retests remain incomplete. In the prepared Oxford F10 repeat,
+Allfold saved the correct publisher PDF and Zotero produced no new local PDF or
+parent within 600 s. Same-version Oxford timing remains unconfirmed. F18 exposed a publisher-version/latency
 gap. Direct-entry and Referer repairs alone still returned a preprint. The first
 real retest of the common native partition-context repair at `69b9a41` saved the
 correct publisher PDF through P1, but was 3.832–4.644 seconds slower than Zotero.
@@ -122,9 +124,9 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 66 automatic local-PDF successes, one assisted
+At this checkpoint Allfold has 67 automatic local-PDF successes, one assisted
 success and six failures. Zotero has 55 automatic and three assisted local-PDF
-successes, one visible attachment failure, three attempts with no local PDF
+successes, one visible attachment failure, four attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
 attempt counts, not independent-paper success rates. Saving a related preprint
@@ -135,7 +137,7 @@ is a task result but is not a publisher-version success.
 | IEEE Xplore | 2 / 2 | Allfold5 publisher files,1 original failure; Zotero6 publisher files | Current F01 three controls plus F02 paired retest all correct/same-version and Allfold not slower. Old failure retained; no extrapolation beyond these2Papers. |
 | Springer Link | 3 / 3 | Allfold 12 successes; Zotero 11 successes,1 interruption | Three corrected low-load controls: two slower points and one overlap. Cause unresolved; not confirmed. |
 | Cambridge Core | 2 / 2 | Allfold9 successes; Zotero9 successes; one body on each side is a preprint | F06 three controls plus F07-3 have comparable publisher PDFs; all favor Allfold. No observed disadvantage in these two Papers; earlier access/version differences retained, no broader extrapolation. |
-| Oxford Academic | 3 / 3 | Allfold 2 related preprints,1 access-challenge failure; Zotero 3 interrupted saves without parent/PDF | New native CF Prepare recovery observed; publisher PDF retests outstanding. Not confirmed. |
+| Oxford Academic | 3 / 3 | Allfold 1 publisher PDF, 2 related preprints and 1 original access-challenge failure. Zotero 3 interrupted saves and 1 full observation with no parent or PDF. | With both institution accounts verified, F10-2 saved on Allfold in 5.523–5.886 s. Nothing new was seen in Zotero by 600 s. Same-version timing and the remaining Oxford retests are open. |
 | Taylor & Francis | 3 / 3 | Allfold 4 successes: original preprint plus3 publisher Accepted Manuscripts; Zotero 2 publisher Accepted Manuscripts,2 interrupted parent-only saves | Same-version F11 retry faster; first F13 slower. Controls/repeats and F12 retry outstanding. Not confirmed. |
 | Project Euclid | 2 / 3 | F20 matching related arXiv v4, with in-download Allfold hCaptcha assistance. F22 matching 30-page publisher OA saved automatically by both products. F21 subscription excluded. | F22 favors Allfold. Only one publisher OA pair measured; institutional access is outside the revised scope. |
 | Wiley | 3 / 3 | Allfold6 publisher OA successes; Zotero4 successes(1preprint,3publisher),2interruptions | F14 normal publisher controls and F15 favorAllfold. F16 default saves remain parent-only; one bounded diagnostic records citation/PDF403,with terminal unknown. Not confirmed. |
@@ -143,6 +145,45 @@ is a task result but is not a publisher-version success.
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
 | EBSCO Business Source Complete | 2 matching records | Both products independently found the F23 and F24 PDF entries. Zotero saved the publisher and Just Accepted versions. Allfold's Download used verified related arXiv versions. | Allfold's configured EBSCO discovery gap repeated on two Papers. No same-version transfer comparison. |
 | ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. On final code, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | Functional retrieval passed on these four repaired paths. The initial F29/F30/F31 same-body pairs took longer on Allfold. The final repair observations lack a measurable same-version Zotero pair, so performance parity remains unconfirmed. |
+
+### Paired wait by platform and observed access
+
+The representative strata below use automatic, comparable-version pairs from
+the [formal results](pdf-pairing-formal-results.json), including the designated
+controls and retests. Counts show distinct Papers and pairs. Each median uses
+the lower and upper interval bounds independently. The observed span runs from
+the lowest lower bound to the highest upper bound of the paired difference.
+For one pair, the span is its measurement interval. Positive differences mean
+a longer Allfold wait.
+
+| Platform, actual access and visit condition | Papers / pairs | Raw pair IDs | Median A−Z (s) | Median A/Z | Observed A−Z span (s) |
+| --- | --- | --- | --- | --- | --- |
+| IEEE Xplore, institutional, first after renewed preparation | 1 / 1 | F01-2 | −3.350 to −2.556 | 0.7457–0.7995 | −3.350 to −2.556 |
+| IEEE Xplore, institutional, repeat with warm access | 2 / 3 | F01-3, F01-4, F02-2 | −3.457 to −2.478 | 0.8179–0.8653 | −3.764 to −0.025 |
+| Cambridge Core, institutional, first after Source restarts | 1 / 2 | F06-4, F06-5 | −1.788 to −1.099 | 0.5312–0.7147 | −2.699 to −0.244 |
+| Cambridge Core, institutional, repeat in the same session | 1 / 1 | F06-6 | −1.570 to −0.835 | 0.5961–0.7623 | −1.570 to −0.835 |
+| Cambridge Core, publisher file after rights were verified again | 1 / 1 | F07-3 | −2.250 to −1.547 | 0.4487–0.5870 | −2.250 to −1.547 |
+| Springer Link, OA, first repeat after Source restart | 1 / 1 | F03-4 | +0.489 to +1.235 | 1.2319–1.7193 | +0.489 to +1.235 |
+| Springer Link, OA, repeat in the same session | 1 / 2 | F03-5, F03-6 | +0.243 to +0.922 | 0.9454–1.4647 | −0.428 to +1.609 |
+| Taylor & Francis, institutional | 1 / 1 | F11-2 | −1.470 to −0.820 | 0.7118–0.8293 | −1.470 to −0.820 |
+| Taylor & Francis, OA | 1 / 1 | F13-1 | +0.497 to +1.236 | 1.0972–1.2597 | +0.497 to +1.236 |
+| Wiley, OA, both copies from the publisher site | 1 / 1 | F15-1 | −1.458 to −0.663 | 0.4258–0.6940 | −1.458 to −0.663 |
+| Wiley and PMC, OA, same publication via different hosts | 1 / 2 | F14-2, F14-3 | −5.300 to −4.542 | 0.1439–0.2150 | −5.800 to −4.059 |
+| SIAM, institutional, first prepared publisher request | 3 / 3 | F17-2, F18-4, F19-1 | +3.832 to +4.644 | 1.4852–1.5270 | +3.626 to +13.785 |
+| SIAM, institutional, warm repeats of smaller publisher files | 2 / 4 | F17-3, F17-4, F18-5, F18-6 | −3.954 to −3.391 | 0–0.0713 | −7.170 to −2.551 |
+| SIAM, institutional, after symmetric ePDF preview | 1 / 1 | F19-3 | −0.991 to −0.062 | 0.9615–0.9975 | −0.991 to −0.062 |
+| SIAM, institutional, warm repeat of the large publisher file | 1 / 1 | F19-4 | +16.738 to +17.761 | 4.7138–5.5953 | +16.738 to +17.761 |
+| ScienceDirect, OA, first saves with warm site sessions | 2 / 2 | F29-1, F31-1 | +3.973 to +4.782 | 1.2723–1.3381 | +3.513 to +5.239 |
+| ScienceDirect, institutional, first save with warm site sessions | 1 / 1 | F30-1 | +0.337 to +1.283 | 1.0198–1.0781 | +0.337 to +1.283 |
+| ScienceDirect, institutional, automatic Reader challenge recovery | 1 / 1 | F27-2 | +23.696 to +24.400 | 2.3128–2.3771 | +23.696 to +24.400 |
+| Project Euclid, publisher OA | 1 / 1 | F22-1 | −2.261 to −1.609 | 0.3924–0.5302 | −2.261 to −1.609 |
+
+In the separate fallback outcome F28-1, both products saved the same arXiv
+preprint after opening the ScienceDirect article. Its user-wait difference was
+−116.830 to −116.179 s and its ratio 0.1358–0.1386. The mechanism comparisons
+F03-7 and F03-8 show the first and warm Springer Session requests separately
+below. The assisted ScienceDirect pair F27-5 also retains its total wait below.
+Oxford and INFORMS/EBSCO lack a comparable publisher pair in these strata.
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
 launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
@@ -638,6 +679,33 @@ the Silverchair Translator identified. Both PDF endpoints remain to be tested
 in this repeat. Springer F05's Chrome article showed Open Access and full
 text after selecting Springer in CARSI. Allfold's separate portal then showed
 an inactivity prompt, holding the next actions before either click.
+
+On 19 November the actual Source application restarted on `10e5038` after
+an interruption. Both products could reach the same Oxford F10 OA article
+after automatic page verification. For further timed pairs, the user
+requires the matching CARSI Service and actual institutional access to be
+checked independently in Chrome and Allfold, including for an OA article.
+Chrome's Oxford resource search displayed the CARSI inactivity prompt. The
+public article preparation produced no new Download or Connector Save.
+
+For F10-2, both products subsequently entered Oxford Journals from their
+independent CARSI resource pages. The Oxford Account menu explicitly showed
+the configured institutional account in each application. The Allfold Workflow
+card still showed Not prepared, while the manually prepared Browser Session
+held the institution access. Both article pages offered a PDF entry and the
+Chrome Connector identified Silverchair. Preparation stopped at the HTML article
+and its visible PDF entry in each product. Login and challenge preparation are
+kept separate from the two clicks and have incomplete time bounds.
+
+Allfold P2/API02 observed the Oxford response in 1.126 s then streamed the
+publisher PDF through the observed Silverchair watermark endpoint in 4.539 s.
+The latter included 1.928 s to the response and first byte. The 12-page,
+1,794,823-byte local file had the exact title, DOI and journal. The verified
+original Paper link and file arrived in 5.523–5.886 s. The ordinary Zotero Save
+showed the dedicated collection, then its popup disappeared. No new matching
+parent or local PDF was observed over 600 s. The internal terminal reason is
+unknown. The original F10-1 Allfold failure is retained. Access preparation and
+tested code both differed, so this observation cannot isolate a code-only gain.
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status

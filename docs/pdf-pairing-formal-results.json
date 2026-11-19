@@ -9914,6 +9914,92 @@
       },
       "comparable_body_version": null,
       "timing_comparison_eligible": false
+    },
+    {
+      "pair_id": "F10-2",
+      "sample_id": "F10",
+      "platform": "Oxford Academic",
+      "configured_service": "OXFORD JOURNALS",
+      "configured_access_method": "Independent CARSI Oxford Journals entry and actual signed-in institutional account confirmed on both products, plus the target OA article and its PDF entry. Allfold used the manually prepared Browser Session; Workflow showed Not prepared.",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "runtime_id": "ba328e3b5b1752023c08fc250f07d68e",
+      "cohort": "representative_retest",
+      "measurement_stratum": "prepared_institutional_session_on_both_for_target_oa_article",
+      "comparable_body_version": false,
+      "timing_comparison_eligible": false,
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T03:08:28.679Z",
+          "2026-11-19T03:08:28.784Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T03:08:34.307Z",
+          "2026-11-19T03:08:34.565Z"
+        ],
+        "wait_seconds": [
+          5.523,
+          5.886
+        ],
+        "measurement_revision": "keys-v2",
+        "attempt": 2,
+        "body_version": "Oxford/Silverchair publisher PDF, 12 pages",
+        "file_bytes": 1794823,
+        "content_check": {
+          "file_exists": true,
+          "file_bytes": 1794823,
+          "pdf_prefix": true,
+          "page_count": 12,
+          "full_title_match": true,
+          "doi_match": true,
+          "journal_label_verified": true
+        },
+        "source": "P2",
+        "rule": "API02",
+        "source_origin": "https://watermark02.silverchair.com/",
+        "fallback_used": false,
+        "cleanup_complete": true,
+        "human_intervention": false,
+        "ui_preparation": "Rebuilt actual Source on the same production code. User completed normal separate CARSI portal access. Oxford Journals opened through CARSI, then exact F10 and the actual Oxford institutional account were verified. No PDF preview. Workbench Candidate matched the original DOI and had no file from attempt 1.",
+        "native_phases": {
+          "entry_response_ms": 1126,
+          "pdf_stream_ms": 4539,
+          "stream_request_ms": 10,
+          "stream_response_ms": 1928,
+          "stream_first_byte_ms": 1928,
+          "stream_closed_ms": 4539
+        },
+        "diagnostic_locator": "Private 10e5038-f10-2-20261119 diagnostics and file verification."
+      },
+      "zotero": {
+        "result": "no_local_pdf_observed_at_horizon",
+        "click_utc": [
+          "2026-11-19T03:09:31.506Z",
+          "2026-11-19T03:09:31.530Z"
+        ],
+        "translator": "Silverchair",
+        "measurement_revision": "keys-v2",
+        "observation_horizon_seconds": 600,
+        "first_post_horizon_collection_check_utc": "2026-11-19T03:19:59.961343Z",
+        "elapsed_when_checked_seconds": 628.431,
+        "matching_new_parent_count": 0,
+        "matching_new_imported_pdf_count": 0,
+        "trial_collection_item_count_before_and_after": [
+          83,
+          83
+        ],
+        "terminal_state": "unknown",
+        "human_intervention": false,
+        "timing_eligible_for_parity": false,
+        "ui_preparation": "Existing Chrome profile. Independently selected Oxford Journals from CARSI and saw the actual Oxford institutional account, target article and Silverchair action. No PDF preview. The ordinary Save popup showed the dedicated local trial collection.",
+        "outcome_note": "The Save popup disappeared. No verification window or explicit error was observed. The read-only observer saw no new matching parent or PDF over the full horizon and had no reported outage. No timed failure cause assigned."
+      },
+      "comparison": "The original Allfold F10-1 challenge-associated failure remains. With actual confirmed institutional sessions on both products and a newer tested production SHA, Allfold now saved the correct publisher body. Zotero provided no comparable local body in this repeat. The before/after path includes separate fresh access preparation, so the difference does not establish a code-only effect."
     }
   ],
   "coverage_gaps": [
@@ -9942,7 +10028,7 @@
         "F09",
         "F10"
       ],
-      "gap": "Oxford initial Allfold two verified related preprints and one access-challenge failure retained. Three Zotero saves operator-interrupted without parent/PDF. Native Oxford CF recovery now observed during normal Prepare; original same-access PDF retests and metadata diagnosis outstanding."
+      "gap": "Oxford initial two Allfold preprints and one access-challenge failure and three Zotero operator interruptions remain. In F10-2 both actual Oxford accounts were institutionally authenticated. Allfold saved the matching publisher PDF. Zotero produced neither a new matching parent nor a PDF over the 600-second observation; internal terminal was unknown. Same-version Oxford timing and remaining Oxford sample retests are open."
     },
     {
       "samples": [
@@ -10052,8 +10138,8 @@
     },
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
-  "chrome_service_preparation": "From user steering: select each new correspondingService in Chrome CARSI resource page before saving, then verify actual target article/Translator. Preparation/manual costs separate; no cookie/auth copying.",
-  "checkpoint_utc": "2026-11-18T11:55:37.044Z",
+  "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
+  "checkpoint_utc": "2026-11-19T03:19:59.961343Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
