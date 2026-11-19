@@ -38,13 +38,18 @@ function isPdfRequest(details) {
   return file?.origin==='https://content.ebscohost.com' && file.pathname==='/cds/retrieve';
 }
 
-async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>true) {
+async function readReady(browser,tab,args,{signal,deadline,verify,retryDocumentRead=false},settled=()=>true) {
   const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
   for(;;) {
     verify();
-    const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline:limit});
-    verify();
-    if(clue.ready && settled(clue))return clue;
+    try {
+      const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline:limit});
+      verify();
+      if(clue.ready && settled(clue))return clue;
+    } catch(error) {
+      if(!retryDocumentRead || error.diagnostic?.code!=='document_changed')throw error;
+      verify();
+    }
     await waitFor(()=>pause(signal),signal,limit);
   }
 }
@@ -145,7 +150,7 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
         || tab.navigation.current!==navigation || !navigation.documentReady
         || !browser.documentCurrent(frame))throw refusal('search');
     };
-    const found=await readReady(browser,tab,{mode:'results',title},{...options,verify:verifySearch},
+    const found=await readReady(browser,tab,{mode:'results',title},{...options,verify:verifySearch,retryDocumentRead:true},
       clue=>clue.urls.length>0 || !contents.isLoadingMainFrame());
     if(found.documentId!==searchDocument.documentId)throw refusal('search');
     const records=found.urls.map(url=>matchRecord(url,scope)).filter(Boolean);

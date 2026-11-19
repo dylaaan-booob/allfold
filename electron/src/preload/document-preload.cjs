@@ -666,7 +666,9 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     const source=name=>'('+operations[name].toString().replace(/^\w+\(/,'function(')+')';
     const code=snapshot?'('+readSnapshot.toString()+')('+JSON.stringify(input)+','+(action==='extract'?source('extract'):'null')+','+source('pdf')+','+JSON.stringify(args)+','+JSON.stringify(doiCasefold)+','+JSON.stringify(targetDoi)+')':source(action)+'('+JSON.stringify(args)+')';
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
-    if(!snapshot && location.href!==url)throw Error('document_changed');
+    if(!snapshot && location.href!==url) {
+      ipcRenderer.send('document:result',{id,error:'document_changed'});return;
+    }
     ipcRenderer.send('document:result',{id,result,...(snapshot?{}:{documentId,url})});
   }catch {ipcRenderer.send('document:result',{id,error:'document_operation_failed'});}
 });

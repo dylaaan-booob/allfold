@@ -11376,6 +11376,88 @@
         "verified_matching_title_and_doi": true,
         "diagnostic_locator": "Private F24-2 Zotero durable file and parent verification."
       }
+    },
+    {
+      "pair_id": "F24-3",
+      "sample_id": "F24",
+      "cohort": "representative",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "configured_access_method": "CARSI",
+      "production_code_sha": "4d8c0456d6d6c31650763e08ce543e9513f6b736",
+      "runtime_head_sha": "4d8c0456d6d6c31650763e08ce543e9513f6b736",
+      "measurement_stratum": "Independent authorized EBSCO details, automatic embeds, institution rechecked on Allfold before the second action. Confirmation separated the actions by about sixteen minutes.",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "Allfold saved the related preprint after the managed search document changed; Zotero saved the publisher Just Accepted manuscript.",
+      "allfold": {
+        "result": "automatic_success",
+        "requested_licensed_version_obtained": false,
+        "click_utc": [
+          "2026-11-19T12:20:09.358Z",
+          "2026-11-19T12:20:09.462Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T12:22:14.685Z",
+          "2026-11-19T12:22:14.944Z"
+        ],
+        "wait_seconds": [
+          125.223,
+          125.586
+        ],
+        "attempt": 3,
+        "source": "P5",
+        "rule": "OPENALEX",
+        "native_timing_ms": {
+          "publisher_P4": 2768,
+          "publisher_challenge_recovery": 30751,
+          "generic_article_refresh": 60538,
+          "R073_search_then_document_changed": 7338,
+          "P5_stream": 17710
+        },
+        "native_access_observation": {
+          "publisher_cloudflare_solver_started": true,
+          "checkbox_not_found": true,
+          "final_navigation_net_error": "ERR_BLOCKED_BY_CLIENT",
+          "solver_outcome": "not_executed",
+          "solver_code": "canceled",
+          "human_intervention": false
+        },
+        "body_version": "Verified related arXiv preprint 2502.16659v1",
+        "file_bytes": 1441301,
+        "page_count": 48,
+        "fallback_used": true,
+        "original_paper_association_verified": true,
+        "human_intervention": false,
+        "diagnostic_locator": "Private F24-3 native trace and original Paper file verification."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "translator": "EBSCO Discovery Layer",
+        "click_utc": [
+          "2026-11-19T12:04:13.063Z",
+          "2026-11-19T12:04:13.112Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T12:04:21.902Z",
+          "2026-11-19T12:04:22.172Z"
+        ],
+        "wait_seconds": [
+          8.79,
+          9.109
+        ],
+        "acceptance_collection_membership_verified": true,
+        "human_intervention": false,
+        "body_version": "INFORMS publisher Just Accepted manuscript via EBSCO",
+        "page_count": 39,
+        "file_bytes": 1762961,
+        "verified_matching_title_and_doi": true,
+        "diagnostic_locator": "Private F24-3 Zotero file and exact parent verification."
+      }
     }
   ],
   "coverage_gaps": [
@@ -12944,8 +13026,8 @@
     "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
     "status": "initial_repair_did_not_recover_licensed_bodies",
     "before_pairs": ["F23-1", "F24-1"],
-    "observed_retests": ["F23-2", "F24-2"],
-    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened.",
+    "observed_retests": ["F23-2", "F24-2", "F24-3"],
+    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened. On 4d8c045 F24-3 reached its search results then failed with document_changed before opening the record, and still saved the preprint.",
     "local_validation": {
       "javascript_files": 65,
       "python_passed": 1675,

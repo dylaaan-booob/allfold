@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 86 pair slots including repeats.
+supplemental Papers also have observations, for 87 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -133,8 +133,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 79 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 60 automatic and three assisted local-PDF
+At this checkpoint Allfold has 80 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 61 automatic and three assisted local-PDF
 successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -152,7 +152,7 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
-| EBSCO Business Source Complete | 2 matching records | Zotero saved the publisher and Just Accepted versions. Allfold still saved related arXiv versions in both repair retests. F23 timed out in search and F24 reached its record before stalling. | Both licensed-version gaps persist on `f30bb8c`. Follow-up repairs require real retests. |
+| EBSCO Business Source Complete | 2 matching records | Zotero saved the publisher and Just Accepted versions. Allfold still saved related arXiv versions in all three repair retests. F23 timed out in search, F24 first stalled on the record and then lost its search Document. | Correct licensed versions and comparable timing remain unconfirmed on Allfold. |
 | ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. On final code, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | Functional retrieval passed on these four repaired paths. The initial F29/F30/F31 same-body pairs took longer on Allfold. The final repair observations lack a measurable same-version Zotero pair, so performance parity remains unconfirmed. |
 
 ### Paired wait by platform and observed access
@@ -1868,3 +1868,20 @@ the record. Another regression verifies that an expired sign-in page still
 refuses the source. After a confirmed publisher refusal, the assigned EBSCO
 source now runs before the publisher article refresh. Both original Papers need
 another real retest to validate these changes. The Workspace is retained.
+
+F24-3 on `4d8c045` reached HTTP 200 in the managed search. Its next read
+failed with `document_changed` before it opened the record. It saved the
+verified preprint on the original Paper in **125.223–125.586 s**. The
+independent Zotero save obtained the same 39-page Just Accepted manuscript in
+**8.790–9.109 s**. The original publisher body path also presented a
+Cloudflare page. The Solver did not find a checkbox and was canceled after a
+navigation returned `ERR_BLOCKED_BY_CLIENT`. The exact blocked request remains
+unverified. A generic publisher article refresh then took 60.538 s, before
+the EBSCO search attempted its own access path.
+
+The next repair retries a concurrent in-page update only while the same
+qualified search Document remains current. This is a local read retry. The
+original search request is sent once. A replaced main document continues to
+refuse the source. After the publisher challenge handling settles, the prepared
+EBSCO path can run before the extra publisher refresh. The licensed outputs on
+both originals require further live evidence.

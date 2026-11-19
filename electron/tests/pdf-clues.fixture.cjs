@@ -363,6 +363,23 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));
     assert.ok(requests.some(request=>request.url==='/ebsco-pending-image'));
+    ebscoMode='viewer';
+    const documentCall=browser.documents.call.bind(browser.documents);
+    let readRaced=false;
+    browser.documents.call=async (binding,action,args,options)=>{
+      if(!readRaced && action==='ebsco' && args.mode==='results') {
+        readRaced=true;
+        const contents=browser.tabs.get(binding.pageId).view.webContents;
+        await contents.executeJavaScript('history.replaceState(null,"",location.href+"&db=licensed")');
+      }
+      return documentCall(binding,action,args,options);
+    };
+    try {
+      const raced=await invoke('extract_paper_pdf_clues',licensed);
+      assert.ok(readRaced);
+      assert.equal(raced.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(raced));
+      assert.equal(requests.filter(request=>request.url.startsWith(resultsPath)).length,1,'only the local document read is retried');
+    } finally {browser.documents.call=documentCall;}
     ebscoMode='replace-search';
     const replacedSearch=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(replacedSearch.diagnostic && !replacedSearch.pdf_clues);

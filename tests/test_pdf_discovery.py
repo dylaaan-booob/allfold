@@ -330,7 +330,8 @@ def test_newly_qualified_query_entries_prefer_direct_over_existing_reader():
     assert result.status == 'transferred'
 
 
-def test_queried_publisher_denial_tries_prepared_ebsco_before_document_refresh():
+@pytest.mark.parametrize('access', ['authorization', 'challenge'])
+def test_queried_publisher_access_failure_tries_prepared_ebsco_before_document_refresh(access):
     from allfold.pdf_discovery import P2Resolution
     from allfold.pdf_rules import PdfCandidate
 
@@ -353,7 +354,7 @@ def test_queried_publisher_denial_tries_prepared_ebsco_before_document_refresh()
     def consume(candidate):
         seen.append(candidate.url)
         if candidate.url == denied:
-            return CandidateResult.current(CurrentResponse(denied, 'text/html', status=403, access='authorization'))
+            return CandidateResult.current(CurrentResponse(denied, 'text/html', status=403, access=access))
         return CandidateResult.pdf(transfer_complete=True)
 
     result = PdfDiscovery(paper, io=IO()).run(consume)

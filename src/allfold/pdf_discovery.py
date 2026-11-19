@@ -183,7 +183,7 @@ class PdfDiscovery:
         self._seen_bytes, self._state_full = 0, False
         self._failed, self._fallback, self._used = False, False, False
         self._document_attempted = False
-        self._publisher_access_denied = False
+        self._publisher_access_blocked = False
         self._initial = tuple(candidates) if candidates is not None else None
         self._consumed = 0
         self._observe = observe
@@ -390,10 +390,10 @@ class PdfDiscovery:
         saved_p3 = tuple(self._saved('P3'))
         saved_p4 = tuple(self._saved('P4'))
         yield self._ordered_entries((*p1, *existing, *saved_p3, *saved_p4))
-        # A publisher refusal can be followed by the assigned institution
+        # A publisher access obstacle can be followed by the assigned institution
         # source before opening the article again. Later publisher clues still
         # run when that separate source cannot produce a body.
-        tried_ebsco = self._publisher_access_denied
+        tried_ebsco = self._publisher_access_blocked
         if tried_ebsco:
             yield self._ebsco_candidates()
         if (needs_p2_query(self._route, replace(self.inputs, target=self._route), known_refresh=crossref_pdf_refresh_required(self.facts))
@@ -430,7 +430,7 @@ class PdfDiscovery:
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
                 candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
                 yield self._ordered_entries(candidates)
-                if self._publisher_access_denied and not tried_ebsco:
+                if self._publisher_access_blocked and not tried_ebsco:
                     tried_ebsco = True
                     yield self._ebsco_candidates()
                 if sufficient_inputs:
@@ -564,9 +564,9 @@ class PdfDiscovery:
             fresh_reader = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
-                if response.access == 'authorization' and self._route.article_url:
+                if response.access in {'authorization', 'challenge'} and self._route.article_url:
                     publisher, entry = urlsplit(self._route.article_url), urlsplit(original.url)
-                    self._publisher_access_denied |= (publisher.scheme, publisher.netloc) == (entry.scheme, entry.netloc)
+                    self._publisher_access_blocked |= (publisher.scheme, publisher.netloc) == (entry.scheme, entry.netloc)
                 # Entry and Reader can have different Cookie paths. Keep both
                 # observations; either can advance, while A -> B -> A repeats.
                 if response.context_key is not None:
