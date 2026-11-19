@@ -3,7 +3,7 @@
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
-  "runtime_head_sha": "5ba9b6b0d1f916c6faf26bbece8781a865ed5850",
+  "runtime_head_sha": "b7fe32912080237f60c8bf44cb88c7b47f95673e",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -11008,6 +11008,113 @@
         "diagnostic_locator": "Private F09-2 bounded click, targeted observer and verified collection horizon."
       },
       "comparison": "The original Allfold Paper acquired the Oxford publisher PDF after the preceding preprint and renewed site access. Zotero had no observed parent or PDF through the common horizon. The recovered version and phase costs are factual. An isolated release benefit and paired difference are unestablished."
+    },
+    {
+      "pair_id": "F13-3",
+      "sample_id": "F13",
+      "platform": "Taylor & Francis",
+      "configured_service": "Taylor & Francis期刊数据库",
+      "configured_access_method": "Independent CARSI Taylor & Francis access for the exact article, confirmed in both products before scoring.",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "b7fe32912080237f60c8bf44cb88c7b47f95673e",
+      "frontend_head_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_id": "3da58ad29377c6a700d8db4287ecd0dc",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "cohort": "representative_retest",
+      "order_provenance": "The next repeat's Allfold-first order was recorded before either action to exchange the F13-2 order.",
+      "measurement_stratum": "ordinary_oa_repeat_after_independent_institutional_preparation",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "trial_body_replacement": {
+        "prior_attempt": 2,
+        "prior_bytes": 1730524,
+        "paper_body_absent": true,
+        "prior_file_absent": true,
+        "same_candidate_available": true,
+        "delete_click_utc": [
+          "2026-11-19T07:15:25.020Z",
+          "2026-11-19T07:15:25.118Z"
+        ],
+        "restore_click_utc": [
+          "2026-11-19T07:15:30.314Z",
+          "2026-11-19T07:15:30.408Z"
+        ]
+      },
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T07:16:30.955Z",
+          "2026-11-19T07:16:31.049Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T07:16:35.437Z",
+          "2026-11-19T07:16:35.694Z"
+        ],
+        "wait_seconds": [
+          4.388,
+          4.739
+        ],
+        "attempt": 3,
+        "rule": "R003",
+        "source": "P1",
+        "file_bytes": 1730524,
+        "content_check": {
+          "file_exists": true,
+          "pdf_prefix": true,
+          "page_count": 34,
+          "full_title_match": true,
+          "doi_match": true,
+          "accepted_manuscript_marker": true
+        },
+        "body_version": "Taylor & Francis publisher Accepted Manuscript",
+        "fallback_used": false,
+        "native_stream_complete_utc": "2026-11-19T07:16:35.580Z",
+        "native_duration_ms": 4498,
+        "native_phases_ms": {
+          "request": 18,
+          "response": 2717,
+          "first_byte": 2717,
+          "closed_writer": 4496
+        },
+        "human_intervention": false,
+        "preparation_human_intervention": true,
+        "preparation_human_wait_seconds": null,
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "A renewed independent CARSI session led to the configured institution and exact full article. The user completed institutional authentication before timing. No PDF preview. The original Paper was restored without its previous body.",
+        "diagnostic_locator": "Private F13-3 normal action bounds, actual file and attempt association verification, and the selected native stream trace."
+      },
+      "zotero": {
+        "result": "no_local_pdf_observed_at_horizon",
+        "click_utc": [
+          "2026-11-19T07:17:42.951Z",
+          "2026-11-19T07:17:42.986Z"
+        ],
+        "parent_observed_utc": [
+          "2026-11-19T07:17:45.648Z",
+          "2026-11-19T07:17:45.917Z"
+        ],
+        "translator": "Taylor and Francis+NEJM (toolbar identification)",
+        "translator_chain_observed": false,
+        "save_popup_observed": true,
+        "parent_identity_by_title_and_article_url": true,
+        "parent_has_doi_field": false,
+        "acceptance_collection_membership_verified": true,
+        "observed_child_count": 0,
+        "checked_utc": "2026-11-19T07:28:36.386Z",
+        "observation_horizon_seconds": 600,
+        "elapsed_minimum_seconds": 653.4,
+        "product_terminal_known": false,
+        "measurement_revision": "keys-v2",
+        "human_intervention": false,
+        "preparation_human_intervention": true,
+        "preparation_human_wait_seconds": null,
+        "ui_preparation": "Chrome separately entered the Taylor & Francis CARSI resource and required a human publisher check before scoring. The exact full article, institution, and toolbar action were visible. No PDF preview. Save showed the dedicated collection and its popup disappeared.",
+        "diagnostic_locator": "Private F13-3 Zotero bounded click, read-only observer, exact new local parent and attachment horizon check."
+      },
+      "comparison": "Allfold saved the correct publisher manuscript in both repeated orders. This Zotero attempt created a matching parent without a local attachment through the checked horizon. There is no new same-version wait comparison."
     }
   ],
   "coverage_gaps": [
@@ -11022,7 +11129,7 @@
       "samples": [
         "F03"
       ],
-      "gap": "Original three comparable low-load controls retained, including two slower Allfold points. Predeclared F03-7/8 mechanism diagnostics now distinguish real first-Session IdP redirects from one-stream warm access. No actual HTTP cache flags or retrospective phase for original one-stream4s outlier; representative F04/F05 corrected-load retests remain required before platform parity."
+      "gap": "Three initial comparable F03 controls include two slower Allfold points and one timing overlap. The F03-7/8 diagnostics distinguish first-Session IdP redirects from one-stream warm access. Later F04-4 and F05-2 both have overlapping waits within measurement precision. Cache flags and the phase of the original one-stream F03 outlier remain unknown."
     },
     {
       "samples": [
@@ -11036,7 +11143,7 @@
         "F09",
         "F10"
       ],
-      "gap": "Oxford initial two Allfold preprints and one access-challenge failure and three Zotero operator interruptions remain. In F10-2 both actual Oxford accounts were institutionally authenticated. Allfold saved the matching publisher PDF. Zotero produced neither a new matching parent nor a PDF over the 600-second observation; internal terminal was unknown. Same-version Oxford timing and remaining Oxford sample retests are open."
+      "gap": "F08-2, F09-2 and F10-2 verified actual institutional access in both products. Allfold saved all three publisher PDFs. Zotero produced no new local matching parent or PDF through the common horizon in those repeats. F08 and F09 repeated a client navigation block after automatic verification before saving through R020. An observation-only F09 run saved directly and did not reproduce the block. The exact blocked request and same-version comparison remain open."
     },
     {
       "samples": [
@@ -11044,7 +11151,7 @@
         "F12",
         "F13"
       ],
-      "gap": "T&F original F11 preprint/parent-only save retained. New native CF detection recovered a real checkbox challenge. Unseen F12/F13 Allfold saves are publisher Accepted Manuscripts. F12 Zotero parent-only save was operator-interrupted and had a collection-target correction. F13 both correct same-version PDFs; initial Allfold slower point requires two swapped repeats/investigation. F11-2 completed with matching publisher Accepted Manuscripts; two further preselected control repeats remain outstanding."
+      "gap": "The historical F11 preprint, F12 interruption and initial slower F13-1 comparable result remain. F11-2 favored Allfold and F11-3 favored Zotero for matching accepted manuscripts. F12-2, F13-2 and F13-3 saved the correct publisher manuscript in Allfold while Zotero had no local attachment through the horizon. Another F11 control is planned. Parity remains unconfirmed."
     },
     {
       "samples": [
@@ -11072,7 +11179,7 @@
         "F15",
         "F16"
       ],
-      "gap": "F14 original Allfold publisherOA versus Zotero related arXiv after visible Translator fallback retained. One separately declared Debug-only Save obtained publisher PDF with citationPOST200/PDF200/Desktop201; original error did not reproduce and cumulative403 entries remain unattributed. Matching runtime Translator ID/2025-06-11 revision confirmed. Two new normal swapped F14 controls obtained same publisherVoR from Wiley/PMC with different sizes; both favorAllfold. F15 publisherOA matches. F16Allfold publisherOA15pages saved; originalZ parent-only Save operator-interrupted after>10min with unknown terminal; new same-access pairs outstanding. Debug restoredOff."
+      "gap": "F14's original publisher PDF versus Zotero related preprint remains. The separate Debug-only save obtained the publisher PDF, and the original error did not reproduce. F14's same-version Wiley/PMC repeats and F15's publisher OA pair favor Allfold. In F16-3 after independent institutional verification, Allfold saved the correct publisher PDF and Zotero produced a matching parent without a PDF through the horizon. F16 has no comparable local PDF pair. Connector Debug settings were restored."
     },
     {
       "samples": [
@@ -11080,7 +11187,7 @@
         "F18",
         "F19"
       ],
-      "gap": "All three frozenSIAM Papers now have version-matched publisher PDFs from normal UI pairs on actual69b9a41, including previously untouchedF19. Original arXiv fallbacks and parent-only interruption retained. Each new first paired point is slower beyond timing precision; exchanged-order repeats/transfer diagnosis outstanding. No SIAM parity claim."
+      "gap": "All three SIAM Papers have comparable publisher pairs. F17/F18 first saves were slower and their warm repeats favor Allfold. Separate reauthentication restored F19 publisher access. Its prepared same-version pair was close, then an observed large-PDF warm repeat was slower on Allfold by 16.738–17.761 s. The receive-counter diagnosis supports Chrome cache reuse for this file, and large-PDF warm parity remains unmet."
     },
     {
       "samples": [
@@ -11091,7 +11198,7 @@
         "F30",
         "F31"
       ],
-      "gap": "F26-2 extra Allfold failure retained. Final production 989ad81 restored the original F26 publisher PDF twice; F26-3 Zotero used in-Save manual verification. F27-2 was the first corrected paired comparison of the original Paper and both saved the publication. It retained an active Reader challenge solved automatically, a failed first reader entry and a much slower wait. Untouched F29/F30/F31 saved publisher versions with automatic access recovery on Allfold; each first comparable wait was slower. F28 affected retest and normal exchanged-order controls remain needed."
+      "gap": "The original F26-2 extra failure and the slower early F27/F29/F30/F31 same-version waits remain in the table. At final production 10e5038, F27, the F26 control and two untouched samples saved and associated their publisher PDFs automatically through the first Reader. Zotero did not produce a comparable timed local PDF on the final repair observations. F28's comparable fallback was a preprint. Platform timing parity remains unconfirmed."
     },
     {
       "samples": [
@@ -11099,7 +11206,7 @@
         "F24",
         "F25"
       ],
-      "gap": "F23/F24 established exact EBSCO Business Source Complete records with PDF entries in both products. Their Allfold normal paths received direct PubsOnline authorization denials, did not reach EBSCO, and saved known related preprints. Zotero saved EBSCO publisher and Just Accepted versions, after automatic article-detail embed preparation. Source attainment gap is repeatable across the two sampled Papers. F25 direct pages both showed the exact article and a View PDF entry. Allfold P4 reported access-authorization. Zotero Atypon Journals saved the exact parent alone; no local attachment after 600 seconds. An EBSCO exact DOI/title result was not available in the Allfold Service search. Direct PubsOnline parity is unconfirmed."
+      "gap": "F23/F24 have exact licensed EBSCO records. Ordinary Allfold Download received direct publisher access denials and saved related preprints. Zotero saved the EBSCO publisher and Just Accepted versions. Allfold's authorized Browser viewer later saved the correct F23 publisher PDF and the active record-to-viewer trace contained PDF responses. The licensed lookup and URL handoff for ordinary Paper Download remain unverified. F25 had no EBSCO match and no local publisher PDF on either side."
     }
   ],
   "parity_conclusions": "Ongoing acceptance. Prepared Cambridge and IEEE cohorts show no observed disadvantage within their measured strata. ScienceDirect repaired Allfold saving is verified on the original, control and two unseen Papers; no final comparable Zotero timing for these retests. Other platform gaps and Workspace Reset remain open.",
@@ -11147,7 +11254,7 @@
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
   "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
-  "checkpoint_utc": "2026-11-19T06:43:31.907492+00:00",
+  "checkpoint_utc": "2026-11-19T07:28:36.386Z",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
@@ -11605,15 +11712,15 @@
     "current_chrome_resource_state": "Fresh normal CARSI ScienceDirect route led to actual institutional access and recognized F26 article. Post-reboot verification was automatic."
   },
   "ci_checkpoint": {
-    "head_sha": "c177001824928832019f3e9d700a8ac3e5b655ca",
+    "head_sha": "b40696dcfc37421218807f85d0c0ca451ccdd35f",
     "status": "success",
     "event": "pull_request",
-    "run_id": 44261903357,
-    "job_id": 134657005434,
-    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44261903357",
-    "job_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44261903357/job/134657005434",
-    "completed_at_utc": "2026-11-18T07:54:43Z",
-    "scope": "Complete PR-associated check for this evidence checkpoint, with all required JavaScript, Python and Electron commands successful."
+    "run_id": 44476625192,
+    "job_id": 135398631824,
+    "run_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44476625192",
+    "job_url": "https://github.com/dylaaan-booob/allfold/actions/runs/44476625192/job/135398631824",
+    "completed_at_utc": "2026-11-19T07:09:18Z",
+    "scope": "Completed PR-associated check at the preceding evidence commit, with all required commands successful. See the PR check for later evidence commits."
   },
   "non_scoring_diagnostics": [
     {
