@@ -108,13 +108,13 @@ P5, still bound to the original Paper.
 
 For a journal assigned to EBSCO, a Download can try its prepared EBSCOhost
 profile before OpenAlex. The browser searches the original DOI, verifies the
-matching record and its published PDF entry, and hands off the observed PDF
-GET from that document or its visible PDF Viewer link. The task observes the
-request before it is sent so the Session stream owns the body transfer. It
-preserves the observed Referer including an absent header. The preparation
-must have a retained EBSCO target. Account, profile and expiring PDF URLs stay
-out of saved source facts. A missing record or unavailable institution access
-leaves the independent OpenAlex fallback available.
+matching record, and follows that record's visible PDF Viewer link. The task
+blocks automatic preview requests on its page and captures the Viewer’s PDF
+GET before it is sent. The Session stream owns the body transfer and preserves
+the observed Referer including an absent header. The preparation must have a
+retained EBSCO target. Account, profile and expiring PDF URLs stay out of saved
+source facts. A missing record or unavailable institution access leaves the
+independent OpenAlex fallback available.
 
 The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is

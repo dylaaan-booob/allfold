@@ -33,6 +33,11 @@ function matchRecord(value,scope) {
   return /^[A-Za-z0-9_.~-]+$/.test(record)?{url,record}:null;
 }
 
+function isPdfRequest(details) {
+  const file=details.method==='GET' && httpsURL(details.url);
+  return file?.origin==='https://content.ebscohost.com' && file.pathname==='/cds/retrieve';
+}
+
 async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>true) {
   const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
   for(;;) {
@@ -48,13 +53,11 @@ function watchPdf(browser,tab,entry,{signal,deadline,verify}) {
   let resolve,first;
   const pending=new Promise(done=>{resolve=done;});
   const subscription=browser.sessionEvents.subscribe('beforeSendHeaders',details=>{
-    if(details.webContentsId!==tab.id || details.method!=='GET' || !['xhr','subFrame','other'].includes(details.resourceType)
+    if(details.webContentsId!==tab.id || !isPdfRequest(details) || !['xhr','subFrame','other'].includes(details.resourceType)
       || !browser.ownsPage(owner,tab.id)
       || signal?.aborted || Date.now()>=deadline)return;
     const top=httpsURL(contents.getURL());
-    const file=httpsURL(details.url);
-    if(top?.origin!==entry.origin || top.pathname!==entry.pathname
-      || file?.origin!=='https://content.ebscohost.com' || file.pathname!=='/cds/retrieve')return;
+    if(top?.origin!==entry.origin || top.pathname!==entry.pathname)return;
     const root=details.frame?.top;
     if(!root || !URL.canParse(details.frame.url) || new URL(details.frame.url).origin!==entry.origin
       || root.frameToken!==contents.mainFrame.frameToken || root.processId!==contents.mainFrame.processId)return;
@@ -68,9 +71,6 @@ function watchPdf(browser,tab,entry,{signal,deadline,verify}) {
         candidate,ambiguous:false};
     }
     resolve();
-    // The verified Paper stream, not the record preview, owns the first sent
-    // PDF GET and the file. Search and metadata requests continue normally.
-    return {cancel:true};
   },{signal});
   return {pending,dispose:subscription.dispose,matching(doc) {
     if(!first || first.ambiguous || first.page!==doc.url || first.generation!==doc.navigationGeneration
@@ -90,6 +90,12 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
   const tab=await browser.newTaskPage({signal,deadline,managed:true});
   browser.bindTaskPage(tab,signal);
   browser.associatePage(tab,{role:'pdf-reader'});
+  // Block automatic previews and unattributed GETs in this task page until
+  // Chromium actually destroys it. Only the verified Viewer can supply a URL.
+  const pdfGuard=browser.sessionEvents.subscribe('beforeSendHeaders',details=>{
+    if(details.webContentsId===tab.id && isPdfRequest(details))return {cancel:true};
+  });
+  tab.view.webContents.once('destroyed',pdfGuard.dispose);
   const options={signal,deadline,verify};
   const visit=async url=>{
     verify();
@@ -130,32 +136,23 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     const records=found.urls.map(url=>matchRecord(url,scope)).filter(Boolean);
     if(records.length!==1)throw refusal('result');
     const record=records[0];
-    const preview=watchPdf(browser,tab,record.url,options);
-    let detail,matched,candidate;
+    const doc=await visit(record.url),detail=matchRecord(doc.url,scope);
+    if(detail?.record!==record.record)throw refusal('contentReady');
+    const matched=await readReady(browser,tab,{mode:'record',title,doi},options,clue=>!clue.doi || clue.urls.length>0);
+    if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
+    const links=matched.urls.map(httpsURL).filter(url=>url?.origin===scope.origin
+      && url.pathname===scope.path+'/viewer/pdf/'+record.record);
+    if(links.length!==1)throw refusal('contentReady');
+    const reader=watchPdf(browser,tab,links[0],options);
     try {
-      const doc=await visit(record.url);
-      detail=matchRecord(doc.url,scope);
-      if(detail?.record!==record.record)throw refusal('contentReady');
-      matched=await readReady(browser,tab,{mode:'record',title,doi},options,clue=>
-        !clue.doi || clue.urls.length>0 || !!preview.matching(doc));
-      if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
-      candidate=preview.matching(doc);
-    } finally {preview.dispose();}
-    if(!candidate) {
-      const links=matched.urls.map(httpsURL).filter(url=>url?.origin===scope.origin
-        && url.pathname===scope.path+'/viewer/pdf/'+record.record);
-      if(links.length!==1)throw refusal('contentReady');
-      const reader=watchPdf(browser,tab,links[0],options);
-      try {
-        const doc=await visit(links[0]);
-        await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
-        candidate=reader.matching(doc);
-        if(!candidate)throw refusal('download');
-      } finally {reader.dispose();}
-    }
-    return {outcome:'retrieved',pdf_clues:{status:'complete',landing_url:detail.url.href,
-      observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',
-      identifiers:[],candidates:[candidate],diagnostics:[]}};
+      const viewer=await visit(links[0]);
+      await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
+      const candidate=reader.matching(viewer);
+      if(!candidate)throw refusal('download');
+      return {outcome:'retrieved',pdf_clues:{status:'complete',landing_url:detail.url.href,
+        observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',
+        identifiers:[],candidates:[candidate],diagnostics:[]}};
+    } finally {reader.dispose();}
   } finally {
     guard.dispose();
   }

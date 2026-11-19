@@ -17,6 +17,8 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const recordPath='/c/test-profile/search/details/record';
   const viewerPath='/c/test-profile/viewer/pdf/record',viewerQuery='?intent=download%20now';
   const requestPDF='<script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>';
+  const previews=['/cds/retrieve?Signature=preview-first','/cds/retrieve?Signature=preview-second'].map(path=>
+    new URL(path,ebscoPdf).href);
   const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
     const current=new URL(request.url,'http://fixture.invalid');
     const ebscoHub='<a href="'+ebscoProfile+'/search">EBSCO一站式检索</a>';
@@ -30,8 +32,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       '/c/test-profile/search/results':'<main><h1>Search results</h1><h2><a href="/c/test-profile/search/details/record">Licensed fixture</a></h2></main>',
       [recordPath]:ebscoMode==='expired'
         ? '<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>'
-        : '<main><h1>Licensed fixture</h1>'+(ebscoMode==='delayed'?'' :recordMetadata)+'</main>'
-          +(ebscoMode==='preview'?requestPDF:ebscoMode==='delayed'
+        : '<main><h1>Licensed fixture</h1>'+(ebscoMode==='delayed'||ebscoMode==='preview'?'':recordMetadata)+'</main>'
+          +(ebscoMode==='preview'?'<script>Promise.allSettled('+JSON.stringify(previews)
+            +'.map(url=>fetch(url))).then(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'));</script>':ebscoMode==='delayed'
             ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>':''),
       [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?requestPDF:''),
     };
@@ -346,8 +349,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     ebscoMode='preview';
     const preview=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(preview.outcome,'retrieved',JSON.stringify({preview,requests}));
-    assert.equal(preview.pdf_clues.candidates[0].url,ebscoPdf);
-    assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve') || request.url.includes('/viewer/pdf/')));
+    assert.equal(preview.pdf_clues.candidates[0].url,ebscoPdf,'distinct automatic previews cannot qualify the body');
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve')));
     ebscoDOI='10.5555/different';
     const wrong=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(wrong.diagnostic && !wrong.pdf_clues,'the actual licensed record must match the Paper DOI');

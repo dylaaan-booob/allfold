@@ -38,7 +38,8 @@ process.once('uncaughtException',failFixture);
       const pages={
         [ebscoPath+'/search']:'<main><h1>Licensed library</h1><p>All databases</p></main>',
         [ebscoPath+'/search/results']:'<main><h1>Search results</h1><h2><a href="'+ebscoPath+'/search/details/licensed">Licensed fixture</a></h2></main>',
-        [ebscoPath+'/search/details/licensed']:'<main><h1>Licensed fixture</h1><p>DOI: 10.5555/licensed</p><a href="'+ebscoPath+'/viewer/pdf/licensed">View PDF</a></main>',
+        [ebscoPath+'/search/details/licensed']:'<main><h1>Licensed fixture</h1><p>DOI: 10.5555/licensed</p><a href="'+ebscoPath+'/viewer/pdf/licensed">View PDF</a></main>'
+          +'<script>fetch('+JSON.stringify(new URL('/cds/retrieve?Signature=preview',licensedPDF).href)+').catch(()=>{});</script>',
         [ebscoPath+'/viewer/pdf/licensed']:'<meta name="referrer" content="no-referrer"><main><h1>Licensed full text</h1><p>Institution viewer</p></main><script>fetch('+JSON.stringify(licensedPDF)+').catch(()=>{});</script>',
       };
       res.writeHead(pages[input.pathname]?200:404,{'content-type':'text/html','cache-control':'no-store'});
