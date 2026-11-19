@@ -34,10 +34,14 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     if(ebscoMode==='pending-asset')results='<main><h1>Search results</h1><h2><a href="'+recordPath+'-stale">Another record</a></h2></main>'
       +pendingImage+'<script>setTimeout(()=>{history.replaceState(null,"",location.href+"&db=licensed");'
       +'document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(resultLink)+');},800);</script>';
+    if(ebscoMode==='record-in-app')results+='<script>document.querySelector("h2 a").addEventListener("click",event=>{'
+      +'event.preventDefault();history.pushState(null,"",event.currentTarget.href+"?db=licensed");'
+      +'document.querySelector("main").innerHTML='+JSON.stringify('<h1>Licensed fixture</h1>'+recordMetadata)+';});</script>';
     if(ebscoMode==='replace-search' && !current.searchParams.has('replacement'))
       results='<main><h1>Search results</h1></main>'+pendingImage
         +'<script>setTimeout(()=>location.replace(location.href+"&replacement=1"),800);</script>';
     if(current.pathname==='/ebsco-pending-image')return;
+    if(current.pathname===recordPath && ebscoMode==='record-in-app')return;
     if(current.pathname===recordPath && ebscoMode==='unsafe') {
       response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
     }
@@ -363,6 +367,11 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));
     assert.ok(requests.some(request=>request.url==='/ebsco-pending-image'));
+    ebscoMode='record-in-app';
+    const inAppRecord=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(inAppRecord.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({inAppRecord,requests}));
+    assert.equal(inAppRecord.pdf_clues.landing_url,'https://research.ebsco.com'+recordPath+'?db=licensed');
+    assert.ok(!requests.some(request=>request.url===recordPath),'the working record route keeps the search document');
     ebscoMode='viewer';
     const documentCall=browser.documents.call.bind(browser.documents);
     let readRaced=false;
@@ -381,9 +390,16 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       assert.equal(requests.filter(request=>request.url.startsWith(resultsPath)).length,1,'only the local document read is retried');
     } finally {browser.documents.call=documentCall;}
     ebscoMode='replace-search';
+    let replacementStarted=false;
+    browser.events.once('tab-created',(_event,tab)=>{
+      tab.view.webContents.on('did-start-navigation',(event,url,inPlace,main)=>{
+        if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace) && (event.url ?? url).endsWith('&replacement=1'))
+          replacementStarted=true;
+      });
+    });
     const replacedSearch=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(replacedSearch.diagnostic && !replacedSearch.pdf_clues);
-    assert.ok(requests.some(request=>request.url.includes('&replacement=1')));
+    assert.ok(replacementStarted,'a full replacement navigation started before the task rejected the search');
     assert.ok(!requests.some(request=>request.url===recordPath),'replaced search document cannot authorize a record');
     ebscoMode='expired-search';
     const expiredSearch=await invoke('extract_paper_pdf_clues',licensed);

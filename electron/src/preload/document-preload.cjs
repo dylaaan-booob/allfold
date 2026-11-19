@@ -665,7 +665,11 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     const input=snapshot?await webFrame.executeJavaScript('('+captureSnapshot.toString()+')()'):null;
     const source=name=>'('+operations[name].toString().replace(/^\w+\(/,'function(')+')';
     const code=snapshot?'('+readSnapshot.toString()+')('+JSON.stringify(input)+','+(action==='extract'?source('extract'):'null')+','+source('pdf')+','+JSON.stringify(args)+','+JSON.stringify(doiCasefold)+','+JSON.stringify(targetDoi)+')':source(action)+'('+JSON.stringify(args)+')';
-    const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code}]);
+    // Bind the separate record-link action to the same isolated search Document,
+    // including across a replacement that commits at the same URL.
+    const binding=action==='ebsco' && args.mode==='results'
+      ?'Object.defineProperty(globalThis,Symbol.for("allfold.ebsco.document"),{value:'+JSON.stringify(documentId)+'});':'';
+    const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code:binding+code}]);
     if(!snapshot && location.href!==url) {
       ipcRenderer.send('document:result',{id,error:'document_changed'});return;
     }

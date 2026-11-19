@@ -111,8 +111,10 @@ profile before OpenAlex. When a body on the established article origin remains
 blocked after access handling, EBSCO gets a turn before additional publisher
 queries and page refresh.
 When that source is unavailable, the remaining qualified publisher entries and
-OpenAlex can still run. The browser searches the original DOI, verifies the
-matching record, and follows that record's visible PDF Viewer link. The task
+OpenAlex can still run. The browser searches the original DOI and follows the
+matching title link within that verified search Document. This preserves the
+site's in-page navigation when it uses one. The browser verifies the record's
+DOI and follows its visible PDF Viewer link. The task
 blocks automatic preview requests on its page and captures the Viewer’s PDF
 GET before it is sent. The Session stream owns the body transfer and preserves
 the observed Referer including an absent header. The preparation must have a

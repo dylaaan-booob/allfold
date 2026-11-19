@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 **Status: incomplete. At the 19 November 2026 checkpoint (Asia/Shanghai), 30
 of the 31 original frozen Papers have paired observations. Two untouched
-supplemental Papers also have observations, for 87 pair slots including repeats.
+supplemental Papers also have observations, for 88 pair slots including repeats.
 One Project Euclid Paper is excluded from saving because it requires a
 subscription. F23/F24 exposed an EBSCO source discovery gap. F25 produced no
 verified PDF on either product. Twenty-five
@@ -133,8 +133,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-At this checkpoint Allfold has 80 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 61 automatic and three assisted local-PDF
+At this checkpoint Allfold has 81 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 62 automatic and three assisted local-PDF
 successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -152,7 +152,7 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. Parity unconfirmed. |
 | SIAM | 3 / 3 | Allfold5 related preprints and9 publisher PDFs; Zotero13 publisher PDFs,1 interruption | F17/F18 each have3 publisher pairs:first slower,two warm faster. Normal reauthentication restored F19 publisher access; its new comparable pair is close/favors Allfold,then a warm repeat favors Zotero. Cache reuse is demonstrated; large-PDF warm user-wait parity is not met. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | Direct-publisher parity unconfirmed. |
-| EBSCO Business Source Complete | 2 matching records | Zotero saved the publisher and Just Accepted versions. Allfold still saved related arXiv versions in all three repair retests. F23 timed out in search, F24 first stalled on the record and then lost its search Document. | Correct licensed versions and comparable timing remain unconfirmed on Allfold. |
+| EBSCO Business Source Complete | 2 matching records | Zotero saved the publisher and Just Accepted versions. Allfold saved related arXiv versions in four repair retests. F23-3 passed the search and then timed out opening the record. | The licensed version gap persists. There is no comparable timing point. |
 | ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. On final code, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | Functional retrieval passed on these four repaired paths. The initial F29/F30/F31 same-body pairs took longer on Allfold. The final repair observations lack a measurable same-version Zotero pair, so performance parity remains unconfirmed. |
 
 ### Paired wait by platform and observed access
@@ -1885,3 +1885,42 @@ original search request is sent once. A replaced main document continues to
 refuse the source. After the publisher challenge handling settles, the prepared
 EBSCO path can run before the extra publisher refresh. The licensed outputs on
 both originals require further live evidence.
+
+F23-3 ran on `4d9b342` after the exact Business Source Complete record and
+the institutional PDF entry were confirmed in both independent sessions.
+Allfold reached the managed search results and opened the record. The record
+navigation waited **85.071 s** including cleanup and timed out before the
+Viewer was opened. The publisher candidate had also spent **41.553 s** in
+verification recovery, where the Solver started and a subsequent main-frame
+navigation returned `ERR_BLOCKED_BY_CLIENT`. The exact blocked request and the
+EBSCO record's load state at the deadline were not observed. The final P5
+stream took **113.934 s**. Allfold saved and associated the verified 34-page,
+9,493,072-byte preprint in **308.240–308.625 s**.
+
+The next Zotero Save imported and associated the 29-page, 2,996,661-byte
+publisher PDF in **20.217–20.749 s**. The file's title and DOI matched and the
+new parent was in the dedicated local collection. Neither product required
+user input during its measured action. The different editions preclude a
+timing comparison. The `4d9b342` results of `npm --prefix electron run check`
+(65 files), `uv run --locked pytest` (1,677 passed, two existing warnings), and
+`npm --prefix electron test` (254 passed, zero skips) were verified locally
+and the linked PR check ran all three commands successfully.
+[Safety checks on 4d9b342](https://github.com/dylaaan-booob/allfold/actions/runs/44525339637/job/135564282577)
+
+A separate Browser observation opened the same F23 details address in a new
+tab within the verified EBSCO Session. It was still loading after about
+127.5 s, with no title, DOI, PDF entry or access message. The tab was closed
+normally and the original institutional details tab was retained. In that
+tab, the site's Back to results control returned to the unique F23 result.
+One follow-up click on the title did not visibly open the details. These
+observations reproduce the direct-navigation stall and leave the exact
+site-side cause open. Neither action started a PDF save.
+
+The isolated Electron regression models a qualified search whose record link
+works through the site's in-page navigation while a separate document GET
+stalls. It first failed at `page_load` and passed after the browser followed
+the verified search result link. The action checks the same current search
+Document and same title before dispatch. The record still has to match the
+original DOI and provide its own PDF Viewer entry. This fixture checks a
+navigation mechanism. Live licensed saves still require evidence from both
+originals.

@@ -38,6 +38,60 @@ function isPdfRequest(details) {
   return file?.origin==='https://content.ebscohost.com' && file.pathname==='/cds/retrieve';
 }
 
+function clickRecordLink(documentId,source,destination,title,deadline) {
+  if(globalThis[Symbol.for('allfold.ebsco.document')]!==documentId
+    || location.href!==source || Date.now()>=deadline)return false;
+  const titleKey=value=>value.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
+  const links=[...document.querySelectorAll('a[href]')].filter(link=>
+    link.href===destination && titleKey(link.textContent || '')===titleKey(title)
+    && link.closest('h2,.result-item-title,[class*="result-item-title"]')
+    && link.checkVisibility({checkVisibilityCSS:true}) && !link.hasAttribute('download')
+    && ['', '_self'].includes((link.target || document.querySelector('base[target]')?.target || '').toLowerCase()));
+  if(links.length!==1)return false;
+  links[0].click();
+  return true;
+}
+
+async function openRecord(browser,tab,searchDocument,scope,record,title,{signal,deadline,verify,onWaiting}) {
+  const contents=tab.view.webContents,owner=browser.operation;
+  const validate=()=>{
+    verify();
+    if(!browser.documentCurrent(searchDocument))throw refusal('search');
+  };
+  await browser.waitForCooldown(record.url.href,{signal,deadline,validate,pageId:tab.id,step:'page_load',
+    authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'navigation'}):undefined});
+  validate();
+  const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
+  const landed=url=>matchRecord(url,scope)?.record===record.record;
+  const inPage=(event,url,main)=>{
+    if((event.isMainFrame ?? main) && landed(event.url ?? url))browser.finishPageLoad(tab);
+  };
+  contents.on('did-navigate-in-page',inPage);
+  try {
+    browser.beginPageLoad(tab,signal,limit,{fresh:true});
+    const args=[searchDocument.documentId,searchDocument.url,record.url.href,title,limit];
+    try {
+      // Follow the site's actual link so its in-page search context can open
+      // the record. A static link still performs a normal Browser navigation.
+      const clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
+        code:'('+clickRecordLink.toString()+')(...'+JSON.stringify(args)+')',
+      }]),signal,limit);
+      if(!clicked)throw refusal('result');
+    } catch(error) {
+      checkCanceled(signal);
+      // A new Document can retire the click's execution world before replying.
+      if(!landed(contents.getURL()) && !landed(tab.navigation.current?.url))throw error;
+    }
+    const doc=await browser.waitForPage(tab,{signal,deadline:limit,documentOnly:true,onWaiting});
+    if(!landed(doc.url))throw refusal('contentReady');
+    verify();
+    return doc;
+  } finally {
+    contents.removeListener('did-navigate-in-page',inPage);
+    browser.finishPageLoad(tab);
+  }
+}
+
 async function readReady(browser,tab,args,{signal,deadline,verify,retryDocumentRead=false},settled=()=>true) {
   const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
   for(;;) {
@@ -102,15 +156,18 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     if(details.webContentsId===tab.id && isPdfRequest(details))return {cancel:true};
   });
   tab.view.webContents.once('destroyed',pdfGuard.dispose);
+  const onAccessWaiting=(waiting,diagnostic,current)=>{
+    if(!waiting)return;
+    // An expired institutional login cannot consume the parent's budget.
+    // The user can re-prepare this Service through the normal Login path.
+    if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
+    onWaiting?.(diagnostic);
+  };
   const options={signal,deadline,verify};
   const visit=async (url,{documentOnly=false}={})=>{
     verify();
-    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly,onWaiting:(diagnostic,current)=>{
-      // An expired institutional login cannot consume the parent's budget.
-      // The user can re-prepare this Service through the normal Login path.
-      if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
-      onWaiting?.(diagnostic);
-    }});
+    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly,
+      onWaiting:(diagnostic,current)=>onAccessWaiting(true,diagnostic,current)});
     browser.finishPageLoad(tab);
     verify();
     return doc;
@@ -161,8 +218,7 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     }
     verifySearch();
     const record=records[0];
-    const doc=await visit(record.url),detail=matchRecord(doc.url,scope);
-    if(detail?.record!==record.record)throw refusal('contentReady');
+    const doc=await openRecord(browser,tab,found,scope,record,title,{...options,onWaiting:onAccessWaiting});
     const matched=await readReady(browser,tab,{mode:'record',title,doi},options,clue=>!clue.doi || clue.urls.length>0);
     if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
     const links=matched.urls.map(httpsURL).filter(url=>url?.origin===scope.origin
@@ -174,7 +230,7 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
       await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
       const candidate=reader.matching(viewer);
       if(!candidate)throw refusal('download');
-      return {outcome:'retrieved',pdf_clues:{status:'complete',landing_url:detail.url.href,
+      return {outcome:'retrieved',pdf_clues:{status:'complete',landing_url:doc.url,
         observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',
         identifiers:[],candidates:[candidate],diagnostics:[]}};
     } finally {reader.dispose();}
