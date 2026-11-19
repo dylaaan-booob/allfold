@@ -10465,6 +10465,149 @@
         "diagnostic_locator": "Private F16-3 bounded click, translator observation and exact local parent/attachment horizon receipts."
       },
       "comparison": "Correct Wiley publisher PDF verified on the original Allfold Paper. The normal Zotero fallback created a correct local parent without a PDF through the common horizon. No paired difference or ratio."
+    },
+    {
+      "pair_id": "F11-3",
+      "sample_id": "F11",
+      "platform": "Taylor & Francis",
+      "configured_service": null,
+      "configured_access_method": "Independent Taylor & Francis institutional access on the exact article.",
+      "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+      "runtime_head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+      "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+      "runtime_id": "905debf26383004f101889ecd2ac826b",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "cohort": "representative_retest",
+      "preselected_platform_control": true,
+      "order_provenance": "Manifest-designated control and Allfold-first order established for F11-3 in the 18 November resumption plan.",
+      "measurement_stratum": "institutional_normal_control",
+      "timing_comparison_eligible": true,
+      "comparable_body_version": true,
+      "difference_seconds": [
+        0.173,
+        0.82
+      ],
+      "ratio": [
+        1.0382,
+        1.1932
+      ],
+      "trial_body_replacement": {
+        "prior_attempt": 2,
+        "prior_bytes": 1251965,
+        "paper_body_absent": true,
+        "prior_file_absent": true,
+        "same_candidate_available": true,
+        "delete_click_utc": [
+          "2026-11-19T05:32:41.854Z",
+          "2026-11-19T05:32:41.943Z"
+        ],
+        "restore_click_utc": [
+          "2026-11-19T05:32:47.184Z",
+          "2026-11-19T05:32:47.267Z"
+        ]
+      },
+      "allfold": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T05:33:51.424Z",
+          "2026-11-19T05:33:51.522Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T05:33:56.229Z",
+          "2026-11-19T05:33:56.488Z"
+        ],
+        "wait_seconds": [
+          4.707,
+          5.064
+        ],
+        "attempt": 3,
+        "rule": "R003",
+        "source": "P1",
+        "file_bytes": 1251963,
+        "content_check": {
+          "file_exists": true,
+          "pdf_prefix": true,
+          "page_count": 27,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "body_version": "Publisher Accepted Manuscript, 27 pages",
+        "fallback_used": false,
+        "native_stream_complete_utc": "2026-11-19T05:33:56.424Z",
+        "native_duration_ms": 4865,
+        "native_phases_ms": {
+          "request": 12,
+          "response": 1847,
+          "first_byte": 1847,
+          "closed_writer": 4864
+        },
+        "human_intervention": false,
+        "runtime_head_sha": "d6ac467445bc6457a92bbfa91753bdf205d51c8d",
+        "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
+        "frontend_head_sha": "f15db245214a314c14bac6a29d0d05641571242a",
+        "measurement_revision": "keys-v2",
+        "ui_preparation": "Renewed the independent Allfold CARSI T&F access after restart. The normal product completed its T&F challenge during preparation. The exact article showed the configured institution, full article and PDF entry. Restore of the original Candidate followed authorized removal of only its old trial body.",
+        "diagnostic_locator": "Private 10e5038-f11-3-20261119 archive, native preparation and original Paper file verification."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "click_utc": [
+          "2026-11-19T05:34:41.133Z",
+          "2026-11-19T05:34:41.160Z"
+        ],
+        "parent_observed_utc": [
+          "2026-11-19T05:34:42.815Z",
+          "2026-11-19T05:34:43.080Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T05:34:45.404Z",
+          "2026-11-19T05:34:45.667Z"
+        ],
+        "wait_seconds": [
+          4.244,
+          4.534
+        ],
+        "file_bytes": 1251963,
+        "content_check": {
+          "file_exists": true,
+          "pdf_prefix": true,
+          "page_count": 27,
+          "full_title_match": true,
+          "doi_match": true,
+          "publisher_indicators": {
+            "IEEE": false,
+            "Springer": false,
+            "Scientific Reports": false,
+            "Creative Commons": false,
+            "Accepted Manuscript": true,
+            "arXiv:": false,
+            "All rights reserved": false
+          }
+        },
+        "body_version": "Publisher Accepted Manuscript, 27 pages",
+        "translator": "Taylor and Francis+NEJM",
+        "link_mode": "imported_url",
+        "acceptance_collection_membership_verified": true,
+        "human_intervention": false,
+        "measurement_revision": "keys-v2",
+        "preparation_human_intervention": true,
+        "preparation_human_wait_seconds": null,
+        "ui_preparation": "The user passed a Chrome article verification during preparation. When the existing article subsequently showed Get Access, entering T&F again through independent CARSI restored and reverified institutional access. The correct T&F Translator and trial collection were visible. No PDF preview.",
+        "diagnostic_locator": "Private F11-3 bounded click and verified imported PDF plus new parent membership."
+      },
+      "comparison": "Both sides saved the same publisher Accepted Manuscript. This exchanged-order control favors Zotero within the observed bounds. F11-2 favored Allfold. Actual PDF cache flags and Zotero subphase timings are missing."
     }
   ],
   "coverage_gaps": [
@@ -10604,7 +10747,7 @@
     "computer_use": "Recovered. Native Chrome Options and separate user preparation verification observed. New Zotero Save got citation 403 and submitted zero local items. Official site export at the same endpoint separately hit Cloudflare. Latest user requested ending Zotero diagnosis here and confirming Allfold saving."
   },
   "chrome_service_preparation": "From user steering: independently select the matching Service in Chrome and Allfold CARSI resource pages before timing, then verify each actual institutional account or entitlement and target article. Confirm the actual Translator for Chrome. Retain preparation and human costs separately.",
-  "checkpoint_utc": "2026-11-19T05:24:44.199413+00:00",
+  "checkpoint_utc": "2026-11-19T05:36:35.510092+00:00",
   "historical_tool_interruptions": [
     "Earlier platform update removed mcp__cua_repl and an alternative-tool choice was requested; that question became obsolete when CUA returned.",
     "Global window enumeration/new-tab calls can time out after recovery; targeted Chrome getApp subsequently succeeded, and an already-created trial tab was reused rather than recreated.",
