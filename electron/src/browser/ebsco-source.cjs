@@ -2,7 +2,7 @@
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {publicClueURL}=require('./pdf-clues.cjs');
 const {validDOI}=require('./article-identity.cjs');
-const {checkCanceled,pause,waitFor,PAGE_LOAD_MS}=require('./browser-task.cjs');
+const {checkCanceled,pause,waitFor,waitForLoad,PAGE_LOAD_MS}=require('./browser-task.cjs');
 
 const SEARCH_HOSTS=new Set(['research.ebsco.com','discovery.ebsco.com']);
 const HUB_HOST='search.ebscohost.com';
@@ -97,9 +97,9 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
   });
   tab.view.webContents.once('destroyed',pdfGuard.dispose);
   const options={signal,deadline,verify};
-  const visit=async url=>{
+  const visit=async (url,{documentOnly=false}={})=>{
     verify();
-    const doc=await browser.navigate(url.href,{tab,signal,deadline,onWaiting:(diagnostic,current)=>{
+    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly,onWaiting:(diagnostic,current)=>{
       // An expired institutional login cannot consume the parent's budget.
       // The user can re-prepare this Service through the normal Login path.
       if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
@@ -130,11 +130,18 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     }
     const search=new URL(scope.path+'/search/results',scope.origin);
     search.searchParams.set('q',doi);
-    const landing=httpsURL((await visit(search)).url);
+    // Once the authenticated results Document is readable, unrelated assets
+    // need not finish before looking for the qualified record link.
+    const landing=httpsURL((await visit(search,{documentOnly:true})).url);
     if(landing?.origin!==scope.origin || landing.pathname!==search.pathname)throw refusal('search');
     const found=await readReady(browser,tab,{mode:'results',title},options);
     const records=found.urls.map(url=>matchRecord(url,scope)).filter(Boolean);
     if(records.length!==1)throw refusal('result');
+    const contents=tab.view.webContents;
+    if(contents.isLoadingMainFrame()) {
+      contents.stop();
+      await waitForLoad(tab,signal,deadline,verify);
+    }
     const record=records[0];
     const doc=await visit(record.url),detail=matchRecord(doc.url,scope);
     if(detail?.record!==record.record)throw refusal('contentReady');

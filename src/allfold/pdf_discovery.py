@@ -152,7 +152,7 @@ class PdfDiscovery:
     """One invocation binds one immutable Paper and never renews its authority.
 
     io may expose query_missing(target, inputs, facts), document(target),
-    reader(candidate), and openalex(doi). query_missing is a lazy iterator of
+    reader(candidate), ebsco_candidates(target), and openalex(doi). query_missing is a lazy iterator of
     qualified PdfRuleInputs so the first sufficient answer stops further queries.
     Every IO/consumer dispatch is preceded and followed by the captured guard.
     """
@@ -183,6 +183,7 @@ class PdfDiscovery:
         self._seen_bytes, self._state_full = 0, False
         self._failed, self._fallback, self._used = False, False, False
         self._document_attempted = False
+        self._publisher_access_denied = False
         self._initial = tuple(candidates) if candidates is not None else None
         self._consumed = 0
         self._observe = observe
@@ -371,6 +372,15 @@ class PdfDiscovery:
         return (not self._reader_entry(candidate) and _eligible(candidate)
             and (urldefrag(candidate.url)[0], candidate.action) not in self._seen)
 
+    def _ebsco_candidates(self):
+        if self.io is None or not callable(getattr(type(self.io), 'ebsco_candidates', None)):
+            return ()
+        try:
+            return self._call(self.io.ebsco_candidates, self.target)
+        except PdfSourceReadError as error:
+            self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
+            return ()
+
     def _candidate_batches(self):
         if self._initial is not None:
             yield self._initial
@@ -380,6 +390,12 @@ class PdfDiscovery:
         saved_p3 = tuple(self._saved('P3'))
         saved_p4 = tuple(self._saved('P4'))
         yield self._ordered_entries((*p1, *existing, *saved_p3, *saved_p4))
+        # A publisher refusal can be followed by the assigned institution
+        # source before opening the article again. Later publisher clues still
+        # run when that separate source cannot produce a body.
+        tried_ebsco = self._publisher_access_denied
+        if tried_ebsco:
+            yield self._ebsco_candidates()
         if (needs_p2_query(self._route, replace(self.inputs, target=self._route), known_refresh=crossref_pdf_refresh_required(self.facts))
                 and self.io is not None and callable(getattr(type(self.io), 'query_missing', None))):
             # IO is an iterator: no second interface is requested until the
@@ -432,11 +448,8 @@ class PdfDiscovery:
                 templates.extend(c for c in self._rules(stage)
                     if (urldefrag(c.url)[0], c.action) not in self._seen)
         yield self._ordered_entries((*current_entries, *templates))
-        if self.io is not None and callable(getattr(type(self.io), 'ebsco_candidates', None)):
-            try:
-                yield self._call(self.io.ebsco_candidates, self.target)
-            except PdfSourceReadError as error:
-                self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
+        if not tried_ebsco:
+            yield self._ebsco_candidates()
         cached = next((f for f in self.facts if f.source == 'openalex'), None)
         refreshed = False
         if cached and cached.status in {'complete', 'partial'}:
@@ -548,6 +561,9 @@ class PdfDiscovery:
             fresh_reader = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
+                if response.access == 'authorization' and self._route.article_url:
+                    publisher, entry = urlsplit(self._route.article_url), urlsplit(original.url)
+                    self._publisher_access_denied |= (publisher.scheme, publisher.netloc) == (entry.scheme, entry.netloc)
                 # Entry and Reader can have different Cookie paths. Keep both
                 # observations; either can advance, while A -> B -> A repeats.
                 if response.context_key is not None:

@@ -273,10 +273,11 @@ class BrowserRuntime {
     if(context?.active && !context.signal.aborted && context.failure)
       throw new BrowserFailure('authentication','institution_credentials_rejected');
   }
-  async inspectAuthentication(tab) {
+  async inspectAuthentication(tab,{documentOnly=false}={}) {
     const wc=tab.view.webContents;
     if(wc.isDestroyed())throw new BrowserFailure('navigation','page_closed');
-    if(wc.isLoadingMainFrame())return {step:'loading',waiting:true};
+    const loading=()=>wc.isLoadingMainFrame() && !(documentOnly && tab.navigation.current?.documentReady);
+    if(loading())return {step:'loading',waiting:true};
     let binding;
     try {binding=await this.documentBinding(tab,{signal:tab.taskSignal,deadline:tab.navigation.current?.deadline});}
     catch(error) {
@@ -299,7 +300,7 @@ class BrowserRuntime {
     try {state=carsiPage?{step:'none',waiting:false}:await frame.executeJavaScript('('+institutionAuthPage.toString()+')(...'
       +JSON.stringify(['inspect',null,null,mode])+')');}
     catch (_) {state={step:'manual',waiting:true,code:'auth_execution_failed'};}
-    if(!this.documentCurrent(binding) || wc.isLoadingMainFrame())return {step:'loading',waiting:true};
+    if(!this.documentCurrent(binding) || loading())return {step:'loading',waiting:true};
     return {...state,binding};
   }
   async handleAuthentication(tab) {
@@ -654,19 +655,18 @@ class BrowserRuntime {
     owner.phase='business';
     for(const tab of this.tabs.values())if(tab.navigation.current?.owner===owner)tab.navigation.finish();
   }
-  async inspectPage(tab,{signal,deadline=Infinity,stage='navigation',step='verification',extraWaiting,onWaiting,automaticDeadline=deadline,navigationChain}={}) {
+  async inspectPage(tab,{signal,deadline=Infinity,stage='navigation',step='verification',extraWaiting,onWaiting,automaticDeadline=deadline,navigationChain,documentOnly=false}={}) {
     checkCanceled(signal);this.checkTaskResources();
     if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
     tab.navigation.check();
-    if(tab.view.webContents.isLoadingMainFrame() || (tab.navigation.current?.active && !tab.navigation.current.loaded))
+    if(tab.navigation.isLoading(documentOnly))
       return {doc:null,waiting:false,loading:true};
     try {return await inspectPage({signal,deadline,automaticDeadline,stage,step,onWaiting,
-      authentication:()=>this.checkAuthentication(tab),inspectAuthentication:()=>this.inspectAuthentication(tab),
+      authentication:()=>this.checkAuthentication(tab),inspectAuthentication:()=>this.inspectAuthentication(tab,{documentOnly}),
       probe:()=>this.accessState(tab,{signal,deadline}),current:doc=>{
         tab.navigation.check();
         if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
-        return this.documentCurrent(doc) && !tab.view.webContents.isLoadingMainFrame()
-          && !(tab.navigation.current?.active && !tab.navigation.current.loaded);
+        return this.documentCurrent(doc) && !tab.navigation.isLoading(documentOnly);
       },
       extraWaiting:doc=>!!extraWaiting?.(doc) || !!(tab.authContext?.active && tab.authContext.institution
         && new URL(doc.url).origin!=='https://ds.carsi.edu.cn'),
@@ -762,7 +762,7 @@ class BrowserRuntime {
     }
   }
 
-  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,httpReferrer}={}) {
+  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,httpReferrer,documentOnly=false}={}) {
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     await waitFor(()=>this.ready,signal,deadline);
@@ -786,11 +786,11 @@ class BrowserRuntime {
       validate();
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
       const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target,{httpReferrer}),
-        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target,httpReferrer});
+        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target,httpReferrer,documentOnly});
       chain=tab.navigation.current.chain;
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
-      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,
+      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,documentOnly,
         onWaiting:(waiting,diagnostic,document)=>{if(waiting)onWaiting?.(diagnostic,document);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;

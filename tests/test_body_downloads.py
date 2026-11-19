@@ -310,6 +310,8 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
         expected = b'%PDF-licensed' if ready else b'%PDF-preprint'
         assert (workspace / result.paper.body.relative_path).read_bytes() == expected
         assert result.paper.body.pdf_source == ('P4' if ready else 'P5')
+        document_sources = [data.get('prepared_source') for action, data in bridge.calls if action == 'extract_paper_pdf_clues']
+        assert document_sources == (['ebsco'] if ready else ['ebsco', None])
         assert any(data.get('url') == preprint for _, data in bridge.calls) is not ready
         assert not host.browser_lock.owners
     finally:

@@ -22,16 +22,22 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
     const current=new URL(request.url,'http://fixture.invalid');
     const ebscoHub='<a href="'+ebscoProfile+'/search">EBSCO一站式检索</a>';
-    const recordMetadata='<p>DOI: '+ebscoDOI+'</p><a href="'+viewerPath+viewerQuery+'">View PDF</a>';
+    const recordMetadata='<h3>DOI</h3><p>'+ebscoDOI+'</p>'
+      +'<a href="/c/test-profile/viewer/pdf/related">Related PDF</a>'
+      +'<a aria-label="Access now (PDF) Licensed fixture" href="'+viewerPath+viewerQuery+'">View PDF</a>';
+    const signIn='<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>';
+    if(current.pathname==='/ebsco-pending-image')return;
     if(current.pathname===recordPath && ebscoMode==='unsafe') {
       response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
     }
     const ebscoPages={
       '/Community.aspx':'<main><h1>Institution library</h1>'+ebscoHub+ebscoHub+'</main>',
       '/c/test-profile/search':'<main><h1>Search the library</h1><p>All databases</p></main>',
-      '/c/test-profile/search/results':'<main><h1>Search results</h1><h2><a href="/c/test-profile/search/details/record">Licensed fixture</a></h2></main>',
+      '/c/test-profile/search/results':ebscoMode==='expired-search'?signIn+'<img src="/ebsco-pending-image">'
+        :'<main><h1>Search results</h1><h2><a href="/c/test-profile/search/details/record">Licensed fixture</a></h2></main>'
+          +(ebscoMode==='pending-asset'?'<img src="/ebsco-pending-image">':''),
       [recordPath]:ebscoMode==='expired'
-        ? '<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>'
+        ? signIn
         : '<main><h1>Licensed fixture</h1>'+(ebscoMode==='delayed'||ebscoMode==='preview'?'':recordMetadata)+'</main>'
           +(ebscoMode==='preview'?'<script>Promise.allSettled('+JSON.stringify(previews)
             +'.map(url=>fetch(url))).then(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'));</script>':ebscoMode==='delayed'
@@ -341,8 +347,17 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(found.pdf_clues.candidates[0].rule_id,'R073');
     assert.ok(requests.some(request=>request.url==='/c/test-profile/search/results?q=10.5555%2Ffixture'));
     assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery),'keep the actual viewer action and query');
+    assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/related')));
     assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve')),'the body stream owns the first sent PDF GET');
     assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='pending-asset';
+    const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));
+    assert.ok(requests.some(request=>request.url==='/ebsco-pending-image'));
+    ebscoMode='expired-search';
+    const expiredSearch=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(expiredSearch.diagnostic?.code,'content_access_blocked',JSON.stringify(expiredSearch));
+    assert.ok(!requests.some(request=>request.url===recordPath));
     ebscoMode='delayed';
     const delayed=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(delayed.pdf_clues?.candidates[0]?.url,ebscoPdf,'title-only intermediate state must not stop extraction');

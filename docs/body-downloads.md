@@ -107,7 +107,10 @@ its current P3/P4 clues, these may qualify previously unavailable templates befo
 P5, still bound to the original Paper.
 
 For a journal assigned to EBSCO, a Download can try its prepared EBSCOhost
-profile before OpenAlex. The browser searches the original DOI, verifies the
+profile before OpenAlex. A refused publisher body on the established article
+origin gives EBSCO a turn before additional publisher queries and page refresh.
+When that source is unavailable, the remaining qualified publisher entries and
+OpenAlex can still run. The browser searches the original DOI, verifies the
 matching record, and follows that record's visible PDF Viewer link. The task
 blocks automatic preview requests on its page and captures the Viewer’s PDF
 GET before it is sent. The Session stream owns the body transfer and preserves

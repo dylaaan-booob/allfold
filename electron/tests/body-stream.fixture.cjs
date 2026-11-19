@@ -326,6 +326,7 @@ process.once('uncaughtException',failFixture);
     const deniedPublisher=requests.filter(r=>r.url==='/fixture-publisher-pdf');
     assert.equal(deniedPublisher.length,1);
     assert.equal(deniedPublisher[0].headers.referer,origin+'/fixture-publisher');
+    assert.equal(requests.filter(r=>r.url==='/fixture-publisher').length,0,'a licensed body ends discovery before refreshing the refused publisher');
     assert.equal(requests.filter(r=>r.url==='/fixture-preprint').length,0);
     const licensedRequests=requests.filter(r=>r.headers.host==='content.ebscohost.com');
     assert.equal(licensedRequests.length,1,'the managed stream sends the sole licensed PDF request');

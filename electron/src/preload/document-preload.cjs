@@ -37,11 +37,12 @@ const operations={
         identifiers.add(match[1].toLowerCase());
     }
     const doi=ready && identifiers.size===1 && identifiers.has(wanted);
-    const urls=ready ? [...new Set(links.filter(node=>main.contains(node) &&
-      /^(?:PDF(?: full text)?|(?:view|download|full[ -]text)\s+PDF|access now\s*\(PDF\)|立即获取\s*[(（]PDF[)）]|(?:查看|下载)\s*PDF|PDF\s*全文)$/i
-        .test((node.getAttribute('aria-label') || node.textContent).trim().replace(/\s+/g,' ')))
-      .filter(node=>URL.canParse(node.href) && /\/viewer\/pdf\/[^/]+$/.test(new URL(node.href).pathname))
-      .map(node=>node.href))].slice(0,2):[];
+    const record=location.pathname.match(/^(\/c\/[A-Za-z0-9_.~-]+)\/search\/details\/([A-Za-z0-9_.~-]+)$/);
+    const urls=ready && record ? [...new Set(links.flatMap(node=>{
+      if(!URL.canParse(node.href))return [];
+      const link=new URL(node.href);
+      return link.origin===location.origin && link.pathname===record[1]+'/viewer/pdf/'+record[2]?[link.href]:[];
+    }))].slice(0,2):[];
     return {ready:ready && identifiers.size>0,urls,doi};
   },
   access() {

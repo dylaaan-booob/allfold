@@ -11225,6 +11225,157 @@
         "diagnostic_locator": "Private F11-4 bounded click and converter sequence observation, exact new local parent and attachment horizon check."
       },
       "comparison": "The third F11 control saved and linked the publisher manuscript in Allfold. Zotero's matching local parent had no attachment through the checked horizon. The previous two comparable F11 timing results still favor opposite products."
+    },
+    {
+      "pair_id": "F23-2",
+      "sample_id": "F23",
+      "cohort": "representative",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "configured_access_method": "CARSI",
+      "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
+      "runtime_head_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
+      "measurement_stratum": "Independent institution access, normal EBSCO details with automatic embeds, no intentional PDF preview.",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "Zotero saved the EBSCO publication. Allfold saved the related preprint after its managed EBSCO search timed out. The confirmation interval also separated the clicks by about eleven minutes.",
+      "allfold": {
+        "result": "automatic_success",
+        "body_version": "Verified related arXiv preprint 2205.09823v2",
+        "requested_licensed_version_obtained": false,
+        "click_utc": [
+          "2026-11-19T09:55:03.798Z",
+          "2026-11-19T09:55:03.905Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T09:57:42.406Z",
+          "2026-11-19T09:57:42.665Z"
+        ],
+        "wait_seconds": [
+          158.501,
+          158.867
+        ],
+        "attempt": 2,
+        "source": "P5",
+        "rule": "OPENALEX",
+        "file_bytes": 9493072,
+        "page_count": 34,
+        "native_timing_ms": {
+          "first_publisher_P4_denial": 1524,
+          "generic_article_refresh": 33261,
+          "R073_first_page_timeout": 85090,
+          "P5_body_stream": 35405
+        },
+        "fallback_used": true,
+        "human_intervention": false,
+        "original_paper_association_verified": true,
+        "trial_body_replacement": "Previously verified trial PDF removed through Trash after confirmation. Same Paper restored and Download invoked once.",
+        "diagnostic_locator": "Private F23-2 native sequence and file verification."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "translator": "EBSCO Discovery Layer",
+        "click_utc": [
+          "2026-11-19T09:44:12.428Z",
+          "2026-11-19T09:44:12.456Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T09:44:29.234Z",
+          "2026-11-19T09:44:29.519Z"
+        ],
+        "wait_seconds": [
+          16.778,
+          17.091
+        ],
+        "acceptance_collection_membership_verified": true,
+        "human_intervention": false,
+        "body_version": "INFORMS publisher PDF via EBSCO",
+        "page_count": 29,
+        "file_bytes": 2996661,
+        "verified_matching_title_and_doi": true,
+        "diagnostic_locator": "Private F23-2 Zotero durable file and parent verification."
+      }
+    },
+    {
+      "pair_id": "F24-2",
+      "sample_id": "F24",
+      "cohort": "representative",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "configured_access_method": "CARSI",
+      "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
+      "runtime_head_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
+      "measurement_stratum": "Independent institution access. The normal EBSCO details automatically embedded full text in both products.",
+      "timing_comparison_eligible": false,
+      "comparable_body_version": false,
+      "comparison_eligibility_note": "Allfold saved a verified related arXiv preprint. Zotero saved the publisher Just Accepted manuscript.",
+      "allfold": {
+        "result": "automatic_success",
+        "body_version": "Verified related arXiv preprint 2502.16659v1",
+        "requested_licensed_version_obtained": false,
+        "click_utc": [
+          "2026-11-19T10:28:08.426Z",
+          "2026-11-19T10:28:08.516Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T10:30:45.325Z",
+          "2026-11-19T10:30:45.582Z"
+        ],
+        "wait_seconds": [
+          156.809,
+          157.156
+        ],
+        "attempt": 2,
+        "native_timing_ms": {
+          "publisher_P4": 2552,
+          "generic_article_refresh": 9312,
+          "R073_search": 14263,
+          "R073_record_navigation": 41542,
+          "R073_record_lookup_timeout": 85002,
+          "R073_total": 140817,
+          "P5_stream": 1851
+        },
+        "file_bytes": 1441301,
+        "page_count": 48,
+        "source": "P5",
+        "rule": "OPENALEX",
+        "fallback_used": true,
+        "human_intervention": false,
+        "original_paper_association_verified": true,
+        "trial_body_replacement": "Previously verified trial PDF removed through Trash after confirmation. Same Paper restored and Download invoked once.",
+        "diagnostic_locator": "Private F24-2 native sequence and file verification."
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "translator": "EBSCO Discovery Layer",
+        "click_utc": [
+          "2026-11-19T10:31:24.314Z",
+          "2026-11-19T10:31:24.341Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-19T10:31:32.400Z",
+          "2026-11-19T10:31:32.673Z"
+        ],
+        "wait_seconds": [
+          8.059,
+          8.359
+        ],
+        "acceptance_collection_membership_verified": true,
+        "human_intervention": false,
+        "body_version": "INFORMS publisher Just Accepted manuscript via EBSCO",
+        "page_count": 39,
+        "file_bytes": 1762961,
+        "verified_matching_title_and_doi": true,
+        "diagnostic_locator": "Private F24-2 Zotero durable file and parent verification."
+      }
     }
   ],
   "coverage_gaps": [
@@ -12791,43 +12942,10 @@
   },
   "ebsco_repair_checkpoint": {
     "production_code_sha": "f30bb8c4bcdc51907608410622cf5d23c2fa5767",
-    "status": "original_paper_retests_in_progress",
+    "status": "initial_repair_did_not_recover_licensed_bodies",
     "before_pairs": ["F23-1", "F24-1"],
-    "pending_pairs": [
-      {
-        "pair_id": "F23-2",
-        "sample_id": "F23",
-        "order": ["zotero", "allfold"],
-        "source_preparation": "Exact DOI and Business Source Complete record with PDF entry observed in each independent institution session. The normal EBSCO detail automatically loaded an embedded viewer.",
-        "timing_comparison_eligible": false,
-        "allfold": {
-          "result": "not_started",
-          "reason": "Computer Use requires specific confirmation before removing the original Paper's old trial PDF; it is in Trash."
-        },
-        "zotero": {
-          "result": "automatic_success",
-          "translator": "EBSCO Discovery Layer",
-          "click_utc": ["2026-11-19T09:44:12.428Z", "2026-11-19T09:44:12.456Z"],
-          "local_pdf_and_association_utc": ["2026-11-19T09:44:29.234Z", "2026-11-19T09:44:29.519Z"],
-          "wait_seconds": [16.778, 17.091],
-          "file_bytes": 2996661,
-          "page_count": 29,
-          "body_version": "INFORMS publisher PDF via EBSCO",
-          "verified_matching_title_and_doi": true,
-          "acceptance_collection_membership_verified": true,
-          "human_intervention": false
-        }
-      },
-      {
-        "pair_id": "F24-2",
-        "sample_id": "F24",
-        "order": ["allfold", "zotero"],
-        "source_preparation": "Each independent institution session displayed the exact DOI, matching Business Source Complete record, and PDF link. Allfold's normal detail embedded the matching PDF.",
-        "timing_comparison_eligible": false,
-        "allfold": {"result": "not_started"},
-        "zotero": {"result": "not_started"}
-      }
-    ],
+    "observed_retests": ["F23-2", "F24-2"],
+    "current_licensed_version_status": "F23-2 fell back after managed search timed out. F24-2 reached HTTP 200 in search and in the record, then timed out before its Viewer opened.",
     "local_validation": {
       "javascript_files": 65,
       "python_passed": 1675,

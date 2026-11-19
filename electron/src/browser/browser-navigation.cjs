@@ -42,6 +42,7 @@ class NavigationRecovery {
       if(this.historyOptions){nav=this.begin(this.historyOptions);this.historyOptions=null;}
       const target=event.url ?? url;
       this.tab.status=null;
+      if(nav)nav.documentReady=false;
       // Keep observing the document after recovery ends; do not reopen recovery.
       if(nav?.automatic && !nav.active){nav.url=target;return;}
       if(!nav)nav=this.begin(this.options());
@@ -59,6 +60,10 @@ class NavigationRecovery {
       this.current.committed=true;
       if(Number.isInteger(status) && status>=100)this.tab.error=null;
       this.changed();
+    });
+    on('dom-ready',()=>{
+      const nav=this.current;
+      if(nav?.active && nav.committed && !nav.pendingStart && !nav.refresh)nav.documentReady=true;
     });
     on('did-finish-load',()=>{
       const nav=this.current;
@@ -281,6 +286,10 @@ class NavigationRecovery {
     if(nav.loadDeadline!=null && (!nav.loaded || this.contents.isLoadingMainFrame()) && this.now()>=nav.loadDeadline)
       throw this.recordFailure(this.pageLoadTimeout(nav));
   }
+  isLoading(documentOnly=false) {
+    const nav=this.current;
+    return !(documentOnly && nav?.documentReady) && (this.contents.isLoadingMainFrame() || !!nav?.active && !nav.loaded);
+  }
   track(run) {
     const nav=this.current,token=nav.dispatchToken={};
     const current=()=>this.current===nav && nav.active && nav.dispatchToken===token && !nav.failure;
@@ -314,7 +323,7 @@ class NavigationRecovery {
         this.check(owner);
         if(this.current?.chain!==nav.chain)throw new BrowserFailure('navigation','document_changed');
         const current=this.current;
-        if(current.loaded && !this.contents.isLoadingMainFrame())return current;
+        if((current.loaded || options.documentOnly && current.documentReady) && !this.isLoading(options.documentOnly))return current;
         await waitFor(()=>pause(current.signal,100),current.signal,current.deadline);
       }
     } catch(error) {
