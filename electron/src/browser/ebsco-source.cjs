@@ -6,6 +6,7 @@ const {checkCanceled,pause,waitFor,waitForLoad,PAGE_LOAD_MS}=require('./browser-
 
 const SEARCH_HOSTS=new Set(['research.ebsco.com','discovery.ebsco.com']);
 const HUB_HOST='search.ebscohost.com';
+const COMMUNITY_PATH=/^\/(?:webauth\/)?community\.aspx$/i;
 const PROFILE=/^\/c\/[A-Za-z0-9_.~-]+(?=\/|$)/;
 const JSON_BUDGET=1024*1024;
 function refusal(step) {
@@ -121,7 +122,7 @@ function clickProfilePostback(documentId,source,deadline) {
 async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWaiting}) {
   const contents=tab.view.webContents,owner=browser.operation;
   const source=httpsURL(hub.url);
-  if(source?.hostname!==HUB_HOST || !/^\/(?:webauth\/)?community\.aspx$/i.test(source.pathname))throw refusal('resource_ready');
+  if(source?.hostname!==HUB_HOST || !COMMUNITY_PATH.test(source.pathname))throw refusal('resource_ready');
   const validate=()=>{
     verify();
     if(!browser.documentCurrent(hub))throw refusal('resource_ready');
@@ -130,23 +131,42 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
     authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'navigation'}):undefined});
   validate();
   const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
+  let submitted=null,scope=null;
+  const requestGuard=browser.sessionEvents.subscribe('beforeRequest',details=>{
+    if(details.webContentsId!==tab.id || details.resourceType!=='mainFrame')return;
+    if(signal?.aborted || Date.now()>=limit || !browser.ownsPage(owner,tab.id))return {cancel:true};
+    verify();
+    const target=httpsURL(details.url);
+    if(submitted===null && details.method==='POST' && target?.origin===source.origin && COMMUNITY_PATH.test(target.pathname)) {
+      submitted=details.id;
+      return;
+    }
+    if(submitted===null || details.id!==submitted || details.method!=='GET' || !target)return {cancel:true};
+  });
+  const releaseGuard=()=>{requestGuard.dispose();contents.removeListener('destroyed',releaseGuard);};
+  contents.once('destroyed',releaseGuard);
   try {
     browser.beginPageLoad(tab,signal,limit,{fresh:true});
     const args=[hub.documentId,hub.url,limit];
+    let clicked;
     try {
-      const clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
+      clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
         code:'('+clickProfilePostback.toString()+')(...'+JSON.stringify(args)+')',
       }]),signal,limit);
-      if(!clicked)throw refusal('resource_ready');
     } catch(error) {
       checkCanceled(signal);
-      if(!tab.navigation.current?.started || browser.documentCurrent(hub))throw error;
+      if(submitted===null || browser.documentCurrent(hub))throw error;
+      // The qualified POST can replace the world before the click replies.
+      clicked=true;
     }
+    if(clicked!==true)throw refusal('resource_ready');
     const doc=await browser.waitForPage(tab,{signal,deadline:limit,documentOnly:true,onWaiting});
     verify();
-    return profile(doc.url);
+    scope=submitted===null?null:profile(doc.url);
+    return scope;
   } finally {
     browser.finishPageLoad(tab);
+    if(scope)releaseGuard();
   }
 }
 

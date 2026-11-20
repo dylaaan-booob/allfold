@@ -2130,10 +2130,12 @@ visibly change it. Those observations distinguish the working manual entry
 from the managed source's earlier probe failure.
 
 The Community repair separates ordinary HTTPS links from the visible WebForm
-control. It binds the normal one-time submission to the verified managed
-Document and continues only on an EBSCO search profile. The isolated native
-regression observes one POST and the qualified PDF handoff. The follow-up
-live evidence for that repair is pending.
+control. It binds one native main-frame POST to the verified managed Document
+and the same-origin Community endpoint before the request is sent. GET redirects
+in that request chain may continue to the verified search profile. The isolated
+native regression checks the one POST, the qualified PDF handoff and refusal of
+both a changed submission destination and a repeated POST. Follow-up live
+evidence for that repair is pending.
 
 ## Acceptance disposition and cleanup
 

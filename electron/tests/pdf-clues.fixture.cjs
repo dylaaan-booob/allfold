@@ -26,7 +26,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const ebscoHub='<a href="'+ebscoProfile+'/search">EBSCO一站式检索</a>';
     const ebPostback='<form method="post" action="/webauth/Community.aspx">'
       +'<a href="javascript:WebForm_DoPostBackWithOptions()">EBSCO一站式检索</a></form>'
-      +'<script>function WebForm_DoPostBackWithOptions(){document.querySelector("form").submit();}</script>';
+      +'<script>function WebForm_DoPostBackWithOptions(){const form=document.querySelector("form");'
+      +(ebscoMode==='profile-postback-other-origin'?'form.action="https://research.ebsco.com/webauth/Community.aspx";':'')
+      +'form.submit();}</script>';
     const recordMetadata='<h3>DOI</h3><p>'+ebscoDOI+'</p>'
       +'<a href="/c/test-profile/viewer/pdf/related">Related PDF</a>'
       +'<a aria-label="Access now (PDF) Licensed fixture" href="'+viewerPath+viewerQuery+'">View PDF</a>';
@@ -45,7 +47,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       results='<main><h1>Search results</h1></main>'+pendingImage
         +'<script>setTimeout(()=>location.replace(location.href+"&replacement=1"),800);</script>';
     if(current.pathname==='/ebsco-pending-image')return;
-    if(ebscoMode==='profile-postback' && current.pathname==='/webauth/Community.aspx') {
+    if(ebscoMode.startsWith('profile-postback') && current.pathname==='/webauth/Community.aspx') {
+      if(ebscoMode==='profile-postback-redirect-post' && !current.search) {
+        response.writeHead(307,{location:'/webauth/Community.aspx?second=1'});response.end();return;
+      }
       response.writeHead(303,{location:ebscoProfile+'/search'});response.end();return;
     }
     if(current.pathname===recordPath && ebscoMode==='record-in-app')return;
@@ -59,7 +64,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
     }
     const ebscoPages={
-      '/Community.aspx':'<main><h1>Institution library</h1>'+(ebscoMode==='profile-postback'?ebPostback:ebscoHub+ebscoHub)+'</main>',
+      '/Community.aspx':'<main><h1>Institution library</h1>'+(ebscoMode.startsWith('profile-postback')?ebPostback:ebscoHub+ebscoHub)+'</main>',
       '/c/test-profile/search':'<main><h1>Search the library</h1><p>All databases</p></main>',
       [resultsPath]:results,
       [recordPath]:ebscoMode==='expired'
@@ -382,6 +387,14 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(community.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(community));
     assert.deepEqual(requests.filter(request=>request.url==='/webauth/Community.aspx').map(request=>request.method),['POST']);
     assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='profile-postback-other-origin';
+    const wrongPost=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(wrongPost.diagnostic && !wrongPost.pdf_clues);
+    assert.equal(requests.filter(request=>request.method==='POST').length,0,'the submitted destination is checked before any POST');
+    ebscoMode='profile-postback-redirect-post';
+    const replayPost=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(replayPost.diagnostic && !replayPost.pdf_clues);
+    assert.equal(requests.filter(request=>request.method==='POST').length,1,'a 307 does not replay the managed form');
     ebscoMode='direct-link';
     const direct=await invoke('extract_paper_pdf_clues',licensed);
     assert.deepEqual(direct.pdf_clues?.candidates,[{

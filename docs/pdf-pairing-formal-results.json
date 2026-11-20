@@ -12022,7 +12022,7 @@
       "comparable_body_version": false,
       "timing_comparison_eligible": false,
       "transfer_efficiency_comparison_eligible": false,
-      "comparison_eligibility_note": "Allfold saved a related 48-page arXiv version and Zotero saved the 39-page licensed Just Accepted manuscript. No before/after speed advantage can be inferred from the faster Allfold action.",
+      "comparison_eligibility_note": "Allfold saved a related 48-page arXiv version and Zotero saved the 39-page licensed Just Accepted manuscript. This different-version pair cannot evaluate the details link's speed.",
       "allfold": {
         "result": "automatic_success",
         "production_code_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
