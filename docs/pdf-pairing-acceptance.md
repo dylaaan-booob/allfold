@@ -29,9 +29,9 @@ on Zotero after the exact article's access was reverified. The measured
 Cambridge/IEEE prepared-access cohorts show no observed disadvantage; overall
 coverage and retests remain incomplete. In the prepared Oxford F10, F08 and
 F09 repeats, Allfold saved the correct publisher PDF and Zotero produced no new
-local PDF or parent within 600 s. F08 and F09 had long recovery paths. A
-separate F09 repeat saved directly after renewed Oxford access and did not
-reproduce the block.
+local PDF or parent within 600 s. F08 and F09 had long recovery paths. Subsequent
+Allfold-only repeats of both originals saved their publisher PDFs through
+API02 after renewed Oxford access. The earlier navigation block did not recur.
 Same-version Oxford timing remains unconfirmed. F18 exposed a publisher-version/latency
 gap. Direct-entry and Referer repairs alone still returned a preprint. The first
 real retest of the common native partition-context repair at `69b9a41` saved the
@@ -824,9 +824,24 @@ account and exact article with the PDF option were verified before Download.
 The `c9fbf52` build with the guard observer linked the correct 19-page,
 731,000-byte publisher PDF in **3.600–3.949 s**. API02 returned a response in
 0.560 s and finished the Session stream in 3.048 s, with first byte at 1.911 s.
-There was no verifier navigation or guard stop. The original F08 trial file
-was retained pending its separate deletion confirmation. The earlier blocked
-request and Oxford's paired timing gap remain unresolved.
+There was no verifier navigation or guard stop.
+
+For the original F08 (`10.1093/biomet/asag050`), the user completed institutional
+sign-in in Allfold's fresh Browser Session before measurement. Oxford showed the
+configured institution, the exact article and its PDF option after entry through
+CARSI. The previously confirmed 19-page, 762,331-byte trial file was deleted
+through Trash and the same Paper was restored as a Candidate with no body.
+
+A single Download in the observation build, with production behavior from
+`c9fbf52`, saved and linked the matching 19-page, 762,338-byte Oxford publisher
+PDF in **4.531–4.885 s**. The initial P2/API02 response took 0.649 s. The final
+Session stream took 3.999 s, including 2.277 s to its first byte. The durable
+file and original Paper association were independently verified. The action
+needed no human intervention. It did not open a verification view or record a
+guard stop. F08-2 and F09-2 retain their earlier blocks and recovery timings.
+The method and origin of those blocked requests and Oxford's same-edition
+paired timing remain unconfirmed. The F08 diagnostic adds no paired timing point.
+After the evidence export, the normal source build reopened the same Workspace.
 
 At `989ad81`, PR run 44211591848 failed in the existing Workspace lifecycle
 fixture. The local field read lacked a `revision` before its response status

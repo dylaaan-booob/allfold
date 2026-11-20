@@ -12033,7 +12033,7 @@
         "F09",
         "F10"
       ],
-      "gap": "F08-2, F09-2 and F10-2 verified actual institutional access in both products. Allfold saved all three publisher PDFs. Zotero produced no new local matching parent or PDF through the common horizon in those repeats. F08 and F09 repeated a client navigation block after automatic verification before saving through R020. An observation-only F09 run saved directly and did not reproduce the block. The exact blocked request and same-version comparison remain open."
+      "gap": "F08-2, F09-2 and F10-2 verified actual institutional access in both products. Allfold saved all three publisher PDFs. Zotero produced no new local matching parent or PDF through the common horizon in those repeats. F08 and F09 repeated a client navigation block after automatic verification before saving through R020. Allfold-only observation runs of both originals with renewed access saved directly through API02. The earlier block did not recur. The exact blocked request and same-version comparison remain open."
     },
     {
       "samples": [
@@ -13462,6 +13462,58 @@
       "publisher_verification_view_started": false,
       "guard_rejection_observed": false,
       "diagnostic_locator": "Private Oxford qnag123 route trace and local file check. Exact blocked request from F08/F09 remains unknown."
+    },
+    {
+      "id": "Oxford-F08-3-Guard-Recheck",
+      "sample_id": "F08",
+      "diagnostic_only": true,
+      "side": "allfold",
+      "production_code_sha": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
+      "runtime_head_sha": "e664805a6eba626f5863cb4ba504633c864c504a",
+      "runtime_build_note": "Temporary method/origin observation for owned main-frame guard stops. No request or save decisions were changed.",
+      "doi": "10.1093/biomet/asag050",
+      "platform": "Oxford Academic",
+      "access": "Fresh independent Allfold Browser Session through CARSI and Oxford Journals. User completed institutional sign-in during preparation. Verified the configured institutional account, exact article title/DOI and PDF option. No deliberate PDF preview.",
+      "body_precondition": "After specific approval, deleted the previous trial body using Trash and restored the same original Paper. The Candidate had no body before its one Download.",
+      "old_trial_body_absence_observed_utc": [
+        "2026-11-20T00:41:43.287Z",
+        "2026-11-20T00:41:43.544Z"
+      ],
+      "normal_restore_click_utc": [
+        "2026-11-20T00:41:54.027Z",
+        "2026-11-20T00:41:54.125Z"
+      ],
+      "click_utc": [
+        "2026-11-20T00:42:17.569Z",
+        "2026-11-20T00:42:17.672Z"
+      ],
+      "local_pdf_and_association_utc": [
+        "2026-11-20T00:42:22.203Z",
+        "2026-11-20T00:42:22.454Z"
+      ],
+      "wait_seconds": [
+        4.531,
+        4.885
+      ],
+      "result": "automatic_success",
+      "attempt": 3,
+      "source_stage": "P2",
+      "rule": "API02",
+      "file_bytes": 762338,
+      "page_count": 19,
+      "verified_title_and_doi": true,
+      "original_paper_association_verified": true,
+      "fallback_used": false,
+      "human_intervention_during_measured_action": false,
+      "native_timing_ms": {
+        "qualified_response": 649,
+        "stream": 3999,
+        "first_byte": 2277,
+        "writer_closed": 3999
+      },
+      "publisher_verification_view_started": false,
+      "guard_rejection_observed": false,
+      "diagnostic_locator": "Private F08 attempt 3 exported sequence, exact old and new file verifications, and read-only runtime receipt. F08-2/F09-2 blocked-request details remain unobserved."
     }
   ],
   "evidence_join_corrections": [
