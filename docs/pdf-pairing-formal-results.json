@@ -12005,6 +12005,88 @@
         "acceptance_collection_membership_verified": true,
         "diagnostic_locator": "Private R073-Fresh-1 Zotero durable imported file and exact parent verification."
       }
+    },
+    {
+      "pair_id": "F24-6",
+      "sample_id": "F24",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
+      "runtime_head_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "cohort": "repair_retest",
+      "measurement_stratum": "prepared EBSCO independent institutional sessions, automatically embedded full-text section on details pages",
+      "comparable_body_version": false,
+      "timing_comparison_eligible": false,
+      "transfer_efficiency_comparison_eligible": false,
+      "comparison_eligibility_note": "Allfold saved a related 48-page arXiv version and Zotero saved the 39-page licensed Just Accepted manuscript. No before/after speed advantage can be inferred from the faster Allfold action.",
+      "allfold": {
+        "result": "automatic_success",
+        "production_code_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
+        "runtime_head_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
+        "click_utc": [
+          "2026-11-20T13:17:26.894Z",
+          "2026-11-20T13:17:27.096Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-20T13:17:45.866+00:00",
+          "2026-11-20T13:17:46.121+00:00"
+        ],
+        "wait_seconds": [
+          18.77,
+          19.227
+        ],
+        "file_bytes": 1441301,
+        "page_count": 48,
+        "attempt": 6,
+        "human_intervention": false,
+        "source": "P5",
+        "source_rule": "OPENALEX",
+        "actual_file_source": "arXiv",
+        "pdf_version": "Related preprint, arXiv 2502.16659v1",
+        "fallback_used": true,
+        "content_check": "Original Paper body and completed attempt observed together; local PDF has exact article title and matches the previously observed 48-page preprint.",
+        "ui_preparation": "Independent CARSI EBSCO entitlement verified on exact F24 details. Prepared product Service retained the separate Community selection page. Old trial body deleted with user confirmation and original Paper restored. No manual PDF preview.",
+        "native_observation": {
+          "publisher_access_refusal_seconds": 1.996,
+          "r073_source_seconds": 3.753,
+          "r073_stop": "page_probe_unconfirmed",
+          "r073_direct_entry_seen": false,
+          "publisher_document_seconds": 10.933,
+          "fallback_stream_seconds": 1.219,
+          "fallback_first_byte_seconds": 0.525
+        }
+      },
+      "zotero": {
+        "result": "automatic_success",
+        "desktop_version": "10.0.9",
+        "connector_version": "5.0.217",
+        "translator": "EBSCO Discovery Layer",
+        "click_utc": [
+          "2026-11-20T13:19:40.614Z",
+          "2026-11-20T13:19:40.641Z"
+        ],
+        "local_pdf_and_association_utc": [
+          "2026-11-20T13:19:49.652+00:00",
+          "2026-11-20T13:19:49.945+00:00"
+        ],
+        "wait_seconds": [
+          9.011,
+          9.331
+        ],
+        "file_bytes": 1762961,
+        "page_count": 39,
+        "human_intervention": false,
+        "actual_file_source": "EBSCO content delivery",
+        "link_mode": "imported_url",
+        "pdf_version": "INFORMS Just Accepted manuscript",
+        "content_check": "Expected title and DOI on the local 39-page PDF, verified attachment with a new parent in the dedicated collection.",
+        "ui_preparation": "Independent CARSI EBSCO entitlement, exact details tab and Translator confirmed. Details load its embedded PDF section automatically. No manual preview."
+      },
+      "diagnostic_evidence": "Sanitized native timeline in private a921407-f24-6-details-immediate.zip plus per-side click and file association intervals."
     }
   ],
   "coverage_gaps": [
@@ -12102,7 +12184,7 @@
   "parity_conclusions": "The 20 November revised criterion accepts a user-wait difference of about five seconds. Cambridge, IEEE, Springer, the comparable Taylor & Francis and Wiley observations, and Project Euclid publisher OA fit that criterion in the measured strata. The normal earlier ScienceDirect F29–F31 pairs also fit it. Material EBSCO, SIAM F19 and historical ScienceDirect challenge delays were investigated and remain documented with attempted repairs. There are no final comparable Zotero timings for the repaired ScienceDirect or Oxford diagnostics, and no verified direct-publisher INFORMS pair.",
   "acceptance_disposition": {
     "effective_date_asia_shanghai": "2026-11-20",
-    "latest_live_tested_production_code_sha": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
+    "latest_live_tested_production_code_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
     "approximately_acceptable_allfold_delay_seconds": 5,
     "timing_rule": "Investigate materially longer waits and attempt a fix. Retain the observed delay, the evidence for its cause, and any unverified part when it remains. The approximate threshold is an acceptance guide, not a product timeout or a strict timing-parity requirement.",
     "success_endpoint": "A verified correct PDF is saved locally and linked to the correct item, with assisted, fallback and different-version outcomes recorded separately.",
@@ -12110,7 +12192,9 @@
       "operator_example_doi": "10.1287/ijoc.2024.0765",
       "verified_zotero_local_pdf_bytes": 4846719,
       "operator_example_timing_eligible": false,
-      "status": "isolated direct and Viewer fallback regressions passed; live Allfold rechecks pending"
+      "first_live_retest": "F24-6",
+      "first_live_stop": "Community selector page_probe_unconfirmed, before the details-link lookup. A visible EBSCO WebForm postback had been projected as an HTTP link.",
+      "status": "Isolated direct, Viewer fallback and Community postback regressions passed. The new branch has yet to run through the modified Community entry on a live Download."
     },
     "historical_extra_allfold_failures": [
       {

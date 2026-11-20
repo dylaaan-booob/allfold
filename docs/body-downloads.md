@@ -111,7 +111,10 @@ profile before OpenAlex. After a publisher challenge on a body entry for the
 established article origin, download tries any other qualified direct entries
 first, then the prepared EBSCO source before opening a publisher recovery page.
 If the EBSCO source cannot save the PDF, the deferred publisher recovery and
-qualified fallbacks can continue. The browser searches the original DOI and follows the
+qualified fallbacks can continue. A prepared Service may retain the EBSCO
+Community selector. The task follows its qualified institution entry to the
+profile, including one normal same-page form submission where offered. The
+browser searches the original DOI and follows the
 matching title link within that verified search Document. This preserves the
 site's in-page navigation when it uses one. Once the record DOI matches, the
 same Session can resolve the record's PDF download link through the EBSCO
@@ -122,8 +125,8 @@ A direct transfer that settles without a body can also use this Viewer path
 under the same prepared Service. The managed page blocks automatic previews and
 captures the Viewer’s attributable PDF GET before it is sent. It can use that
 request once the Viewer’s main Document passes access checks. The Session stream
-preserves the Viewer’s observed Referer including an absent header. The preparation must have a
-retained EBSCO target. Account, profile and expiring PDF URLs stay out of saved
+preserves the Viewer’s observed Referer including an absent header. Preparation
+must have a retained EBSCO target. Account, profile and expiring PDF URLs stay out of saved
 source facts. A missing record or unavailable institution access leaves the
 independent OpenAlex fallback available.
 

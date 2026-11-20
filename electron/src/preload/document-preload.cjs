@@ -11,7 +11,7 @@ const operations={
     const empty={ready:true,urls:[],doi:false};
     if(args.mode==='profile') {
       const urls=[...new Set(links.filter(node=>/^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(node.textContent.trim()))
-        .map(node=>node.href))].slice(0,2);
+        .map(node=>node.href).filter(url=>url.startsWith('https://')))].slice(0,2);
       return {...empty,urls};
     }
     const main=document.querySelector('main,[role="main"]') || document.body;
@@ -667,7 +667,7 @@ ipcRenderer.on('document:operation',async(_event,{id,action,expectedDocumentId,e
     const code=snapshot?'('+readSnapshot.toString()+')('+JSON.stringify(input)+','+(action==='extract'?source('extract'):'null')+','+source('pdf')+','+JSON.stringify(args)+','+JSON.stringify(doiCasefold)+','+JSON.stringify(targetDoi)+')':source(action)+'('+JSON.stringify(args)+')';
     // Bind the separate record-link action to the same isolated search Document,
     // including across a replacement that commits at the same URL.
-    const binding=action==='ebsco' && args.mode==='results'
+    const binding=action==='ebsco' && ['profile','results'].includes(args.mode)
       ?'Object.defineProperty(globalThis,Symbol.for("allfold.ebsco.document"),{value:'+JSON.stringify(documentId)+'});':'';
     const result=await webFrame.executeJavaScriptInIsolatedWorld(999,[{code:binding+code}]);
     if(!snapshot && location.href!==url) {

@@ -7,10 +7,10 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 (Asia/Shanghai).** 30 of the 31 frozen Papers were started. The subscription
 requirement excluded one Project Euclid Paper under the agreed publisher-OA
 scope. Three untouched supplemental Papers were also measured. The results retain
-93 pair slots including repeats, alongside separate pilot and diagnostic records.
-The latest production code in those live observations is
-`c9fbf52c7d5955916e1078ec3303c046319de8ed`. The EBSCO details-link follow-up has
-isolated regression evidence and is awaiting live retests.
+94 pair slots including repeats, alongside separate pilot and diagnostic records.
+The first live EBSCO details-link retest on `a921407` encountered a Community
+entry failure before the new lookup ran. The original observations and the
+follow-up are retained.
 
 A difference of about five seconds is acceptable for comparable user waits.
 Materially longer waits still require investigation and an attempted repair.
@@ -91,8 +91,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-Across those slots Allfold has 86 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 67 automatic and three assisted local-PDF
+Across those slots Allfold has 87 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 68 automatic and three assisted local-PDF
 successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -2112,7 +2112,28 @@ issuing a discovery PDF request. The public Download regression verifies
 local association after direct success and after direct refusal followed by
 a successful Viewer transfer of the same delivery URL. The mechanism was
 implemented from the observed link contract and installed Translator behavior.
-Live retests and before/after time evidence are pending.
+F24-6 ran on `a921407` after both products independently reached the authorized
+EBSCO record. Allfold's assigned Service retained the separate Community
+selection page. The page loaded with HTTP 200, and its profile read stopped
+with `page_probe_unconfirmed` at 3.753 s. The direct lookup was never reached.
+Allfold linked the previously identified 48-page arXiv preprint in
+18.770–19.227 s. Zotero saved the correct 39-page, 1,762,961-byte INFORMS Just
+Accepted manuscript in 9.011–9.331 s. The files belong to different versions,
+so this pair supplies no direct-link speed measurement.
+
+Inspection of the retained Community page showed a visible “EBSCO一站式检索”
+WebForm postback. Its JavaScript address went into the HTTP-link projection
+and was rejected by the bounded Document decoder. The same type of control
+had previously led from the manual CARSI resource entry to the authorized
+search profile. A diagnostic click on the retained Community page did not
+visibly change it. Those observations distinguish the working manual entry
+from the managed source's earlier probe failure.
+
+The Community repair separates ordinary HTTPS links from the visible WebForm
+control. It binds the normal one-time submission to the verified managed
+Document and continues only on an EBSCO search profile. The isolated native
+regression observes one POST and the qualified PDF handoff. The follow-up
+live evidence for that repair is pending.
 
 ## Acceptance disposition and cleanup
 

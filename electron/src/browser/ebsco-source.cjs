@@ -99,6 +99,57 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
   }
 }
 
+function clickProfilePostback(documentId,source,deadline) {
+  if(globalThis[Symbol.for('allfold.ebsco.document')]!==documentId
+    || location.href!==source || Date.now()>=deadline)return false;
+  const links=[...document.querySelectorAll('form[method="post" i] a[href]')].filter(link=>{
+    const form=link.closest('form');
+    const action=new URL(form.action);
+    const baseTarget=document.querySelector('base[target]')?.target || '';
+    return /^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(link.textContent.trim())
+      && /^javascript:\s*WebForm_DoPostBackWithOptions\(/.test(link.getAttribute('href'))
+      && action.origin===location.origin && /^\/(?:webauth\/)?community\.aspx$/i.test(action.pathname)
+      && ['', '_self'].includes((form.target || baseTarget).toLowerCase())
+      && ['', '_self'].includes((link.target || baseTarget).toLowerCase())
+      && !link.hasAttribute('download') && link.checkVisibility({checkVisibilityCSS:true});
+  });
+  if(links.length!==1)return false;
+  links[0].click();
+  return true;
+}
+
+async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWaiting}) {
+  const contents=tab.view.webContents,owner=browser.operation;
+  const source=httpsURL(hub.url);
+  if(source?.hostname!==HUB_HOST || !/^\/(?:webauth\/)?community\.aspx$/i.test(source.pathname))throw refusal('resource_ready');
+  const validate=()=>{
+    verify();
+    if(!browser.documentCurrent(hub))throw refusal('resource_ready');
+  };
+  await browser.waitForCooldown(hub.url,{signal,deadline,validate,pageId:tab.id,step:'page_load',
+    authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'navigation'}):undefined});
+  validate();
+  const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
+  try {
+    browser.beginPageLoad(tab,signal,limit,{fresh:true});
+    const args=[hub.documentId,hub.url,limit];
+    try {
+      const clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
+        code:'('+clickProfilePostback.toString()+')(...'+JSON.stringify(args)+')',
+      }]),signal,limit);
+      if(!clicked)throw refusal('resource_ready');
+    } catch(error) {
+      checkCanceled(signal);
+      if(!tab.navigation.current?.started || browser.documentCurrent(hub))throw error;
+    }
+    const doc=await browser.waitForPage(tab,{signal,deadline:limit,documentOnly:true,onWaiting});
+    verify();
+    return profile(doc.url);
+  } finally {
+    browser.finishPageLoad(tab);
+  }
+}
+
 function clickRecordLink(documentId,source,destination,title,deadline) {
   if(globalThis[Symbol.for('allfold.ebsco.document')]!==documentId
     || location.href!==source || Date.now()>=deadline)return false;
@@ -248,8 +299,9 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
         if(httpsURL(hubURL)?.hostname!==HUB_HOST)throw refusal('resource_ready');
         const hub=await readReady(browser,tab,{mode:'profile'},options);
         const links=hub.urls.map(httpsURL).filter(url=>url && (profile(url.href) || url.hostname===HUB_HOST));
-        if(links.length!==1)throw refusal('resource_ready');
-        scope=profile((await visit(links[0])).url);
+        if(links.length>1)throw refusal('resource_ready');
+        scope=links.length ? profile((await visit(links[0])).url)
+          : await openProfilePostback(browser,tab,hub,{...options,onWaiting:onAccessWaiting});
         if(!scope)throw refusal('resource_ready');
       }
     }
