@@ -7,6 +7,7 @@ const {checkCanceled,pause,waitFor,waitForLoad,PAGE_LOAD_MS}=require('./browser-
 const SEARCH_HOSTS=new Set(['research.ebsco.com','discovery.ebsco.com']);
 const HUB_HOST='search.ebscohost.com';
 const PROFILE=/^\/c\/[A-Za-z0-9_.~-]+(?=\/|$)/;
+const JSON_BUDGET=1024*1024;
 function refusal(step) {
   const error=new BrowserFailure('navigation','document_operation_failed');
   error.diagnostic.step=step;
@@ -33,9 +34,67 @@ function matchRecord(value,scope) {
   return /^[A-Za-z0-9_.~-]+$/.test(record)?{url,record}:null;
 }
 
+function deliveryURL(value) {
+  const file=httpsURL(value);
+  return file?.origin==='https://content.ebscohost.com' && file.pathname==='/cds/retrieve'?file:null;
+}
+
 function isPdfRequest(details) {
-  const file=details.method==='GET' && httpsURL(details.url);
-  return file?.origin==='https://content.ebscohost.com' && file.pathname==='/cds/retrieve';
+  return details.method==='GET' && deliveryURL(details.url)!==null;
+}
+
+async function readRecordJSON(browser,url,document,{signal,deadline,verify}) {
+  const owner=browser.operation;
+  const {response}=await browser.sessionEvents.fetch(url.href,{
+    method:'GET',credentials:'include',redirect:'error',
+    headers:{Accept:'application/json',Referer:document.url},
+  },{owner,attemptId:owner.association.request_id,document,signal,deadline,validate:verify});
+  const media=response.headers.get('content-type')?.split(';',1)[0];
+  if(!response.ok || !media?.toLowerCase().includes('json') || !response.body) {
+    await response.body?.cancel();
+    return null;
+  }
+  const chunks=[];
+  let bytes=0;
+  for await(const chunk of response.body) {
+    bytes+=chunk.byteLength;
+    if(bytes>JSON_BUDGET)return null;
+    chunks.push(chunk);
+  }
+  verify();
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+async function resolveDirectPdf(browser,scope,record,document,options) {
+  const {verify,signal,deadline}=options;
+  const verifyRecord=()=>{
+    verify();
+    if(!browser.documentCurrent(document))throw refusal('contentReady');
+  };
+  const readOptions={signal,deadline:Math.min(deadline,Date.now()+PAGE_LOAD_MS),verify:verifyRecord};
+  const details=new URL('/api/viewer/v6/details/'+record.record,scope.origin);
+  details.searchParams.set('opid',scope.path.slice(3));
+  details.searchParams.set('includeHbrRestrictedLinks','true');
+  try {
+    const rows=await readRecordJSON(browser,details,document,readOptions);
+    const links=Array.isArray(rows) && rows.length===1?rows[0]?.result?.links:null;
+    const pdfLinks=values=>Array.isArray(values)?[...new Set(values.flatMap(link=>
+      link?.type==='pdf' && typeof link.url==='string'?[link.url]:[]))]:[];
+    const preferred=pdfLinks(links?.['v2-downloadLinks']);
+    const choices=preferred.length?preferred:pdfLinks(links?.downloadLinks);
+    if(choices.length!==1 || !URL.canParse(choices[0],document.url))return null;
+    const link=httpsURL(new URL(choices[0],document.url).href);
+    if(deliveryURL(link?.href))return link;
+    if(link?.origin!==scope.origin || !link.pathname.startsWith('/api/'))return null;
+    const entry=await readRecordJSON(browser,link,document,readOptions);
+    return deliveryURL(entry?.url);
+  } catch(error) {
+    checkCanceled(signal);
+    verifyRecord();
+    if(Date.now()>=deadline)throw error;
+    // An unavailable optional direct entry leaves the regular Viewer usable.
+    return null;
+  }
 }
 
 function clickRecordLink(documentId,source,destination,title,deadline) {
@@ -219,8 +278,23 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     verifySearch();
     const record=records[0];
     const doc=await openRecord(browser,tab,found,scope,record,title,{...options,onWaiting:onAccessWaiting});
-    const matched=await readReady(browser,tab,{mode:'record',title,doi},options,clue=>!clue.doi || clue.urls.length>0);
+    const viewerOnly=data.prepared_source==='ebsco-viewer';
+    const recordArgs={mode:'record',title,doi};
+    const matchViewer=clue=>!clue.doi || clue.urls.length>0;
+    let matched=await readReady(browser,tab,recordArgs,options,viewerOnly?matchViewer:undefined);
     if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
+    const retrieved=candidate=>({outcome:'retrieved',pdf_clues:{status:'complete',landing_url:doc.url,
+      observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',
+      identifiers:[],candidates:[candidate],diagnostics:[]}});
+    if(!viewerOnly) {
+      const direct=await resolveDirectPdf(browser,scope,record,doc,options);
+      if(direct) {
+        browser.reportPage('info','ebsco_direct_pdf_entry',tab);
+        return retrieved({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url:direct.href,referer:doc.url});
+      }
+      if(!matched.urls.length)matched=await readReady(browser,tab,recordArgs,options,matchViewer);
+      if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
+    }
     const links=matched.urls.map(httpsURL).filter(url=>url?.origin===scope.origin
       && url.pathname===scope.path+'/viewer/pdf/'+record.record);
     if(links.length!==1)throw refusal('contentReady');
@@ -232,9 +306,7 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
       await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
       const candidate=reader.matching(viewer);
       if(!candidate)throw refusal('download');
-      return {outcome:'retrieved',pdf_clues:{status:'complete',landing_url:doc.url,
-        observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',
-        identifiers:[],candidates:[candidate],diagnostics:[]}};
+      return retrieved(candidate);
     } finally {reader.dispose();}
   } finally {
     guard.dispose();

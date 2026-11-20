@@ -113,7 +113,8 @@
         "service_cooldown_started",
         "service_cooldown_ended",
         "page_access",
-        "pdf_source_result"
+        "pdf_source_result",
+        "ebsco_direct_pdf_entry"
       ]
     },
     "action": {

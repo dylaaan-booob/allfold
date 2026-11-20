@@ -857,7 +857,7 @@ class BrowserRuntime {
     return this.extractPaperDocument(data,{...options,metadata:false});
   }
   async extractEbscoSource(data,options) {
-    if(data.prepared_source!=='ebsco' || data.reader || data.reader_access_only || !data.service_id
+    if(!['ebsco','ebsco-viewer'].includes(data.prepared_source) || data.reader || data.reader_access_only || !data.service_id
       || !Number.isSafeInteger(data.target_page_id) || !Number.isSafeInteger(data.deadline_ms)
       || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))
       throw new BrowserFailure('navigation','document_operation_failed');

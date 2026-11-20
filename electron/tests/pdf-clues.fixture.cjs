@@ -17,6 +17,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const resultsPath='/c/test-profile/search/results';
   const recordPath='/c/test-profile/search/details/record';
   const viewerPath='/c/test-profile/viewer/pdf/record',viewerQuery='?intent=download%20now';
+  const recordDetails='/api/viewer/v6/details/record',downloadLink='/api/document/download/record';
   const requestPDF='<script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>';
   const previews=['/cds/retrieve?Signature=preview-first','/cds/retrieve?Signature=preview-second'].map(path=>
     new URL(path,ebscoPdf).href);
@@ -42,6 +43,12 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
         +'<script>setTimeout(()=>location.replace(location.href+"&replacement=1"),800);</script>';
     if(current.pathname==='/ebsco-pending-image')return;
     if(current.pathname===recordPath && ebscoMode==='record-in-app')return;
+    if(ebscoMode==='direct-link' && [recordDetails,downloadLink].includes(current.pathname)) {
+      response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      response.end(JSON.stringify(current.pathname===recordDetails
+        ?[{result:{links:{'v2-downloadLinks':[{type:'pdf',url:downloadLink}]}}}]
+        :{url:ebscoPdf}));return;
+    }
     if(current.pathname===recordPath && ebscoMode==='unsafe') {
       response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
     }
@@ -364,6 +371,16 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/related')));
     assert.ok(!requests.some(request=>request.url.startsWith('/cds/retrieve')),'the body stream owns the first sent PDF GET');
     assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='direct-link';
+    const direct=await invoke('extract_paper_pdf_clues',licensed);
+    assert.deepEqual(direct.pdf_clues?.candidates,[{
+      stage:'P4',rule_id:'R073',field:'ebsco_download_link',url:ebscoPdf,
+      referer:ebscoProfile+'/search/details/record',
+    }]);
+    assert.ok(requests.some(request=>new URL(request.url,ebscoProfile).searchParams.get('opid')==='test-profile'));
+    assert.ok(requests.some(request=>request.url===downloadLink && request.referer===ebscoProfile+'/search/details/record'));
+    assert.ok(!requests.some(request=>request.url.startsWith(viewerPath) || request.url.startsWith('/cds/retrieve')),
+      'the confirmed record can resolve a licensed body before opening a Viewer or requesting the file');
     ebscoMode='pending-asset';
     const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));

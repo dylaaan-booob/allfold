@@ -113,13 +113,16 @@ first, then the prepared EBSCO source before opening a publisher recovery page.
 If the EBSCO source cannot save the PDF, the deferred publisher recovery and
 qualified fallbacks can continue. The browser searches the original DOI and follows the
 matching title link within that verified search Document. This preserves the
-site's in-page navigation when it uses one. The browser verifies the record's
-DOI and follows its visible PDF Viewer link. The task
-blocks automatic preview requests on its page and captures the Viewer’s PDF
-GET before it is sent. Once the Viewer’s main Document passes access checks,
-the source can use its attributable request while other assets finish loading.
-The Session stream owns the body transfer and preserves
-the observed Referer including an absent header. The preparation must have a
+site's in-page navigation when it uses one. Once the record DOI matches, the
+same Session can resolve the record's PDF download link through the EBSCO
+details response. A link can point to the delivery URL or require one JSON
+lookup on the same origin. The Session stream sends the body request. If that
+entry is unavailable, the browser follows the record's visible PDF Viewer link.
+A direct transfer that settles without a body can also use this Viewer path
+under the same prepared Service. The managed page blocks automatic previews and
+captures the Viewer’s attributable PDF GET before it is sent. It can use that
+request once the Viewer’s main Document passes access checks. The Session stream
+preserves the Viewer’s observed Referer including an absent header. The preparation must have a
 retained EBSCO target. Account, profile and expiring PDF URLs stay out of saved
 source facts. A missing record or unavailable institution access leaves the
 independent OpenAlex fallback available.

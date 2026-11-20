@@ -1,5 +1,5 @@
 {
-  "status": "formal_in_progress",
+  "status": "ebsco_details_link_live_recheck_and_reset_pending",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
@@ -12099,7 +12099,47 @@
       "gap": "F23/F24 have exact licensed EBSCO records. Ordinary Allfold Download received direct publisher access denials and saved related preprints. Zotero saved the EBSCO publisher and Just Accepted versions. Allfold's authorized Browser viewer later saved the correct F23 publisher PDF and the active record-to-viewer trace contained PDF responses. Live F23-5 and F24-4 on 148adcc finished the original Paper Download and Zotero saves with byte-equal licensed editions in each pair. The F24-5 repeat on c9fbf52 also saved the same licensed PDF and remained 20.123–20.821 s slower. Its publisher response was an authorization denial, leaving the source-order challenge branch unobserved live. R073-Fresh-1 verified another byte-identical licensed publisher PDF and still favored Zotero by 9.813–10.492 s. F25 had no EBSCO match and no local publisher PDF on either side."
     }
   ],
-  "parity_conclusions": "Ongoing acceptance. Prepared Cambridge and IEEE cohorts show no observed disadvantage within their measured strata. ScienceDirect repaired Allfold saving is verified on the original, control and two unseen Papers; no final comparable Zotero timing for these retests. F23-5 and F24-4 each verified identical licensed EBSCO copies, with longer Allfold waits. F24-5 on the source-order revision saved the licensed PDF with a smaller delay than F24-4, but the triggering publisher challenge did not recur. R073-Fresh-1 verified licensed saving on an untouched collected Paper and was also slower. Other platform gaps and Workspace Reset remain open.",
+  "parity_conclusions": "The 20 November revised criterion accepts a user-wait difference of about five seconds. Cambridge, IEEE, Springer, the comparable Taylor & Francis and Wiley observations, and Project Euclid publisher OA fit that criterion in the measured strata. The normal earlier ScienceDirect F29–F31 pairs also fit it. Material EBSCO, SIAM F19 and historical ScienceDirect challenge delays were investigated and remain documented with attempted repairs. There are no final comparable Zotero timings for the repaired ScienceDirect or Oxford diagnostics, and no verified direct-publisher INFORMS pair.",
+  "acceptance_disposition": {
+    "effective_date_asia_shanghai": "2026-11-20",
+    "latest_live_tested_production_code_sha": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
+    "approximately_acceptable_allfold_delay_seconds": 5,
+    "timing_rule": "Investigate materially longer waits and attempt a fix. Retain the observed delay, the evidence for its cause, and any unverified part when it remains. The approximate threshold is an acceptance guide, not a product timeout or a strict timing-parity requirement.",
+    "success_endpoint": "A verified correct PDF is saved locally and linked to the correct item, with assisted, fallback and different-version outcomes recorded separately.",
+    "ebsco_details_link_followup": {
+      "operator_example_doi": "10.1287/ijoc.2024.0765",
+      "verified_zotero_local_pdf_bytes": 4846719,
+      "operator_example_timing_eligible": false,
+      "status": "isolated direct and Viewer fallback regressions passed; live Allfold rechecks pending"
+    },
+    "historical_extra_allfold_failures": [
+      {
+        "pair_id": "F01-1",
+        "current_evidence": ["F01-2", "F01-3", "F01-4"],
+        "resolution": "The prepared-access repeats saved the correct publisher version in both products. The original stall and its access ambiguity remain recorded."
+      },
+      {
+        "pair_id": "F26-2",
+        "current_evidence": ["F26-3", "F26-Final-Allfold-Control"],
+        "resolution": "The repaired Allfold path saved and associated the correct publisher PDF, including an automatic Allfold-only control of the final ScienceDirect production change."
+      }
+    ],
+    "untriggered_branches": [
+      {
+        "path": "Direct publisher challenge before EBSCO source",
+        "retests": ["F24-5", "R073-Fresh-1"],
+        "observation": "Both live retests saved the licensed EBSCO PDF after direct publisher authorization denial. The challenge ordering change is covered by isolated tests and did not run in those live attempts."
+      },
+      {
+        "path": "Oxford client navigation block after verification",
+        "retests": ["F08-3", "F09 Allfold-only diagnostic", "Oxford untouched Allfold-only control"],
+        "observation": "The old block did not recur after rights were restored. All three saved the correct publisher PDFs directly. The blocked request's exact method and origin and Oxford's comparable paired saving time remain unconfirmed."
+      }
+    ],
+    "workspace_reset": {
+      "status": "pending"
+    }
+  },
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
@@ -13717,8 +13757,19 @@
       },
       "setup": "Same controlled Electron Session fetch as Allfold. Loopback size-matched bodies with Cache-Control: private, max-age=600, a new URL per case and two complete GETs each. Temporary test profiles are isolated from the two live applications. This comparison addresses cache eligibility, not publisher throughput."
     },
-    "public_api_limit": "Electron45 has cache boolean/getCacheSize/clear APIs but no public budget/entry-size setter. --disk-cache-size is applied only for !in_memory. No persist partition,credential storage,lifecycle,Vendor,dependency or size override was introduced.",
-    "result_scope": "Prepared access-restoredF19-3 sameversion wait24.743–25.102 vs25.164–25.734; next warmF19-4 wait21.245–21.626 vs3.865–4.507. Cache reuse explains much of warmdifference; warm user-wait disadvantage is retained and not declared met. Original first slower points remain.",
+    "disk_budget_attempt": {
+      "switch": "--disk-cache-size=268435456",
+      "electron": "45.0.0",
+      "chromium": "156.0.8078.48",
+      "large_entry_bytes": 11471779,
+      "memory_server_hits": 2,
+      "memory_from_cache": [false, false],
+      "disk_control_server_hits": 1,
+      "disk_control_from_cache": [false, true],
+      "conclusion": "The disk budget did not help the existing in-memory Session. The isolated comparison used loopback and a fresh temporary profile."
+    },
+    "public_api_limit": "Electron45 has cache boolean/getCacheSize/clear APIs but no public budget/entry-size setter. --disk-cache-size is applied only for !in_memory. No product cache or Session persistence change was introduced.",
+    "result_scope": "The F19 warm comparison supports cache reuse on the Chrome side and a fresh body transfer on the Allfold side. The initial F19 transfer variation remains unexplained. Both waits are retained under the revised acceptance criterion.",
     "references": [
       "https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L81",
       "https://github.com/chromium/chromium/blob/156.0.8078.48/net/disk_cache/memory/mem_backend_impl.cc",

@@ -349,11 +349,18 @@ class _BodyDiscoveryIO:
         if authority.native_access().target_page_id is None:
             raise PdfSourceReadError('EBSCO needs a prepared search profile', diagnostic='service-unprepared',
                 service_id=request.service_id)
-        parsed = self._read(lambda operation, io: io.document(target, prepared_source='ebsco'), authority)
+        return self._read_ebsco(target, authority, 'ebsco')
+
+    def ebsco_viewer(self, candidate):
+        return self._read_ebsco(candidate.target, candidate.access, 'ebsco-viewer')
+
+    def _read_ebsco(self, target, authority, mode):
+        parsed = self._read(lambda operation, io: io.document(target, prepared_source=mode), authority)
         if parsed is None or not parsed.current_candidates:
             raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
-                service_id=request.service_id)
-        return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url, referer=item.referer, access=authority, referer_observed=True)
+                service_id=authority.service_id)
+        return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url,
+                referer=item.referer, field=item.field if mode == 'ebsco' else None, access=authority, referer_observed=True)
             for item in parsed.current_candidates
             if item.stage == 'P4' and item.rule_id == 'R073' and item.action is None and item.reader_kind is None)
 

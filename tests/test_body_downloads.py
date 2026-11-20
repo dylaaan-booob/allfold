@@ -231,10 +231,11 @@ def prepared_application_host(tmp_path, *, metadata=None, service_updates=None):
     return host, workspace, paper, bridge, replace(candidate, access=authority)
 
 
-@pytest.mark.parametrize(('institutional_referer', 'ready'), [
-    ('record', True), (None, True), (None, False),
+@pytest.mark.parametrize(('institutional_referer', 'ready', 'direct'), [
+    ('record', True, None), (None, True, None), (None, False, None),
+    (None, True, 'available'), (None, True, 'refused'),
 ])
-def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path, institutional_referer, ready):
+def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path, institutional_referer, ready, direct):
     from concurrent.futures import Future
     from datetime import datetime, timezone
     from pathlib import Path
@@ -268,7 +269,9 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
         bridge.calls.append((action, data))
         result = Future()
         if action == 'extract_paper_pdf_clues':
-            institutional = data.get('prepared_source') == 'ebsco'
+            source = data.get('prepared_source')
+            institutional = source in {'ebsco', 'ebsco-viewer'}
+            link = direct and source == 'ebsco'
             if institutional:
                 assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
                 assert data['identity']['doi'] == doi and data['target_title'] == metadata.title
@@ -280,7 +283,8 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
                 observed_at='2026-11-19T08:00:00.000Z', landing_url=record if institutional else article,
                 platform='ebsco' if institutional else 'generic', content_type='journal-article',
                 identifiers=[], diagnostics=[], candidates=[dict(stage='P4', rule_id='R073',
-                    url=licensed_pdf, referer=referer)] if institutional else [])))
+                    url=licensed_pdf, referer=record if link else referer,
+                    field='ebsco_download_link' if link else None)] if institutional else [])))
         elif data['url'] == denied:
             result.set_result(dict(kind='response', outcome='response', response=dict(url=denied,
                 status=403, content_type='text/html', body='Access required', access='authorization')))
@@ -288,7 +292,11 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
             assert action == 'stream_paper_body'
             if data['url'] == licensed_pdf:
                 assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
-                assert data.get('referer') == referer
+                if direct == 'refused' and data['referer'] == record:
+                    result.set_result(dict(kind='response', outcome='response', response=dict(url=licensed_pdf,
+                        status=403, content_type='text/html', body='Use the Reader', access='authorization')))
+                    return result
+                assert data['referer'] == (record if direct == 'available' else referer)
                 body = b'%PDF-licensed'
             else:
                 assert data['url'] == preprint and 'service_id' not in data
@@ -311,7 +319,8 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
         assert (workspace / result.paper.body.relative_path).read_bytes() == expected
         assert result.paper.body.pdf_source == ('P4' if ready else 'P5')
         document_sources = [data.get('prepared_source') for action, data in bridge.calls if action == 'extract_paper_pdf_clues']
-        assert document_sources == (['ebsco'] if ready else ['ebsco', None])
+        expected_sources = ['ebsco', 'ebsco-viewer'] if direct == 'refused' else ['ebsco']
+        assert document_sources == (expected_sources if ready else ['ebsco', None])
         assert any(data.get('url') == preprint for _, data in bridge.calls) is not ready
         assert not host.browser_lock.owners
     finally:

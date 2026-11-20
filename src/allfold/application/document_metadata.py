@@ -137,7 +137,9 @@ def validate_document_pdf_clues(value, *, target_doi=None):
                     or not isinstance(candidate['url'], str) or len(candidate['url']) > 4096
                     or candidate.get('action') not in {None, 'refresh_form'}
                     or candidate.get('reader_kind') not in {None, 'sciencedirect', 'lww', 'ieee'}
-                    or candidate.get('field') not in {None, 'citation_pdf_url', 'fulltext_pdf_url'}):
+                    or candidate.get('field') not in {None, 'citation_pdf_url', 'fulltext_pdf_url', 'ebsco_download_link'}
+                    or candidate.get('field') == 'ebsco_download_link' and (
+                        clues['platform'], candidate['rule_id'], candidate['stage']) != ('ebsco', 'R073', 'P4')):
                 raise ValueError('Invalid candidate')
             if normalize_public_http_url(candidate['url']) is None:
                 raise ValueError('Empty candidate URL')

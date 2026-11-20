@@ -383,6 +383,16 @@ class PdfDiscovery:
             self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
             return ()
 
+    def _ebsco_viewer(self, candidate):
+        if (candidate.rule_id != 'R073' or candidate.field != 'ebsco_download_link'
+                or self.io is None or not callable(getattr(type(self.io), 'ebsco_viewer', None))):
+            return ()
+        try:
+            return self._call(self.io.ebsco_viewer, candidate)
+        except PdfSourceReadError as error:
+            self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
+            return ()
+
     def _candidate_batches(self):
         if self._initial is not None:
             yield self._initial
@@ -637,6 +647,12 @@ class PdfDiscovery:
                             self._note(original.stage, original.rule_id, error.diagnostic, service_id)
                 if access_limited(response):
                     self._note(original.stage, original.rule_id, result.diagnostic or 'access-blocked')
+            if not following and result.diagnostic != 'service-invalidated':
+                following = self._ebsco_viewer(candidate)
+                if following:
+                    # The actual Viewer can issue the same URL in a new request context.
+                    fresh_reader = True
+                    observation = object()
             if not following:
                 self._note(original.stage, original.rule_id, result.diagnostic or 'no-pdf-entry')
                 self._failed = True
