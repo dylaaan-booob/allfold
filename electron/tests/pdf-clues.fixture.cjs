@@ -24,10 +24,13 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
     const current=new URL(request.url,'http://fixture.invalid');
     const ebscoHub='<a href="'+ebscoProfile+'/search">EBSCO一站式检索</a>';
+    const subframePost=ebscoMode==='profile-postback-subframe';
     const ebPostback='<form method="post" action="/webauth/Community.aspx">'
       +'<a href="javascript:WebForm_DoPostBackWithOptions()">EBSCO一站式检索</a></form>'
+      +(subframePost?'<iframe name="follow-up" hidden></iframe>':'')
       +'<script>function WebForm_DoPostBackWithOptions(){const form=document.querySelector("form");'
-      +(ebscoMode==='profile-postback-other-origin'?'form.action="https://research.ebsco.com/webauth/Community.aspx";':'')
+      +(ebscoMode==='profile-postback-other-origin'||subframePost?'form.action="https://research.ebsco.com/webauth/Community.aspx";':'')
+      +(subframePost?'form.target="follow-up";':'')
       +'form.submit();}</script>';
     const recordMetadata='<h3>DOI</h3><p>'+ebscoDOI+'</p>'
       +'<a href="/c/test-profile/viewer/pdf/related">Related PDF</a>'
@@ -391,6 +394,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const wrongPost=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(wrongPost.diagnostic && !wrongPost.pdf_clues);
     assert.equal(requests.filter(request=>request.method==='POST').length,0,'the submitted destination is checked before any POST');
+    ebscoMode='profile-postback-subframe';
+    const wrongFrame=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(wrongFrame.diagnostic && !wrongFrame.pdf_clues);
+    assert.equal(requests.filter(request=>request.method==='POST').length,0,'a changed form target cannot POST in a child frame');
     ebscoMode='profile-postback-redirect-post';
     const replayPost=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(replayPost.diagnostic && !replayPost.pdf_clues);

@@ -133,7 +133,9 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
   const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
   let submitted=null,scope=null;
   const requestGuard=browser.sessionEvents.subscribe('beforeRequest',details=>{
-    if(details.webContentsId!==tab.id || details.resourceType!=='mainFrame')return;
+    if(details.webContentsId!==tab.id)return;
+    if(details.resourceType==='subFrame' && details.method!=='GET')return {cancel:true};
+    if(details.resourceType!=='mainFrame')return;
     if(signal?.aborted || Date.now()>=limit || !browser.ownsPage(owner,tab.id))return {cancel:true};
     verify();
     const target=httpsURL(details.url);

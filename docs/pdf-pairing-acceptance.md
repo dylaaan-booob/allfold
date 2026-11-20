@@ -2134,7 +2134,7 @@ control. It binds one native main-frame POST to the verified managed Document
 and the same-origin Community endpoint before the request is sent. GET redirects
 in that request chain may continue to the verified search profile. The isolated
 native regression checks the one POST, the qualified PDF handoff and refusal of
-both a changed submission destination and a repeated POST. Follow-up live
+a changed submission destination, a child-frame submit and a repeated POST. Follow-up live
 evidence for that repair is pending.
 
 ## Acceptance disposition and cleanup
