@@ -352,10 +352,12 @@ class _BodyDiscoveryIO:
         return self._read_ebsco(target, authority, 'ebsco')
 
     def ebsco_viewer(self, candidate):
-        return self._read_ebsco(candidate.target, candidate.access, 'ebsco-viewer')
+        record = urlsplit(candidate.referer or '')._replace(query='', fragment='').geturl()
+        return self._read_ebsco(candidate.target, candidate.access, 'ebsco-viewer', prepared_record=record)
 
-    def _read_ebsco(self, target, authority, mode):
-        parsed = self._read(lambda operation, io: io.document(target, prepared_source=mode), authority)
+    def _read_ebsco(self, target, authority, mode, *, prepared_record=None):
+        parsed = self._read(lambda operation, io: io.document(target, prepared_source=mode,
+            prepared_record=prepared_record), authority)
         if parsed is None or not parsed.current_candidates:
             raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
                 service_id=authority.service_id)

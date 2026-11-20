@@ -45,12 +45,14 @@ function isPdfRequest(details) {
 
 async function readRecordJSON(browser,url,document,{signal,deadline,verify}) {
   const owner=browser.operation;
-  const {response}=await browser.sessionEvents.fetch(url.href,{
+  const {response,requests}=await browser.sessionEvents.fetch(url.href,{
     method:'GET',credentials:'include',redirect:'error',
     headers:{Accept:'application/json',Referer:document.url},
   },{owner,attemptId:owner.association.request_id,document,signal,deadline,validate:verify});
+  const carrier=requests.at(-1)?.responses.at(-1);
   const media=response.headers.get('content-type')?.split(';',1)[0];
-  if(!response.ok || !media?.toLowerCase().includes('json') || !response.body) {
+  if(carrier?.url!==url.href || carrier.statusCode!==response.status
+    || !response.ok || !media?.toLowerCase().includes('json') || !response.body) {
     await response.body?.cancel();
     return null;
   }
@@ -82,12 +84,12 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
       link?.type==='pdf' && typeof link.url==='string'?[link.url]:[]))]:[];
     const preferred=pdfLinks(links?.['v2-downloadLinks']);
     const choices=preferred.length?preferred:pdfLinks(links?.downloadLinks);
-    if(choices.length!==1 || !URL.canParse(choices[0],document.url))return null;
-    const link=httpsURL(new URL(choices[0],document.url).href);
+    if(choices.length!==1 || !URL.canParse(choices[0],details))return null;
+    const link=httpsURL(new URL(choices[0],details).href);
     if(deliveryURL(link?.href))return link;
     if(link?.origin!==scope.origin || !link.pathname.startsWith('/api/'))return null;
     const entry=await readRecordJSON(browser,link,document,readOptions);
-    return deliveryURL(entry?.url);
+    return typeof entry?.url==='string' && URL.canParse(entry.url,link)?deliveryURL(new URL(entry.url,link).href):null;
   } catch(error) {
     checkCanceled(signal);
     verifyRecord();
@@ -201,6 +203,7 @@ function watchPdf(browser,tab,entry,{signal,deadline,verify}) {
 
 async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiting,verify}) {
   const doi=validDOI(data.identity?.doi),title=data.target_title;
+  const viewerOnly=data.prepared_source==='ebsco-viewer';
   const entry=httpsURL(preparedURL);
   let scope=profile(preparedURL);
   if(!doi || typeof title!=='string' || !title.trim() || title.length>4096 || !entry
@@ -250,6 +253,8 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
         if(!scope)throw refusal('resource_ready');
       }
     }
+    const expectedRecord=viewerOnly?matchRecord(data.prepared_record,scope):null;
+    if(viewerOnly && !expectedRecord)throw refusal('prepared');
     const search=new URL(scope.path+'/search/results',scope.origin);
     search.searchParams.set('q',doi);
     // Once the authenticated results Document is readable, unrelated assets
@@ -277,8 +282,8 @@ async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiti
     }
     verifySearch();
     const record=records[0];
+    if(expectedRecord && record.record!==expectedRecord.record)throw refusal('result');
     const doc=await openRecord(browser,tab,found,scope,record,title,{...options,onWaiting:onAccessWaiting});
-    const viewerOnly=data.prepared_source==='ebsco-viewer';
     const recordArgs={mode:'record',title,doi};
     const matchViewer=clue=>!clue.doi || clue.urls.length>0;
     let matched=await readReady(browser,tab,recordArgs,options,viewerOnly?matchViewer:undefined);

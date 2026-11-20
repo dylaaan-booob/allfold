@@ -233,7 +233,7 @@ def prepared_application_host(tmp_path, *, metadata=None, service_updates=None):
 
 @pytest.mark.parametrize(('institutional_referer', 'ready', 'direct'), [
     ('record', True, None), (None, True, None), (None, False, None),
-    (None, True, 'available'), (None, True, 'refused'),
+    (None, True, 'available'), (None, True, 'authorization'), (None, True, 'challenge'),
 ])
 def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path, institutional_referer, ready, direct):
     from concurrent.futures import Future
@@ -252,6 +252,7 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
     record = 'https://research.ebsco.com/c/test-profile/search/details/record'
     licensed_pdf = 'https://content.ebscohost.com/cds/retrieve?token=temporary'
     referer = record if institutional_referer == 'record' else institutional_referer
+    blocked_direct = direct in {'authorization', 'challenge'}
     facts = (
         PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
             observed_at=now, target_doi=doi, landing_url=article,
@@ -275,6 +276,8 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
             if institutional:
                 assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
                 assert data['identity']['doi'] == doi and data['target_title'] == metadata.title
+                if source == 'ebsco-viewer':
+                    assert data['prepared_record'] == record
                 if not ready:
                     result.set_result(dict(outcome='no_result',
                         diagnostic={'kind': 'navigation', 'reason': 'content_access_blocked'}))
@@ -292,9 +295,9 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
             assert action == 'stream_paper_body'
             if data['url'] == licensed_pdf:
                 assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
-                if direct == 'refused' and data['referer'] == record:
+                if blocked_direct and data['referer'] == record:
                     result.set_result(dict(kind='response', outcome='response', response=dict(url=licensed_pdf,
-                        status=403, content_type='text/html', body='Use the Reader', access='authorization')))
+                        status=403, content_type='text/html', body='Use the Reader', access=direct)))
                     return result
                 assert data['referer'] == (record if direct == 'available' else referer)
                 body = b'%PDF-licensed'
@@ -319,8 +322,9 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
         assert (workspace / result.paper.body.relative_path).read_bytes() == expected
         assert result.paper.body.pdf_source == ('P4' if ready else 'P5')
         document_sources = [data.get('prepared_source') for action, data in bridge.calls if action == 'extract_paper_pdf_clues']
-        expected_sources = ['ebsco', 'ebsco-viewer'] if direct == 'refused' else ['ebsco']
+        expected_sources = ['ebsco', 'ebsco-viewer'] if blocked_direct else ['ebsco']
         assert document_sources == (expected_sources if ready else ['ebsco', None])
+        assert not any(data.get('recover_access') for _, data in bridge.calls)
         assert any(data.get('url') == preprint for _, data in bridge.calls) is not ready
         assert not host.browser_lock.owners
     finally:

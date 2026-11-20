@@ -17,7 +17,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const resultsPath='/c/test-profile/search/results';
   const recordPath='/c/test-profile/search/details/record';
   const viewerPath='/c/test-profile/viewer/pdf/record',viewerQuery='?intent=download%20now';
-  const recordDetails='/api/viewer/v6/details/record',downloadLink='/api/document/download/record';
+  const recordDetails='/api/viewer/v6/details/record',downloadLink='/api/viewer/v6/download/record';
   const requestPDF='<script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>';
   const previews=['/cds/retrieve?Signature=preview-first','/cds/retrieve?Signature=preview-second'].map(path=>
     new URL(path,ebscoPdf).href);
@@ -46,7 +46,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     if(ebscoMode==='direct-link' && [recordDetails,downloadLink].includes(current.pathname)) {
       response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       response.end(JSON.stringify(current.pathname===recordDetails
-        ?[{result:{links:{'v2-downloadLinks':[{type:'pdf',url:downloadLink}]}}}]
+        ?[{result:{links:{'v2-downloadLinks':[{type:'pdf',url:'../download/record'}]}}}]
         :{url:ebscoPdf}));return;
     }
     if(current.pathname===recordPath && ebscoMode==='unsafe') {
@@ -381,6 +381,13 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.ok(requests.some(request=>request.url===downloadLink && request.referer===ebscoProfile+'/search/details/record'));
     assert.ok(!requests.some(request=>request.url.startsWith(viewerPath) || request.url.startsWith('/cds/retrieve')),
       'the confirmed record can resolve a licensed body before opening a Viewer or requesting the file');
+    ebscoMode='viewer';
+    const fixedViewer={...licensed,prepared_source:'ebsco-viewer'};
+    const wrongRecord=await invoke('extract_paper_pdf_clues',{...fixedViewer,prepared_record:'https://research.ebsco.com'+recordPath+'-other'});
+    assert.ok(wrongRecord.diagnostic && !wrongRecord.pdf_clues);
+    assert.ok(!requests.some(request=>request.url.startsWith(viewerPath)),'another record cannot supply the direct entry fallback');
+    const sameRecord=await invoke('extract_paper_pdf_clues',{...fixedViewer,prepared_record:'https://research.ebsco.com'+recordPath});
+    assert.equal(sameRecord.pdf_clues?.candidates[0]?.url,ebscoPdf);
     ebscoMode='pending-asset';
     const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));

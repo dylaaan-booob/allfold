@@ -221,7 +221,7 @@ def _paper_identity(paper, confirmed_article_url):
     return identity
 
 
-def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None, prepared_source=None):
+def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None, prepared_source=None, prepared_record=None):
     """Read current PDF inputs without emitting or reopening any collection state.
 
     The caller owns a captured read-only task context with read_paper(),
@@ -235,6 +235,8 @@ def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None,
         payload['reader'] = dict(reader) | {'target': identity}
     if prepared_source is not None:
         payload.update(prepared_source=prepared_source, target_title=paper.metadata.title)
+        if prepared_record is not None:
+            payload['prepared_record'] = prepared_record
     return validate_document_pdf_clues(context.execute_native('extract_paper_pdf_clues', payload).result(),
         target_doi=identity.get('doi'))
 

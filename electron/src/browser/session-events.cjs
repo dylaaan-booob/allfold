@@ -159,7 +159,11 @@ class SharedSessionEvents {
     const signals=[signal,bounded].filter(Boolean);
     const requestSignal=signals.length?AbortSignal.any(signals):undefined;
     try {
-      const response=await this.session.fetch(url,{...options,headers,signal:requestSignal});check();
+      const response=await this.session.fetch(url,{...options,headers,signal:requestSignal});
+      try{check();}catch(error) {
+        try{await response.body?.cancel();}catch(_){}
+        throw error;
+      }
       return {response,requests,signal:requestSignal};
     } finally {
       this.fetches.delete(token);

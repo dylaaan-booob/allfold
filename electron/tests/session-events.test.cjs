@@ -35,6 +35,19 @@ test('controlled partition cookies supplement the native jar without escaping co
   assert.equal(JSON.stringify(result.requests).includes('test-partition-value'),false);
   events.dispose();
 });
+test('a controlled response drains its body when authority changes at response delivery',async()=>{
+  const {session,events}=fixture();
+  let authorized=true,drained=false;
+  session.fetch=async()=>{
+    authorized=false;
+    return new Response(new ReadableStream({async cancel(){await Promise.resolve();drained=true;}}));
+  };
+  await assert.rejects(events.fetch('https://publisher.example/details',{},
+    {owner:{task_id:'read'},attemptId:'read',deadline:Date.now()+2000,
+      validate(){if(!authorized)throw Error('authority changed');}}),/authority changed/);
+  assert.equal(drained,true);
+  events.dispose();
+});
 test('scoped header handlers compose once and ending one leaves the shared native entry live',()=>{
   const {session,hooks,events}=fixture();
   assert.equal(sharedSessionEvents(session),events);

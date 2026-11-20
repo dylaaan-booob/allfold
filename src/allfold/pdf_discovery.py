@@ -572,6 +572,7 @@ class PdfDiscovery:
             following = ()
             observation = None
             fresh_reader = False
+            ebsco_direct = candidate.rule_id == 'R073' and candidate.field == 'ebsco_download_link'
             if result.kind == 'response' and result.response is not None:
                 response = result.response
                 publisher_blocked = False
@@ -604,7 +605,8 @@ class PdfDiscovery:
                             == (article.scheme, article.netloc, article.path) for item in following))
                 if article_backlink:
                     following = ()
-                if not following and self.io is not None and callable(getattr(type(self.io), 'reader', None)):
+                if (not following and not ebsco_direct and self.io is not None
+                        and callable(getattr(type(self.io), 'reader', None))):
                     # The response attempt has settled. Suspend only this local
                     # chain so other qualified direct entries can avoid Reader IO.
                     if not article_backlink:
@@ -647,8 +649,8 @@ class PdfDiscovery:
                             self._note(original.stage, original.rule_id, error.diagnostic, service_id)
                 if access_limited(response):
                     self._note(original.stage, original.rule_id, result.diagnostic or 'access-blocked')
-            if not following and result.diagnostic != 'service-invalidated':
-                following = self._ebsco_viewer(candidate)
+            if not following and ebsco_direct and result.diagnostic != 'service-invalidated':
+                following = self._ebsco_viewer(original)
                 if following:
                     # The actual Viewer can issue the same URL in a new request context.
                     fresh_reader = True
