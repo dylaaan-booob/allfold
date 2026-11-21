@@ -39,10 +39,16 @@ def check_public_request(request, *, resolver=public_dns_addresses):
     """Check the actual next request, not just a previously seen landing URL."""
     try:
         normalize_public_http_url(str(request.url))
+    except ValueError:
+        raise UnsafePdfTarget('PDF request target is not a verified public destination') from None
+    try:
         addresses = resolver(request.url.host, request.url.port or (443 if request.url.scheme == 'https' else 80))
+    except OSError:
+        raise ProviderFailure('PDF target DNS resolution failed', kind='transport', code='dns-failed') from None
+    try:
         if not addresses or any(not ipaddress.ip_address(value).is_global for value in addresses):
             raise ValueError('Non-public DNS answer')
-    except (ValueError, OSError):
+    except ValueError:
         raise UnsafePdfTarget('PDF request target is not a verified public destination') from None
 
 
@@ -179,13 +185,8 @@ class PdfHttpClient:
             return CandidateResult.current(self.current_response(response))
         try:
             return self._read(candidate.url, decode, headers=headers, credential=credential)
-        except ProviderHTTPError as error:
-            return CandidateResult.failed({401: 'authorization', 403: 'authorization', 402: 'quota',
-                404: 'not-found'}.get(error.status, 'source-failed'))
-        except ProviderFailure as error:
-            return CandidateResult.failed(error.code if error.code in {'redirect-loop', 'redirect-limit'} else 'transport-failed')
-        except UnsafePdfTarget:
-            return CandidateResult.failed('unsafe-target')
+        except (ProviderFailure, UnsafePdfTarget) as error:
+            return CandidateResult.failed(_failure_code(error))
 
     def json(self, url, *, credential=None):
         def decode(response):
@@ -249,7 +250,8 @@ def springer_metadata_inputs(raw, target, inputs):
         if not isinstance(row, dict) or valid_doi(row.get('doi')) != target.identity_doi:
             continue
         for entry in row.get('url', ()) if isinstance(row.get('url'), list) else ():
-            if isinstance(entry, dict) and entry.get('format', '').lower() == 'pdf' and isinstance(entry.get('value'), str):
+            if (isinstance(entry, dict) and isinstance(entry.get('format'), str)
+                    and entry['format'].lower() == 'pdf' and isinstance(entry.get('value'), str)):
                 inputs = _qualified_known(inputs, entry['value'], 'API09', 'url.pdf')
     return inputs
 
@@ -300,7 +302,9 @@ class PdfDiscoveryIO:
                         inputs = replace(inputs, alternative_ids=tuple(dict.fromkeys((*inputs.alternative_ids,
                             *(v for v in alternatives if isinstance(v, str) and len(v) <= 512)))))
                     for entry in row.get('link', ()) if isinstance(row.get('link'), list) else ():
-                        if isinstance(entry, dict) and entry.get('content-type', '').partition(';')[0].lower() == 'application/pdf' and isinstance(entry.get('URL'), str):
+                        if (isinstance(entry, dict) and isinstance(entry.get('content-type'), str)
+                                and entry['content-type'].partition(';')[0].lower() == 'application/pdf'
+                                and isinstance(entry.get('URL'), str)):
                             inputs = _qualified_known(inputs, entry['URL'], 'API02', 'link')
                     primary = row.get('resource', {}).get('primary', {}) if isinstance(row.get('resource'), dict) else {}
                     url = primary.get('URL') if isinstance(primary, dict) else None
@@ -382,11 +386,19 @@ class PdfDiscoveryIO:
 
 def _public_url(value):
     try:
-        return normalize_public_http_url(value)
+        return normalize_public_http_url(value) if isinstance(value, str) else None
     except ValueError:
         return None
 
 
 def _failure_code(error):
+    if isinstance(error, UnsafePdfTarget):
+        return 'unsafe-target'
+    if error.code in {'redirect-loop', 'redirect-limit', 'dns-failed'}:
+        return error.code
+    if error.code == 'invalid-json':
+        return 'parse-failed'
+    if error.code in {'network_error', 'timeout', 'response-read-failed'}:
+        return 'transport-failed'
     return {401: 'authorization', 403: 'authorization', 402: 'quota', 404: 'not-found'}.get(
         getattr(error, 'status', None), 'source-failed')

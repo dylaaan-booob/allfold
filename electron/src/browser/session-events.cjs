@@ -97,7 +97,13 @@ class SharedSessionEvents {
       }
       // Private association tokens never reach consumers, diagnostics or the wire.
       this.emit(event,event==='beforeSendHeaders'?{...details,requestHeaders:state.requestHeaders}:details,state);
-      if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(state.requestHeaders);
+      if(event==='beforeSendHeaders') {
+        state.requestHeaders=withoutMarkers(state.requestHeaders);
+        if(request?.controlled?.observeCookies) {
+          const cookie=Object.entries(state.requestHeaders).find(([name])=>name.toLowerCase()==='cookie')?.[1] || '';
+          request.cookieKey=this.cookieKey(cookie);
+        }
+      }
       request?.controlled?.validate(details);
     } catch(_){state={cancel:true};}
     finally {
@@ -136,13 +142,17 @@ class SharedSessionEvents {
     const request=this.requests.get(id);
     if(request && !request.identity)request.identity=Object.freeze({...identity});
   }
+  cookieKey(value) {
+    // Compare scoped access observations without exposing guessable credential hashes.
+    return createHmac('sha256',this.cookieContextSecret).update(value).digest('hex');
+  }
   async cookieContext(url) {
     const cookies=JSON.stringify((await this.session.cookies.get({url}))
       .map(({domain,path,name,value})=>[domain,path,name,value])
       .sort((a,b)=>JSON.stringify(a.slice(0,3)).localeCompare(JSON.stringify(b.slice(0,3)))));
     // Equality across owned Reader/stream operations, without sending Cookie
     // values or a guessable credential digest to Python. Never persisted/logged.
-    return createHmac('sha256',this.cookieContextSecret).update(cookies).digest('hex');
+    return this.cookieKey(cookies);
   }
   async fetch(url,options={},context={}) {
     const {owner,attemptId,document,deadline,validate=()=>{}}=context;
@@ -164,6 +174,7 @@ class SharedSessionEvents {
     const identity=Object.freeze({...owner.association || owner,attempt_id:attemptId,
       page_id:document?.pageId,document_id:document?.documentId});
     const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,navigationCookies,
+      observeCookies:context.observeCookies,
       validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
     // Electron's URLLoader uses Origin as its native initiator. Chromium

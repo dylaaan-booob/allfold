@@ -100,6 +100,7 @@ class DocumentPdfResult:
     diagnostics_status: object = None
     reader_result: ReaderResult | None = None
     ebsco_viewer_url: str | None = field(default=None, repr=False)
+    current_landing_url: str | None = field(default=None, repr=False)
 
 
 def validate_document_pdf_clues(value, *, target_doi=None):
@@ -195,7 +196,8 @@ def validate_document_pdf_clues(value, *, target_doi=None):
         viewer = None
         facts = facts.model_copy(update={'status': 'partial',
             'diagnostics': tuple(dict.fromkeys((*facts.diagnostics, 'invalid-url')))})
-    return DocumentPdfResult(facts, tuple(current), value.get('recovery'), value.get('diagnostics_status'), reader, viewer)
+    return DocumentPdfResult(facts, tuple(current), value.get('recovery'), value.get('diagnostics_status'),
+        reader, viewer, current_landing_url=landing)
 
 
 def validate_document_metadata(value, *, target_doi=None):

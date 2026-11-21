@@ -49,7 +49,8 @@ def test_api_record_lists_match_target_after_old_count_limits():
     ieee=ieee_metadata_inputs({'articles':rows},paper,PdfRuleInputs(paper))
     assert ieee.identifiers == (('article_number','123456'),)
     springer=springer_metadata_inputs({'records':[{'doi':'10.9999/other'}]*30+[
-        {'doi':paper.doi,'url':[{'format':'pdf','value':'https://cdn.example.org/springer.pdf'}]}]},paper,PdfRuleInputs(paper))
+        {'doi':paper.doi,'url':[{'format':None,'value':'https://publisher.example.org/more'},
+            {'format':'pdf','value':'https://cdn.example.org/springer.pdf'}]}]},paper,PdfRuleInputs(paper))
     assert [item.url for item in springer.known_pdf_urls]==['https://cdn.example.org/springer.pdf']
 
 
@@ -62,6 +63,21 @@ def test_elsevier_links_after_unrelated_entries_remain_available():
         [{'@rel':'unrelated'}]*25+[{'@rel':'scidir-pdf','@href':'https://cdn.example.org/elsevier.pdf'}]}}}).encode()
     parsed=parse_current_response(candidate,CurrentResponse(candidate.url,'application/json',body))
     assert [item.url for item in parsed]==['https://cdn.example.org/elsevier.pdf']
+
+
+def test_partial_fixed_reader_data_survives_unrelated_markup():
+    from allfold.pdf_responses import parse_current_response
+    paper = target()
+    reader = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    candidate = PdfCandidate(paper, 'P2', 'R024', 'sciencedirect', reader)
+    body = (b'<object data="unused"></object><a href="https://[malformed">Unrelated</a>'
+        b'<script type="application/json">{"article":{"pdfDownload":{"urlMetadata":'
+        b'"https://cdn.example.org/reader.pdf"}},"unrelated":"truncated')
+    reasons = []
+    parsed = parse_current_response(candidate, CurrentResponse(reader, 'text/html', body, partial=True),
+        report=reasons.append)
+    assert [item.url for item in parsed] == ['https://cdn.example.org/reader.pdf']
+    assert 'partial-response' in reasons
 
 
 def test_large_metadata_json_keeps_exact_ieee_and_springer_fields():

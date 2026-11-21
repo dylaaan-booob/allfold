@@ -85,27 +85,26 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
   }
 }
 
-function clickProfilePostback(documentId,source,deadline) {
+function clickCommunityEntry(documentId,source,destination,deadline) {
   if(globalThis[Symbol.for('allfold.ebsco.document')]!==documentId
     || location.href!==source || Date.now()>=deadline)return false;
-  const links=[...document.querySelectorAll('form[method="post" i] a[href]')].filter(link=>{
-    const form=link.closest('form');
-    const action=new URL(form.action);
+  const links=[...document.querySelectorAll(destination?'a[href]':'form[method="post" i] a[href]')].filter(link=>{
     const baseTarget=document.querySelector('base[target]')?.target || '';
+    if(!['','_self'].includes((link.target || baseTarget).toLowerCase()) || link.hasAttribute('download')
+      || !link.checkVisibility({checkVisibilityCSS:true}))return false;
+    if(destination)return link.href===destination;
+    const form=link.closest('form'),action=new URL(form.action);
     return /^javascript:\s*WebForm_DoPostBackWithOptions\(/.test(link.getAttribute('href'))
       && action.origin===location.origin && /^\/(?:webauth\/)?community\.aspx$/i.test(action.pathname)
-      && ['', '_self'].includes((form.target || baseTarget).toLowerCase())
-      && ['', '_self'].includes((link.target || baseTarget).toLowerCase())
-      && !link.hasAttribute('download') && link.checkVisibility({checkVisibilityCSS:true});
+      && ['', '_self'].includes((form.target || baseTarget).toLowerCase());
   });
-  const preferred=links.length===1?links:links.filter(link=>
-    /^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(link.textContent.trim()));
-  if(preferred.length!==1)return false;
-  preferred[0].click();
+  const actions=new Map(links.map(link=>[link.href,link]));
+  if(actions.size!==1)return false;
+  actions.values().next().value.click();
   return true;
 }
 
-async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWaiting}) {
+async function openCommunityEntry(browser,tab,hub,destination,{signal,deadline,verify,onWaiting}) {
   const contents=tab.view.webContents,owner=browser.operation;
   const source=httpsURL(hub.url);
   if(source?.hostname!==HUB_HOST || !COMMUNITY_PATH.test(source.pathname))throw refusal('resource_ready');
@@ -124,7 +123,9 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
     if(signal?.aborted || Date.now()>=deadline || !browser.ownsPage(owner,tab.id))return {cancel:true};
     verify();
     const target=httpsURL(details.url);
-    if(submitted===null && details.method==='POST' && target?.origin===source.origin && COMMUNITY_PATH.test(target.pathname)) {
+    const selected=destination?details.method==='GET' && target?.href===destination
+      :details.method==='POST' && target?.origin===source.origin && COMMUNITY_PATH.test(target.pathname);
+    if(submitted===null && selected) {
       submitted=details.id;
       return;
     }
@@ -134,11 +135,11 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
   contents.once('destroyed',releaseGuard);
   try {
     browser.beginPageLoad(tab,signal,deadline,{fresh:true});
-    const args=[hub.documentId,hub.url,deadline];
+    const args=[hub.documentId,hub.url,destination,deadline];
     let clicked;
     try {
       clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
-        code:'('+clickProfilePostback.toString()+')(...'+JSON.stringify(args)+')',
+        code:'('+clickCommunityEntry.toString()+')(...'+JSON.stringify(args)+')',
       }]),signal,deadline);
     } catch(error) {
       checkCanceled(signal);
@@ -160,7 +161,8 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
 function clickRecordLink(documentId,source,destination,deadline) {
   if(globalThis[Symbol.for('allfold.ebsco.document')]!==documentId
     || location.href!==source || Date.now()>=deadline)return false;
-  const link=[...document.querySelectorAll('a[href]')].find(link=>
+  const main=document.querySelector('main,[role="main"]') || document.body;
+  const link=[...main.querySelectorAll('a[href]')].find(link=>
     link.href===destination && link.closest('h2,.result-item-title,[class*="result-item-title"]')
     && link.checkVisibility({checkVisibilityCSS:true}) && !link.hasAttribute('download')
     && ['', '_self'].includes((link.target || document.querySelector('base[target]')?.target || '').toLowerCase()));
@@ -218,14 +220,18 @@ async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>t
 
 function viewerLinks(values,scope,record) {
   return values.map(httpsURL).filter(url=>url?.origin===scope.origin
-    && url.pathname===scope.path+'/viewer/pdf/'+record.record);
+    && url.pathname.startsWith(scope.path+'/viewer/') && url.pathname.split('/').at(-1)===record.record);
 }
 
 function findRecord(found,scope) {
-  const scoped=values=>new Map(values.flatMap(value=>{
-    const record=matchRecord(value,scope);
-    return record?[[record.record,record]]:[];
-  }));
+  const scoped=values=>{
+    const records=new Map();
+    for(const value of values) {
+      const record=matchRecord(value,scope);
+      if(record && !records.has(record.record))records.set(record.record,record);
+    }
+    return records;
+  };
   const records=scoped(found.urls),confirmed=scoped(found.exact),titles=scoped(found.titled);
   const choices=confirmed.size?confirmed:titles.size?titles:records;
   if(choices.size!==1)throw refusal('result');
@@ -242,6 +248,7 @@ function watchPdf(browser,tab,viewer,{signal,deadline,verify}) {
       || !browser.ownsPage(owner,tab.id) || signal?.aborted || Date.now()>=deadline)return;
     const top=httpsURL(contents.getURL()),root=details.frame?.top;
     if(top?.origin!==viewer.origin || top.pathname!==viewer.pathname || !root
+      || (details.initiatorOrigin || new URL(details.frame.url).origin)!==viewer.origin
       || root.frameToken!==contents.mainFrame.frameToken || root.processId!==contents.mainFrame.processId)return;
     verify();
     const referer=Object.entries(details.requestHeaders || {}).find(([name])=>name.toLowerCase()==='referer')?.[1];
@@ -303,10 +310,13 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
     if(httpsURL(hubURL)?.hostname!==HUB_HOST)throw refusal('resource_ready');
     for(;;) {
       const hub=await readReady(browser,tab,{mode:'profile'},options);
-      const links=[...new Set(hub.urls.filter(url=>profile(url)))];
-      if(links.length>1)throw refusal('resource_ready');
-      if(links.length)return profile((await visit(new URL(links[0]))).url);
-      const chosen=await openProfilePostback(browser,tab,hub,options);
+      const profiles=new Map();
+      for(const url of hub.urls) {
+        const link=profile(url);
+        if(link && !profiles.has(link.origin+link.path))profiles.set(link.origin+link.path,url);
+      }
+      if(profiles.size>1)throw refusal('resource_ready');
+      const chosen=await openCommunityEntry(browser,tab,hub,profiles.values().next().value ?? null,options);
       if(chosen)return chosen;
       const current=tab.view.webContents.getURL();
       if(current===hub.url && tab.documentGeneration===hub.navigationGeneration)throw refusal('resource_ready');

@@ -234,8 +234,8 @@ def prepared_application_host(tmp_path, *, metadata=None, service_updates=None, 
     return host, workspace, paper, bridge, replace(candidate, access=authority)
 
 
-@pytest.mark.parametrize('context_changed', [True, False])
-def test_download_revisits_a_challenge_only_when_the_request_context_advances(tmp_path, context_changed):
+@pytest.mark.parametrize('new_request_context', [True, False])
+def test_download_revisits_a_challenge_only_when_the_request_context_advances(tmp_path, new_request_context):
     from concurrent.futures import Future
     from pathlib import Path
     from allfold.application.body_downloads import submit_body_download
@@ -247,10 +247,10 @@ def test_download_revisits_a_challenge_only_when_the_request_context_advances(tm
         result = Future()
         calls = len(bridge.calls)
         if calls < 3:
-            advanced = calls == 2 and context_changed
+            advanced = calls == 2 and new_request_context
             result.set_result(dict(outcome='response', kind='response', response=dict(url=candidate.url,
                 content_type='text/html', body='Verification', status=403, access='challenge',
-                context_changed=advanced, context_key=('b' if advanced else 'a') * 64)))
+                context_changed=False, context_key=('b' if advanced else 'a') * 64)))
         else:
             body, output = b'%PDF-completed-after-access', data['output']
             (Path(data['workspace_root']) / output['temporary']).write_bytes(body)
@@ -262,13 +262,13 @@ def test_download_revisits_a_challenge_only_when_the_request_context_advances(tm
     try:
         task = submit_body_download(host, paper, candidates=(candidate,))
         result = task.future.result(3)
-        if context_changed:
+        if new_request_context:
             assert result.status == 'completed'
             assert (workspace / result.paper.body.relative_path).read_bytes() == b'%PDF-completed-after-access'
         else:
             assert result.status == 'failed'
         assert [data.get('recover_access', False) for _, data in bridge.calls] == (
-            [False, True, True] if context_changed else [False, True])
+            [False, True, True] if new_request_context else [False, True])
     finally:
         host.shutdown()
         host.join()

@@ -85,7 +85,8 @@ class _ResponseHTML(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         parent = self.stack[-1] if self.stack else None
-        node = {'tag': tag, 'attrs': dict(attrs), 'text': [], 'parent': parent, 'closed': False}
+        node = {'tag': tag, 'attrs': {name: value or '' for name, value in attrs},
+                'text': [], 'parent': parent, 'closed': False}
         if (tag in {'a', 'meta', 'form', 'iframe', 'frame', 'object', 'article', 'html', 'body'}
                 or tag == 'script' and node['attrs'].get('type') == 'application/json'
                 or parent is not None and parent['tag'] in {'body', 'html'}):
@@ -240,7 +241,10 @@ def _body_entry(node, base, doi, attribute='href'):
     for owner in _ancestors(node):
         if 'data-doi' in owner['attrs'] and valid_doi(owner['attrs']['data-doi']) != doi:
             return False
-    linked = urlsplit(urljoin(base, attrs.get(attribute, '')))
+    try:
+        linked = urlsplit(urljoin(base, attrs.get(attribute, '')))
+    except ValueError:
+        return False
     matched = re.fullmatch(r'/doi/(?:pdf|epdf|pdfplus)/(10\.[0-9]{4,9}/.+)', unquote(linked.path))
     return not matched or valid_doi(matched[1]) == doi
 
@@ -309,6 +313,12 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         parser.feed(text)
     except (ValueError, RecursionError):
         parser.partial = True
+    if response.partial and parser.stack:
+        last = parser.stack[-1]
+        if last['tag'] == 'script' and last['attrs'].get('type') == 'application/json':
+            # HTMLParser holds unclosed script data until an end tag. The
+            # fixed JSON carrier can still contain complete earlier fields.
+            last['text'].append(parser.rawdata)
     if parser.partial:
         report('partial-response')
     nodes = parser.nodes
@@ -337,7 +347,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
             if kind == 'sciencedirect':
                 if tag == 'a' and any(p['attrs'].get('id') == 'redirect-message' for p in _ancestors(node['parent'])):
                     add(attrs.get('href'))
-                if tag == 'object' and _ancestors(node['parent']) and 'PdfEmbed' in node['parent']['attrs'].get('class', '').split():
+                if tag == 'object' and node['parent'] is not None and 'PdfEmbed' in node['parent']['attrs'].get('class', '').split():
                     add(attrs.get('data'))
             if kind == 'ieee' and tag in {'frame', 'iframe'}:
                 add(attrs.get('src'))
@@ -347,7 +357,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
                 add(attrs.get('src'))
             if kind in {'sciencedirect', 'lww'} and tag == 'script' and attrs.get('type') == 'application/json':
                 try:
-                    data = json.loads(_node_text(node))
+                    data = json_sample(_node_text(node).encode(), partial=not node['closed'], report=report)
                     # Fixed data carriers only; no regex over arbitrary scripts,
                     # evaluation, graph traversal or recursive URL-key search.
                     value = (data.get('article', {}).get('pdfDownload', {}).get('urlMetadata')

@@ -41,6 +41,8 @@ const operations={
     };
     if(args.mode==='results') {
       const rows=links.filter(node=>main.contains(node) && node.closest('h2,.result-item-title,[class*="result-item-title"]')
+        && !node.hasAttribute('download')
+        && ['', '_self'].includes((node.target || document.querySelector('base[target]')?.target || '').toLowerCase())
         && URL.canParse(node.href) && /\/search\/details\/[^/]+$/.test(new URL(node.href).pathname));
       const exact=rows.filter(node=>{
         const row=node.closest('li,article,[data-testid*="result-item" i]') || node.parentElement;
@@ -62,9 +64,12 @@ const operations={
     const urls=record?[...new Set(links.flatMap(node=>{
       if(!URL.canParse(node.href))return [];
       const link=new URL(node.href);
-      return link.origin===location.origin && link.pathname===record[1]+'/viewer/pdf/'+record[2]?[link.href]:[];
+      const path=link.pathname.slice((record[1]+'/viewer/').length).split('/');
+      const pdf=path[0]==='pdf' || node.type==='application/pdf' || /\bpdf\b/i.test(node.getAttribute('aria-label') || node.textContent);
+      return link.origin===location.origin && link.pathname.startsWith(record[1]+'/viewer/')
+        && path.at(-1)===record[2] && pdf?[link.href]:[];
     }))]:[];
-    const confirmed=args.confirmed && urls.length>0;
+    const confirmed=args.confirmed && !!main.querySelector('h1,[data-testid*="record-title" i]');
     const doi=ids.size===1?ids.has(wanted):!ids.size && confirmed;
     return {...empty,ready:!busy && (ids.size>0 || confirmed),urls,doi};
   },

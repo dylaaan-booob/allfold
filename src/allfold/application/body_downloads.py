@@ -2,6 +2,7 @@
 from concurrent.futures import Future
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace, field
+from hashlib import sha256
 import threading
 import time
 from types import SimpleNamespace
@@ -379,10 +380,9 @@ class _BodyDiscoveryIO:
         # The same live parser also handles a ScienceDirect article fallback.
         def read(operation, _io):
             parsed = _document_candidates(operation, self.repository, candidate, response)
-            if (parsed is not None or response.access != 'challenge' or candidate.action or candidate.credential
-                    or candidate.recover_access and not response.context_changed and response.url == candidate.url):
+            if parsed is not None or response.access != 'challenge' or candidate.action or candidate.credential:
                 return parsed
-            actual, request, source = (urlsplit(value or '')._replace(fragment='').geturl()
+            actual, request, source = (sha256(urlsplit(value or '')._replace(fragment='').geturl().encode()).digest()
                                        for value in (response.url, candidate.url, candidate.referer))
             challenge = (actual, request, source, operation.service_id, response.status, response.context_key)
             if challenge in self.recovered_challenges or reader_context(candidate, response.url):

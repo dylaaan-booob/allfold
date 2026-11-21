@@ -24,8 +24,14 @@ from allfold.url_safety import normalize_public_http_url
 
 
 SUPPORTED_PDF_TARGET_TYPES = ARTICLE_TYPES | {'unknown'}
+
+
 def _request_key(candidate):
-    return (sha256(urldefrag(candidate.url)[0].encode()).digest(), candidate.action)
+    # The same endpoint can receive a qualified request in a different access
+    # context, including a Reader's observed Referer or its absence.
+    return (sha256(urldefrag(candidate.url)[0].encode()).digest(),
+            sha256((candidate.referer or '').encode()).digest(), candidate.action, candidate.credential,
+            getattr(candidate.access, 'service_scope', None))
 
 
 @dataclass(frozen=True)
@@ -335,8 +341,9 @@ class PdfDiscovery:
             return ()
         self._document_attempted = True
         self.inputs = self._facts_inputs(self.inputs, (result.facts,))
-        if result.facts.landing_url:
-            self._route = replace(self.target, article_url=result.facts.landing_url)
+        landing = getattr(result, 'current_landing_url', None) or result.facts.landing_url
+        if landing:
+            self._route = replace(self.target, article_url=landing)
         # Native's current candidates preserve signed values. Only the adapter
         # validates the live Document; this core never holds a Page or persists it.
         values = getattr(result, 'current_candidates', ())
@@ -366,7 +373,16 @@ class PdfDiscovery:
 
     def _available_direct(self, candidate):
         return (not self._reader_entry(candidate) and _eligible(candidate)
-            and _request_key(candidate) not in self._seen)
+            and self._entry_key(candidate) not in self._seen)
+
+    def _entry_request(self, candidate):
+        if (self._initial is None and not candidate.action and not candidate.referer_observed
+                and candidate.referer is None and self._route.article_url):
+            return replace(candidate, referer=self._route.article_url)
+        return candidate
+
+    def _entry_key(self, candidate):
+        return _request_key(self._entry_request(candidate))
 
     def _ebsco_candidates(self):
         if self._ebsco_attempted or self.io is None or not callable(getattr(type(self.io), 'ebsco_candidates', None)):
@@ -426,7 +442,7 @@ class PdfDiscovery:
                 if updated.target != query_target:
                     raise ValueError('Query result changed original PDF target')
                 self.inputs = replace(updated, target=self.target)
-                candidates = tuple(c for c in self._rules('P2') if _request_key(c) not in self._seen)
+                candidates = tuple(c for c in self._rules('P2') if self._entry_key(c) not in self._seen)
                 # A newly applicable template is an attempt, not a complete
                 # input answer that suppresses an already configured API.
                 sufficient_inputs = bool(candidates)
@@ -435,7 +451,7 @@ class PdfDiscovery:
                     # whose inputs were unavailable earlier. Continue this P2
                     # path in place rather than restarting the discovery chain.
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
-                candidates = tuple(c for c in candidates if _request_key(c) not in self._seen)
+                candidates = tuple(c for c in candidates if self._entry_key(c) not in self._seen)
                 yield self._ordered_entries(candidates)
                 if self._publisher_access_blocked and not self._ebsco_attempted:
                     yield self._ebsco_candidates()
@@ -443,7 +459,7 @@ class PdfDiscovery:
                     break
         # Stable body URLs already have authority to be tried. A qualified
         # Reader refreshes its own entry inside the chain, not the article.
-        failed_p4 = any(not c.reader_kind and _request_key(c) in self._seen for c in saved_p4)
+        failed_p4 = any(not c.reader_kind and self._entry_key(c) in self._seen for c in saved_p4)
         current = self._document() if self._document_needed() or failed_p4 else ()
         current_entries = (*sorted((c for c in current if c.stage == 'P3'),
             key=lambda c: 0 if c.field == 'citation_pdf_url' else 1),
@@ -455,7 +471,7 @@ class PdfDiscovery:
             # or restart the missing-input API queries.
             for stage in ('P1', 'P2'):
                 templates.extend(c for c in self._rules(stage)
-                    if _request_key(c) not in self._seen)
+                    if self._entry_key(c) not in self._seen)
         yield self._ordered_entries((*current_entries, *templates))
         if not self._ebsco_attempted:
             yield self._ebsco_candidates()
@@ -499,9 +515,7 @@ class PdfDiscovery:
 
     def _chain(self, original, consume, *, viewer_fallback):
         from allfold.pdf_responses import parse_current_response, reader_context, access_limited
-        if (self._initial is None and not original.action and not original.referer_observed
-                and original.referer is None and self._route.article_url):
-            original = replace(original, referer=self._route.article_url)
+        original = self._entry_request(original)
         # Explicit next-hop relationships, not an expected publisher hop count.
         # Keep fingerprints of the used requests and responses to detect
         # repeated edges without retaining their bodies or signed URLs.
@@ -570,7 +584,7 @@ class PdfDiscovery:
                 # observations; either can advance, while A -> B -> A repeats.
                 if response.context_key is not None:
                     request_context_key = response.context_key
-                observation = (sha256(response.url.encode()).digest(), response.status, response.content_type,
+                observation = (key, sha256(response.url.encode()).digest(), response.status, response.content_type,
                     sha256(response.body).digest(), sha256((response.redirect_url or '').encode()).digest(),
                     response.partial, response.access, request_context_key, reader_context_key)
                 if observation in responses:
@@ -684,7 +698,7 @@ class PdfDiscovery:
                     if candidate is not None:
                         self.check()
                         if (not _eligible(candidate)
-                                or _request_key(candidate) in self._seen):
+                                or self._entry_key(candidate) in self._seen):
                             continue
                         chain = self._chain(candidate, consume, viewer_fallback=viewer_fallback)
                         active = (chain, self._consumed, self._entry_scope(candidate))

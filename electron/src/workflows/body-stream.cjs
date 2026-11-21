@@ -254,6 +254,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     const owner=browser.operation;
     const validate=()=>{if(completed)return;checkCanceled(stop);verify();if(Date.now()>=data.deadline_ms)throw Error('expired');};
     if(referer && !publicClueURL(referer))throw Error('unsafe-referer');
+    const priorCookies=await waitFor(()=>browser.sessionEvents.cookieContext(url),stop,data.deadline_ms);
     if(data.recover_access===true) {
       if(data.pdf_credential!==undefined)throw Error('credential-scope');
       ({url,referer,partitionCookies,navigationCookie}=await recoverBodyAccess(browser,initial,referer,
@@ -275,7 +276,6 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
       }
     };
     const headers={Accept:'application/pdf',...credentialHeaders(data.pdf_credential,url)};
-    const priorCookies=await waitFor(()=>browser.sessionEvents.cookieContext(url),stop,data.deadline_ms);
     if(referer) {
       const referrer=new URL(referer);referrer.hash='';
       // Electron net.fetch accepts explicit Referer as a header; Chromium rejects
@@ -294,7 +294,8 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     const requestAt=performance.now();
     ({response,requests}=await browser.sessionEvents.fetch(url,
       {method:'GET',redirect:'follow',credentials:'include',headers,referrerPolicy:'strict-origin-when-cross-origin'},
-      {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest,partitionCookies,navigationCookie}));
+      {owner,attemptId:data.attempt_id,deadline:data.deadline_ms,signal:stop,validate,validateRequest,
+        partitionCookies,navigationCookie,observeCookies:true}));
     const responseAt=performance.now();validate();
     const facts=requests.flatMap(request=>request.responses),final=facts.at(-1);
     if(!final||!publicClueURL(final.url))throw Error('missing-native-response');
@@ -335,7 +336,8 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
       [401,403,407].includes(response.status)?'authorization':null;
     return {outcome:'response',kind:'response',
       response:{url:final.url,content_type:contentType,status:response.status,...sampled,access,
-        context_changed:priorCookies!==currentCookies,context_key:currentCookies}};
+        context_changed:priorCookies!==currentCookies,
+        context_key:browser.sessionEvents.cookieKey(currentCookies+(requests.at(-1)?.cookieKey || ''))}};
   }catch(error) {
     if(localError||error.bodyLocal)return {outcome:'local_failure',kind:'local_failure',diagnostic_code:'file-io',resource_closed:!closeError};
     if(stop.aborted)return {outcome:bounded.aborted?'expired':'cancelled',kind:bounded.aborted?'expired':'cancelled'};

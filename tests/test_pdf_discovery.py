@@ -116,6 +116,29 @@ def test_refreshed_document_referrer_uses_current_route_without_changing_target(
     assert seen[0].referer == article and seen[0].target is paper
 
 
+def test_current_document_keeps_full_live_landing_and_distinct_request_contexts():
+    from allfold.application.document_metadata import validate_document_pdf_clues
+    paper = target('unknown.example.org')
+    landing = 'https://unknown.example.org/article?signature=' + 'x' * 9000
+    body = 'https://unknown.example.org/current.pdf'
+    other = 'https://unknown.example.org/other-context'
+    candidate = {'stage': 'P3', 'rule_id': 'GENERIC', 'url': body}
+    class IO:
+        def document(self, _):
+            return validate_document_pdf_clues({'outcome': 'retrieved', 'pdf_clues': {
+                'status': 'complete', 'landing_url': landing, 'observed_at': '2026-11-21T00:00:00.000Z',
+                'platform': 'unknown', 'content_type': 'journal-article', 'identifiers': [],
+                'candidates': [candidate, {**candidate, 'referer': other}], 'diagnostics': []}},
+                target_doi=paper.doi)
+    assert IO().document(paper).facts.landing_url is None
+    seen = []
+    def consume(item):
+        seen.append((item.url, item.referer))
+        return CandidateResult.pdf(transfer_complete=True) if item.referer == other else CandidateResult.failed()
+    assert PdfDiscovery(paper, io=IO()).run(consume).status == 'transferred'
+    assert seen == [(body, landing), (body, other)]
+
+
 def test_missing_article_context_does_not_invent_a_referrer():
     seen = []
     PdfDiscovery(target()).run(lambda c: seen.append(c)
