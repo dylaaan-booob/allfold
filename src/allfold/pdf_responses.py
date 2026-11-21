@@ -420,7 +420,15 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
     # supplement links are excluded before deciding ambiguity.
     generic = []
     for node in nodes:
-        if node['tag'] != 'a' or not _body_entry(node, response.url, candidate.target.identity_doi) or not any(p['tag'] in {'article', 'main'} for p in _ancestors(node['parent'])):
+        if node['tag'] != 'a' or not _body_entry(node, response.url, wanted):
+            continue
+        scopes = tuple(p for p in _ancestors(node['parent']) if p['tag'] in {'article', 'main'})
+        if not scopes:
+            continue
+        # A complete article region still supports generic links when a
+        # transport failure cuts off unrelated markup after that region.
+        if (response.partial or parser.partial) and not any(p['closed'] and (
+                p['tag'] == 'main' or wanted and valid_doi(p['attrs'].get('data-doi')) == wanted) for p in scopes):
             continue
         attrs = node['attrs']
         label = (_node_text(node) + ' ' + attrs.get('title', '')).strip()

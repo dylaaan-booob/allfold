@@ -98,9 +98,14 @@ function clickCommunityEntry(documentId,source,destination,deadline) {
       && action.origin===location.origin && /^\/(?:webauth\/)?community\.aspx$/i.test(action.pathname)
       && ['', '_self'].includes((form.target || baseTarget).toLowerCase());
   });
-  const actions=new Map(links.map(link=>[link.href,link]));
-  if(actions.size!==1)return false;
-  actions.values().next().value.click();
+  const actions=[...new Map(links.map(link=>[link.href,link])).values()];
+  // A Community WebForm can hide several distinct profile destinations behind
+  // the same POST endpoint. Use the journal-search label only to disambiguate
+  // already qualified native controls when their actual targets are opaque.
+  const choices=destination || actions.length<=1?actions:actions.filter(link=>
+    /^EBSCO(?:host)?\s*(?:一站式检索|Research Databases|Search Databases)$/i.test(link.textContent.trim()));
+  if(choices.length!==1)return false;
+  choices[0].click();
   return true;
 }
 
@@ -204,13 +209,13 @@ async function openRecord(browser,tab,searchDocument,scope,record,{signal,deadli
   }
 }
 
-async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>true) {
+async function readReady(browser,tab,args,{signal,deadline,verify}) {
   for(;;) {
     verify();
     try {
       const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline});
       verify();
-      if(clue.ready && settled(clue))return clue;
+      if(clue.ready)return clue;
     } catch(error) {
       if(error.diagnostic?.code!=='document_changed')throw error;
     }
@@ -394,9 +399,8 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
       return retrieved(recordURL,direct.map(url=>({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url,referer:recordURL})),viewer);
     }
   }
-  const currentViewer=viewer || viewerLinks((await readReady(browser,tab,{mode:'record',title,doi,confirmed:true},options,
-    clue=>!clue.doi || clue.urls.length>0)).urls,scope,record)[0];
-  if(!currentViewer)throw refusal('contentReady');
+  const currentViewer=viewer || viewerLinks((await readRecord(true)).urls,scope,record)[0];
+  if(!currentViewer)return retrieved(recordURL,[]);
   return await fromViewer(currentViewer,recordURL);
 
   async function fromViewer(viewer,recordURL) {

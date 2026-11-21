@@ -25,10 +25,13 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const current=new URL(request.url,'http://fixture.invalid');
     const ebscoHub='<a href="'+ebscoProfile+'/search">Search the collection</a>';
     const subframePost=ebscoMode==='profile-postback-subframe';
+    const multiProfile=ebscoMode==='profile-postback-several';
     const ebPostback='<form method="post" action="/webauth/Community.aspx">'
-      +'<a href="javascript:WebForm_DoPostBackWithOptions()">Search the collection</a></form>'
+      +(multiProfile?'<a href="javascript:WebForm_DoPostBackWithOptions(1)">Publication Finder</a>':'')
+      +'<a href="javascript:WebForm_DoPostBackWithOptions()">'+(multiProfile?'EBSCO 一站式检索':'Search the collection')+'</a></form>'
       +(subframePost?'<iframe name="follow-up" hidden></iframe>':'')
-      +'<script>function WebForm_DoPostBackWithOptions(){const form=document.querySelector("form");'
+      +'<script>function WebForm_DoPostBackWithOptions(other){const form=document.querySelector("form");'
+      +'if(other)form.action="/publication-finder";'
       +(ebscoMode==='profile-postback-other-origin'||subframePost?'form.action="https://research.ebsco.com/webauth/Community.aspx";':'')
       +(subframePost?'form.target="follow-up";':'')
       +'form.submit();}</script>';
@@ -88,7 +91,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       [resultsPath]:results,
       [recordPath]:ebscoMode==='expired'
         ? signIn
-        : '<main><h1>Licensed content title</h1>'+(ebscoMode==='delayed'||ebscoMode==='preview'?'':recordMetadata)+'</main>'
+        : '<main><h1>Licensed content title</h1>'+(ebscoMode==='delayed'||ebscoMode==='preview'?''
+          :ebscoMode==='html-only'?'<h3>DOI</h3><p>'+ebscoDOI+'</p><a href="'+viewerPath.replace('/pdf/','/html/')+'">HTML full text</a>'
+            :recordMetadata)+'</main>'
           +(ebscoMode==='preview'?'<script>Promise.allSettled('+JSON.stringify(previews)
             +'.map(url=>fetch(url))).then(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'));</script>':ebscoMode==='delayed'
             ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>':''),
@@ -413,6 +418,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(community.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(community));
     assert.deepEqual(requests.filter(request=>request.url==='/webauth/Community.aspx').map(request=>request.method),['POST']);
     assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='profile-postback-several';await freshProfile();
+    const severalProfiles=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(severalProfiles.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(severalProfiles));
+    assert.deepEqual(requests.filter(request=>request.method==='POST').map(request=>request.url),['/webauth/Community.aspx']);
     ebscoMode='profile-postback-other-origin';await freshProfile();
     const wrongPost=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(wrongPost.diagnostic && !wrongPost.pdf_clues);
@@ -489,6 +498,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     ebscoMode='delayed';
     const delayed=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(delayed.pdf_clues?.candidates[0]?.url,ebscoPdf,'title-only intermediate state must not stop extraction');
+    ebscoMode='html-only';
+    const htmlOnly=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(htmlOnly.outcome,'retrieved');
+    assert.deepEqual(htmlOnly.pdf_clues.candidates,[],'a ready HTML-only record releases this source for fallback');
     ebscoMode='preview';
     const preview=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(preview.outcome,'retrieved',JSON.stringify({preview,requests}));

@@ -3,8 +3,43 @@
   "targeted_followup": {
     "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
     "starting_pr_head_sha": "733a23d75430a9d6ef8bccef87ffdb3648e8df51",
-    "status": "awaiting_targeted_live_pairs",
-    "pairs": [],
+    "status": "targeted_live_pairs_in_progress",
+    "pairs": [
+      {
+        "pair_id": "F23-followup-1",
+        "sample_id": "F23",
+        "doi": "10.1287/moor.2024.0601",
+        "order": ["allfold", "zotero"],
+        "production_code_sha": "c8529aff8f6d3b3f38bed0597b04fa450712bd71",
+        "allfold": {
+          "click_utc": ["2026-11-21T16:28:59.422Z", "2026-11-21T16:28:59.524Z"],
+          "terminal_observation_utc": ["2026-11-21T16:29:25.335Z", "2026-11-21T16:29:25.591Z"],
+          "result": "alternative",
+          "persisted_association": true,
+          "version": "P5 file with arXiv marker and no matching title or DOI on first two pages",
+          "pages": 34,
+          "bytes": 9493072,
+          "elapsed_seconds": [25.811, 26.169],
+          "ebsco_outcome": "document_operation_failed at resource_ready",
+          "ebsco_document_ms": 2335,
+          "alternative_native_stream_ms": 18555,
+          "pre_click": "Original Paper in Candidates, no body or PDF preview. CARSI and EBSCO Prepared. Canceled the remaining unrelated Annual Reviews preparation before the click."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-21T16:30:57.941Z", "2026-11-21T16:30:57.972Z"],
+          "terminal_observation_utc": ["2026-11-21T16:31:44.368Z", "2026-11-21T16:31:44.642Z"],
+          "result": "imported_licensed_pdf",
+          "persisted_association": true,
+          "version": "INFORMS PDF with matching DOI and title",
+          "pages": 29,
+          "bytes": 2996661,
+          "elapsed_seconds": [46.396, 46.701],
+          "pre_click": "Authenticated Business Source Complete detail. The page automatically loaded the inline PDF. Connector and local Zotero used the acceptance collection."
+        },
+        "timing_eligible_for_parity": false,
+        "followup": "Community control selection repaired after inspecting this attempt. Original Paper restored after archiving the alternative PDF."
+      }
+    ],
     "workspace_reset": null
   },
   "historical_status": "acceptance_complete_workspace_reset_verified",

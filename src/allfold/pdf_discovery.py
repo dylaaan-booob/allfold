@@ -339,6 +339,10 @@ class PdfDiscovery:
             return ()
         if result is None:
             return ()
+        if result.facts.status == 'failed':
+            for reason in result.facts.diagnostics:
+                self._note('P3', 'DOCUMENT', reason)
+            return ()
         self._document_attempted = True
         self.inputs = self._facts_inputs(self.inputs, (result.facts,))
         landing = getattr(result, 'current_landing_url', None) or result.facts.landing_url

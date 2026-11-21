@@ -71,7 +71,8 @@ const operations={
     }))]:[];
     const confirmed=args.confirmed && !!main.querySelector('h1,[data-testid*="record-title" i]');
     const doi=ids.size===1?ids.has(wanted):!ids.size && confirmed;
-    return {...empty,ready:!busy && (ids.size>0 || confirmed),urls,doi};
+    const accessBusy=!!main.querySelector('[data-testid*="access" i][aria-busy="true"],[data-testid*="fulltext" i][aria-busy="true"]');
+    return {...empty,ready:!busy && !accessBusy && (ids.size>0 || confirmed),urls,doi};
   },
   access() {
     const title=document.title;

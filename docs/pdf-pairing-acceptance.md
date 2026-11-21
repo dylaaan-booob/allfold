@@ -18,6 +18,25 @@ tracked as a separate increment in the [results](pdf-pairing-formal-results.json
 The historical SIAM F19 large-PDF cache gap remains open. The old Oxford
 navigation refusal has no confirmed trigger or attribution.
 
+### First targeted F23 attempt
+
+On production code `c8529aff8f6d3b3f38bed0597b04fa450712bd71`,
+ordinary Allfold Download took 25.811–26.169 seconds and saved a 34-page P5
+alternative with an arXiv marker. The saved file did not match the target DOI
+or title on the inspected pages. Zotero took 46.396–46.701 seconds and
+imported the 29-page licensed INFORMS PDF. The EBSCO detail page loaded its
+inline PDF before the Connector click. The different files make this an
+ineligible timing pair. The alternative file and both verification records
+were preserved outside Workspace before clearing the trial body through the
+product and restoring its original Paper for a repeat.
+
+After the publisher attempt, the EBSCO action stopped at `resource_ready`
+after 2.335 seconds. Inspection of the retained Community page found multiple
+distinct native controls that submitted to the same form endpoint. The
+follow-up selects an observed eligible link or native control first and uses
+the journal-search label to disambiguate those opaque controls. An isolated
+regression exercises that observed page shape.
+
 ## Historical acceptance through `d237ee7`
 
 **Acceptance uses the criteria revised on 20 November 2026

@@ -146,6 +146,27 @@ def test_missing_article_context_does_not_invent_a_referrer():
     assert seen[0].referer is None
 
 
+def test_failed_document_identity_does_not_generate_article_templates():
+    from allfold.application.document_metadata import DocumentPdfResult
+    paper = target('unknown.example.org')
+    wrong = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
+    independent = 'https://repository.example.org/body.pdf'
+    class IO:
+        def document(self, _):
+            failed = document(paper).model_copy(update={'landing_url': wrong, 'status': 'failed',
+                'diagnostics': ('identity-mismatch',)})
+            return DocumentPdfResult(failed, (), current_landing_url=wrong)
+
+        def openalex(self, doi):
+            return {'doi': doi, 'best_oa_location': {'pdf_url': independent}}
+
+    seen = []
+    result = PdfDiscovery(paper, io=IO()).run(lambda item: seen.append(item.url) or
+        CandidateResult.pdf(transfer_complete=True))
+    assert seen == [independent]
+    assert result.pdf_source == 'P5'
+
+
 def test_explicit_initial_candidates_keep_their_own_request_context():
     from allfold.pdf_rules import PdfCandidate
     paper = target(article_url='https://onlinelibrary.wiley.com/doi/10.1234/AbC')
@@ -1357,8 +1378,10 @@ def test_verified_article_generic_entry_survives_partial_tail_without_repeated_d
     article = 'https://example.org/papers/an-article'
     paper = target('example.org', article_url=article)
     candidate = PdfCandidate(paper, 'P3', 'GENERIC', 'generic', article)
-    response = CurrentResponse(article, 'text/html', b'<main><a href="/body">Download PDF</a><aside', partial=True)
+    link = b'<a href="/body">Download PDF</a>'
+    response = CurrentResponse(article, 'text/html', b'<main>' + link + b'</main><aside', partial=True)
     assert [item.url for item in parse_current_response(candidate, response)] == ['https://example.org/body']
+    assert not parse_current_response(candidate, replace(response, body=b'<main>' + link + b'<a href='))
     conflict = b'<head><meta name="citation_doi" content="10.9999/someone-else"></head>'
     assert not parse_current_response(candidate, replace(response, body=conflict + response.body))
 
