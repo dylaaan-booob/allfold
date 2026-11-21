@@ -2,7 +2,6 @@
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {checkCanceled,pause}=require('./browser-task.cjs');
 
-const PAGE_RECOVERY_MS=180000;
 const REFRESH_LIMIT=2;
 const REFRESH_DELAY_MS=350;
 const RATE_LIMIT_DELAY_MS=1000;
@@ -120,5 +119,5 @@ class BrowserCooldown {
     }
   }
 }
-module.exports={BrowserCooldown,PAGE_RECOVERY_MS,REFRESH_LIMIT,REFRESH_DELAY_MS,loadFailure,transientLoad,
+module.exports={BrowserCooldown,REFRESH_LIMIT,REFRESH_DELAY_MS,loadFailure,transientLoad,
   reportRecovery,recoveryStop,pageRecoveryDetails,origin};

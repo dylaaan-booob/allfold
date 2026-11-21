@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
 const {BrowserFailure,diagnosticFor}=require('../src/browser/browser-errors.cjs');
+const {readerDiagnosticFields}=require('../src/browser/pdf-clues.cjs');
 const source=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
 const execute=source.slice(source.indexOf('const CONTROL_ACTIONS='),source.indexOf('async function startPython('));
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
@@ -17,7 +18,7 @@ function fixture(){
   ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),
   require:require('node:module').createRequire(require.resolve('../src/main.cjs')),
   operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
-  log:(level,event,details)=>logs.push({level,event,...details}),AbortController,BrowserFailure,diagnosticFor,
+  log:(level,event,details)=>logs.push({level,event,...details}),AbortController,BrowserFailure,diagnosticFor,readerDiagnosticFields,
   send:message=>{messages.push(JSON.parse(JSON.stringify(message)));context.onSend?.(message);},
   browser:{tabs:new Map(),documentCurrent:()=>true,publish(){},async invalidateAllAccess(){},stopAdmission(){},
    get operation(){return taskContext.getStore();},get taskTab(){return this.operation?.taskTab;},
@@ -196,6 +197,18 @@ test('fixed extraction dispatch retains legal empty success after native owner c
   assert.deepEqual(f.messages.at(-1).data.metadata,{dates:[],abstract:null});
   assert.equal(f.logs.find(event=>event.event==='task_finished').level,'info');
   assert.equal(f.logs.find(event=>event.event==='task_finished').outcome,'retrieved');
+});
+
+test('recovery authority can arrive after five seconds within the parent operation',async t=>{
+  const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
+  const current={id:'fixture',action:'stream_paper_body',controller:new AbortController()};
+  let request;
+  const result=validateRecovery(current,value=>{request=value;},{deadline:10000});
+  t.mock.timers.tick(5100);
+  settleRecoveryAuthority(current,{check_id:request.check_id,data:{allowed:true}});
+  await result;
+  assert.equal(current.authority,null);
 });
 
 test('local body operations bypass Browser and remain Main-owned through actual shell settlement',async()=>{

@@ -484,7 +484,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
                 formal = tuple(record for record in group.evidence if strong_identifiers(record.external_ids) & root_keys)
             keys = {key for record in formal for key in evidence_identifiers(record)}
             try:
-                with commit_run_workspace(snapshot,cancel_event=cancel):
+                with registry.paper_gate(), commit_run_workspace(snapshot,cancel_event=cancel):
                     with PaperRepository.open(config.output_dir, expected_workspace_id=snapshot.workspace_id) as repository:
                         unverified = {reported_pmids[id(record)] for record in group.evidence if id(record) in reported_pmids}
                         current = RunIdentityIndex.read(repository, keys | unverified)
@@ -567,7 +567,7 @@ def run_integrated(config_path, *, loaded_config=None, workspace_snapshot=None, 
         final=result()
         if not cancel.is_set():
             try:
-                with commit_run_workspace(snapshot,cancel_event=cancel) as lock:
+                with registry.paper_gate(), commit_run_workspace(snapshot,cancel_event=cancel) as lock:
                     write_last_run_snapshot(config.output_dir,LastRunSnapshot(schema_version=INTEGRATED_RUN_SCHEMA_VERSION,resolved_date_range=dates,
                         outcome=RecordedRunOutcome(final.outcome.value),provider=RunProvider.INTEGRATED,facts=final.facts),operation_lock=lock)
             except LastRunSnapshotWriteError as error:

@@ -36,9 +36,17 @@ closure cannot revoke a received snapshot result. Closure, renderer exit or
 cancellation before a result still fails the pending operation. The original
 Workspace/Paper/attempt and field generations govern persistence.
 
-A missing delayed ScienceDirect toolbar can prompt another PDF-only snapshot
-within the existing task window. Previously captured content survives an optional
-read failure. This does not add a replay, recovery state or snapshot identity gate.
+A ScienceDirect toolbar that reports loading or still has an empty placeholder
+can prompt another PDF-only snapshot within the Download deadline. A ready
+toolbar with no qualified PDF leaves other sources eligible. Date/Abstract
+collection keeps its independent observation. Current valid URLs and fields
+can survive an invalid auxiliary URL or a partial durable projection.
+
+EBSCO results and record details return fixed data from the observed page.
+The result can survive subsequent page updates. Following a result still
+requires the currently available link on the same search. When that link
+changes before dispatch, the task observes the active search again. A native
+form remains owned by its original dispatch and terminal response.
 Access classification uses the current main response and live visible structure.
 Hidden CAPTCHA resources, optional sign-in fields in readable content and ordinary
 error words do not independently block access. These observations are separate
@@ -150,8 +158,10 @@ manual authentication/verification, restored access or failure. These states and
 bounded diagnostic reasons describe the current Page, not a Paper/Run state or a
 retroactive verdict on completed extraction/download. Login/CARSI still own their
 existing credential/consent actions. Solver never submits credentials, MFA or
-business forms. Other CAPTCHA vendors remain manual. No HTTP API/stream response
-opens an authentication tab or replays a POST for Solver.
+business forms. Other CAPTCHA vendors remain manual. A confirmed ordinary body
+GET challenge can reach the same Page observer through the scoped [body access
+recovery](body-downloads.md#session-stream-and-resource-settlement). API requests
+and original form actions retain their own authority and dispatch.
 
 Cloudflare's [response header](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/)
 and [widget visibility/execution modes](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/)

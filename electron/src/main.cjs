@@ -9,6 +9,7 @@ const {installBrowserIPC}=require('./browser/browser-ipc.cjs');
 const {validateRecovery,settleRecoveryAuthority}=require('./workflows/recovery-authority.cjs');
 const {invocationRecovery}=require('./shared/recovery-summary.cjs');
 const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
+const {readerDiagnosticFields}=require('./browser/pdf-clues.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
 const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
@@ -121,7 +122,7 @@ async function executeOperation(message,current) {
   const started=Date.now(),context={request_id:message.id,action:message.action};
   log('debug','task_started',context);
   let stage='navigation';
-  let data,resultPageId;
+  let data,resultPageId,streamTiming,readerNavigation;
   const recovery=invocationRecovery();
   const verifyRecovery=options=>validateRecovery(current,send,options);
   try {
@@ -158,12 +159,13 @@ async function executeOperation(message,current) {
           catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
-        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action))
+        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action)
+          || message.action==='stream_paper_body' && message.data?.recover_access===true)
           browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'native_paper_body') {
           return await executeBodyNative(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'stream_paper_body') {
-          return await executeBodyStream(browser,message.data,{signal:controller.signal,progress});
+          return await executeBodyStream(browser,message.data,{signal:controller.signal,progress,observe:value=>{streamTiming=value;}});
         } else if(message.action === 'login_carsi') {
           stage='authentication';
           return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
@@ -174,7 +176,8 @@ async function executeOperation(message,current) {
         } else if(['extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)) {
           if(!Number.isSafeInteger(message.data?.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
           return await browser[message.action==='extract_paper_metadata'?'extractPaperMetadata':'extractPaperPdfClues'](message.data,{signal:controller.signal,deadline:message.data.deadline_ms,
-            onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic)});
+            onWaiting:diagnostic=>progress({waiting_for_user:true},'navigation',diagnostic),
+            observeReaderNavigation:observed=>{readerNavigation=observed;}});
         } else if(message.action === 'search_journal_cover') {
           return await searchJournalCover(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'wos_query' || message.action === 'wos_export') {
@@ -198,7 +201,8 @@ async function executeOperation(message,current) {
   // can settle its original Future/Paper without depending on that observation.
   send({type:'result',id:message.id,action:message.action,data:{...data,...(summary.length?{recovery:summary}:{}),diagnostics_status:diagnosticsStatus()}});
   try{log(canceled?'info':failed?'warn':'info','task_finished',{...context,page_id:resultPageId,
-    duration_ms:Date.now()-started,outcome:canceled?'canceled':outcome,
+    duration_ms:Date.now()-started,...streamTiming,...readerDiagnosticFields(message.data?.reader,data,readerNavigation),
+    outcome:canceled?'canceled':outcome,
     stage:diagnostic.stage || stage,
     step:diagnostic.step,code:diagnostic.code || data.reason,net_error:diagnostic.net_error,net_code:diagnostic.net_code,status:diagnostic.status,
     imperva_edet:diagnostic.imperva_edet,imperva_incident_id:diagnostic.imperva_incident_id});}catch(_){}

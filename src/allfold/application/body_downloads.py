@@ -2,8 +2,10 @@
 from concurrent.futures import Future
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace, field
+from hashlib import sha256
 import threading
 import time
+from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
 
 from allfold.application.browser_services import browser_workspace_identity
@@ -186,6 +188,10 @@ def _consume(reservation, repository, files, candidate, progress):
         parent_task_id=reservation.parent_task_id)
     if credential is not None:
         payload['pdf_credential'] = credential
+    if candidate.referer is None and candidate.target.article_url:
+        payload['cookie_source'] = candidate.target.article_url
+    if candidate.recover_access:
+        payload['recover_access'] = True
     with registry.paper_gate():
         registry._require_live(reservation)
         repository.require_download(reservation.download_token)
@@ -226,8 +232,14 @@ def _consume(reservation, repository, files, candidate, progress):
             context_changed=current.get('context_changed', False), context_key=current.get('context_key')),
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)
     else:
+        reason = 'file-io' if kind == 'local_failure' else None
+        if kind == 'failed':
+            from allfold.recovery_diagnostics import SCHEMA
+            diagnostic = value.get('diagnostic_code')
+            if diagnostic in SCHEMA['fields']['pdf_reason']['enum']:
+                reason = diagnostic
         result = CandidateResult(kind if kind in {'pending','failed','local_failure','cancelled','stale','expired'} else 'failed',
-            diagnostic='file-io' if kind=='local_failure' else None)
+            diagnostic=reason)
     # Never start the next candidate until this writer/output actually settled.
     files.cleanup(output)
     repository.record_download_output(reservation.download_token, None)
@@ -288,6 +300,9 @@ class _BodyDiscoveryIO:
         self.io = PdfDiscoveryIO(None, document_context=self.context)
         self.resources = ExitStack()
         self.oce_authority = None
+        self.recovered_challenges = set()
+        self.ebsco_record = None
+        self.ebsco_viewer_url = None
         self.openalex_available = reservation.body_request.candidates is None
 
     def _http(self):
@@ -325,10 +340,59 @@ class _BodyDiscoveryIO:
     def document(self, target):
         return self._read(lambda operation, io: io.document(target))
 
+    def ebsco_candidates(self, target):
+        request = self.reservation.body_request
+        if not request.service_id or not target.identity_doi or target.content_type != 'journal-article':
+            return ()
+        from allfold.application.task_authority import ServiceAccessUnavailable
+        try:
+            authority = self.reservation.registry._authority(request.service_id, ())
+        except ServiceAccessUnavailable:
+            return ()
+        except (OSError, ValueError, RuntimeError):
+            raise PdfSourceReadError('EBSCO access changed', diagnostic='service-invalidated',
+                service_id=request.service_id) from None
+        binding = authority.native_access()
+        if binding.pdf_source != 'ebsco' or binding.target_page_id is None:
+            return ()
+        return self._read_ebsco(target, authority, 'ebsco')
+
+    def ebsco_viewer(self, candidate):
+        return self._read_ebsco(candidate.target, candidate.access, 'ebsco-viewer',
+            prepared_record=self.ebsco_record, prepared_viewer=self.ebsco_viewer_url)
+
+    def _read_ebsco(self, target, authority, mode, *, prepared_record=None, prepared_viewer=None):
+        parsed = self._read(lambda operation, io: io.document(target, prepared_source=mode,
+            prepared_record=prepared_record, prepared_viewer=prepared_viewer), authority)
+        if parsed is None or not parsed.current_candidates:
+            raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
+                service_id=authority.service_id)
+        if mode == 'ebsco':
+            self.ebsco_record = next((item.referer for item in parsed.current_candidates
+                if item.field == 'ebsco_download_link'), None)
+            self.ebsco_viewer_url = parsed.ebsco_viewer_url
+        return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url,
+                referer=item.referer, field=item.field if mode == 'ebsco' else None, access=authority, referer_observed=True)
+            for item in parsed.current_candidates
+            if item.stage == 'P4' and item.rule_id == 'R073' and item.action is None and item.reader_kind is None)
+
     def reader(self, candidate, response):
         # The same live parser also handles a ScienceDirect article fallback.
-        return self._read(lambda operation, io: _document_candidates(operation, self.repository, candidate, response),
-            candidate.access)
+        def read(operation, _io):
+            parsed = _document_candidates(operation, self.repository, candidate, response)
+            if parsed is not None or response.access != 'challenge' or candidate.action or candidate.credential:
+                return parsed
+            actual, request, source = (sha256(urlsplit(value or '')._replace(fragment='').geturl().encode()).digest()
+                                       for value in (response.url, candidate.url, candidate.referer))
+            challenge = (actual, request, source, operation.service_id, response.status, response.context_key)
+            if challenge in self.recovered_challenges or reader_context(candidate, response.url):
+                return None
+            self.recovered_challenges.add(challenge)
+            # Recovery and transfer share one native owner so the actual Page
+            # context is available to the succeeding Session GET.
+            return SimpleNamespace(current_candidates=(replace(candidate, url=response.url,
+                reader_kind=None, recover_access=True),))
+        return self._read(read, candidate.access)
 
     def oce_access(self, candidate, response):
         if response.status != 200 or access_limited(response):
@@ -582,8 +646,8 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
     direct = tuple((item.namespace, item.value) for item in paper.identities)
     if candidates is not None:
         candidates = tuple(candidates)
-        if not candidates or sum(len(item.url.encode()) for item in candidates) > 1048576:
-            raise ValueError('Confirmed candidates must fit the task memory budget')
+        if not candidates:
+            raise ValueError('Confirmed candidates are required')
         target = candidates[0].target
         for candidate in candidates:
             if (not isinstance(candidate, PdfCandidate) or candidate.target != target
@@ -697,8 +761,9 @@ class BodyDownloadService:
 
     def _service(self, paper):
         from allfold.application.workspace import paper_service_assignment, journals_for_paper
-        from allfold.config import load_config
-        journals = load_config(self.host.config_path).journals
+        from allfold.persistence.user_state import read_user_state
+        saved = read_user_state(self.host.config_path).state
+        journals = saved.journals
         service_id, assignment = paper_service_assignment(paper.metadata, journals)
         related = tuple(sorted({journal.access_service_id for journal in journals_for_paper(paper.metadata, journals)
             if journal.access_service_id}))
@@ -790,7 +855,8 @@ class BodyDownloadService:
             provider_authority = error
         target, facts = saved_pdf_target(paper)
         return submit_body_download(self.host, paper, target=target, facts=facts, service_id=service_id,
-            service_reason=service_reason, service_ids=service_ids, provider_authority=provider_authority, http_options=self.http_options)
+            service_reason=service_reason, service_ids=service_ids, provider_authority=provider_authority,
+            http_options=self.http_options)
 
     def cancel(self, paper_id, workspace_id, task_id, attempt):
         from uuid import UUID

@@ -253,6 +253,34 @@ open/locate/delete retain bounded outcomes and actual maintenance visibility,
 without declaring a shell error to be missing or manufacturing file-manager
 completion.
 
+Successful `stream_paper_body` terminal events may include four relative,
+monotonic integer marks: `stream_request_ms` immediately before the controlled
+Session fetch call (after output/DNS/cookie preflight), `stream_response_ms` when
+that fetch returns a response, `stream_first_byte_ms` when the prefix reader first
+receives nonempty bytes, and `stream_closed_ms` after the pipeline and writer
+close. They share the native stream invocation's start; they are observations of
+these API boundaries, not wire-packet timestamps. Cooldown inside fetch remains
+in the request-to-response interval. These optional marks carry no URL/headers,
+do not enter public download state or the result protocol, and a failed observer
+cannot affect saving. They do not replace the later file/database endpoint.
+
+`stream_partition_cookie_count`, when present on the same native terminal event,
+counts partitioned cookies selected by the qualified native page context. Zero
+means a completed query selected none; absence means no usable query context.
+It contains no Cookie names, values or headers. It may also accompany a non-PDF
+response after resource closure and does not declare a saved body.
+
+The ScienceDirect PDF Reader terminal can record the entry class
+(`reader_entry`), landing relation (`reader_landing`) and
+`reader_pdf_candidates` from the captured Document. When the Reader observed
+a GET, booleans record request URL change and ordinary Cookie context change.
+The terminal can also distinguish the last main-frame method
+(`reader_last_method`), the most recent observed GET's relation to the
+captured landing (`reader_last_get_relation`) and whether that landing matches
+the requested ScienceDirect PDF asset (`reader_target_asset`).
+The fields retain neither URL nor Cookie data and use the existing terminal
+diagnostic after returning the native result.
+
 Main logs successful stream/native/Open/Locate outcomes according to their actual
 result, even when an abort arrives later. Main sends that terminal result before
 the synchronous final diagnostic write, so Python settlement does not wait for it.

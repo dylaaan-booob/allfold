@@ -178,15 +178,19 @@ app.whenReady().then(async()=>{
     const server=require('node:http').createServer((request,response)=>{
       const challenged=request.url==='/challenge' || request.url==='/aux';
       response.writeHead(200,{'content-type':'text/html',...(challenged?{'cf-mitigated':'challenge'}:{})});
-      response.end(request.url==='/normal'?'<article><h1>Normal</h1></article><iframe hidden src="/aux"></iframe>':'<p>Waiting</p>');
+      response.end(request.url==='/normal'?'<article><h1>Normal</h1></article><iframe hidden src="/aux"></iframe>':
+        '<title>请稍候…</title><main><h1>Publisher</h1><p>正在验证您是真人。</p></main>');
     });
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     try {
       const headerPage=browser.createTab({user:true,present:false}),url='http://127.0.0.1:'+server.address().port;
+      const beforeHeader=solved;
       await headerPage.view.webContents.loadURL(url+'/challenge');
       const challenged=await browser.accessState(headerPage);
       assert.equal(challenged.cfMitigated,true);
+      assert.equal(challenged.markers.content,true,'localized challenge copy can resemble readable main content');
       assert.throws(()=>checkPage(challenged.status,challenged),/verification_page/);
+      assert.ok(solved>beforeHeader,'the main-response challenge must dispatch the page solver');
       await headerPage.view.webContents.loadURL(url+'/normal');
       const normal=await browser.waitForPage(headerPage,{deadline:Date.now()+1500});
       assert.equal(normal.cfMitigated,false,'unrelated subframe response cannot challenge the main page');

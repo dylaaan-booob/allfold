@@ -31,6 +31,43 @@ test('manual Service page observations retain descriptive role without URLs',t=>
   const [event]=logger.readEvents();assert.equal(event.role,'manual-service');assert.equal(event.page_id,3);
   assert.equal(event.url,undefined);
 });
+test('ScienceDirect Reader diagnostics retain route and candidate counts without URLs or context keys',t=>{
+  const {logger}=fixture(t);
+  const {readerDiagnosticFields}=require('../src/browser/pdf-clues.cjs');
+  const article='https://www.sciencedirect.com/science/article/pii/S1234567812345678';
+  const reader={rule_id:'R024',identifier:'S1234567812345678',url:article+'/pdfft'};
+  const landing={landing_url:article+'?signature=private-signature',candidates:[]};
+  const navigation={url:landing.landing_url,context_changed:false,context_key:'private-key'};
+  logger.log('info','task_finished',{request_id:'plain_reader',action:'extract_paper_pdf_clues',
+    ...readerDiagnosticFields(reader,{pdf_clues:landing,reader_result:navigation})});
+  logger.log('info','task_finished',{request_id:'download_reader',action:'extract_paper_pdf_clues',
+    ...readerDiagnosticFields({...reader,url:reader.url+'?download=true'},
+      {pdf_clues:{landing_url:'https://pdf.sciencedirectassets.com/1-s2.0-'+reader.identifier+'/main.pdf?signature=private-current',candidates:[{}]}},
+      {method:'POST',lastGetURL:'https://pdf.sciencedirectassets.com/1-s2.0-'+reader.identifier+'/main.pdf?signature=private-before'})});
+  const normalizedEntry=reader.url.replace('sciencedirect.com','sciencedirect.com:443')+'#private-fragment';
+  logger.log('info','task_finished',{request_id:'equivalent_reader',action:'extract_paper_pdf_clues',
+    ...readerDiagnosticFields({...reader,url:normalizedEntry},
+      {pdf_clues:{landing_url:reader.url,candidates:[]},reader_result:{...navigation,url:reader.url}},
+      {method:'GET',lastGetURL:normalizedEntry})});
+  const [plain,download,equivalent]=logger.readEvents();
+  assert.equal(plain.reader_entry,'plain');
+  assert.equal(plain.reader_landing,'article');
+  assert.equal(plain.reader_pdf_candidates,0);
+  assert.equal(plain.reader_request_changed,true);
+  assert.equal(plain.reader_context_changed,false);
+  assert.equal(download.reader_entry,'download');
+  assert.equal(download.reader_landing,'other-origin');
+  assert.equal(download.reader_pdf_candidates,1);
+  assert.equal(download.reader_request_changed,undefined);
+  assert.equal(download.reader_last_method,'post');
+  assert.equal(download.reader_last_get_relation,'same-path');
+  assert.equal(download.reader_target_asset,true);
+  assert.equal(equivalent.reader_landing,'reader');
+  assert.equal(equivalent.reader_request_changed,false);
+  assert.equal(equivalent.reader_last_get_relation,'exact');
+  assert.equal(equivalent.reader_target_asset,false);
+  assert.doesNotMatch(JSON.stringify([plain,download,equivalent]),/private-|sciencedirect(?:assets)?\.com|S1234567812345678/);
+});
 test('bounded rotation persists incompleteness across restart and files are private',t=>{
   const {logger,root}=fixture(t,{maxBytes:512,maxFiles:2});
   for(let i=0;i<12;i++)logger.log('info','manual_wait',{request_id:'request_'+i,waiting:!!(i%2)});
@@ -88,9 +125,12 @@ test('body stream terminal survives strict diagnostics and retains transport ver
   const {logger}=fixture(t);
   logger.log('info','task_finished',{request_id:'body_request',task_id:'body_attempt',
     action:'stream_paper_body',outcome:'stream_complete',workspace_root:'/private/managed',
+    stream_partition_cookie_count:2,stream_request_ms:4,stream_response_ms:12,stream_first_byte_ms:15,stream_closed_ms:80,
     output:{file:[1,2]},url:'https://publisher.example/body?token=SECRET'});
   const events=logger.readEvents();assert.equal(events.length,1);
   assert.equal(events[0].action,'stream_paper_body');assert.equal(events[0].outcome,'stream_complete');
+  assert.equal(events[0].stream_partition_cookie_count,2);
+  assert.deepEqual(['stream_request_ms','stream_response_ms','stream_first_byte_ms','stream_closed_ms'].map(key=>events[0][key]),[4,12,15,80]);
   assert.doesNotMatch(JSON.stringify(events),/SECRET|managed|token|output|downloaded/);
 });
 test('current native body ownership survives while retired save events are refused',t=>{

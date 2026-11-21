@@ -361,18 +361,22 @@ def test_reader_navigation_keeps_signed_url_and_access_progress_out_of_durable_f
     {'context_key': 'raw Cookie'},
     {'cookie': 'private'},
 ])
-def test_reader_navigation_rejects_unsafe_or_unbounded_context(change):
-    from allfold.application.document_metadata import DocumentMetadataFailed, validate_document_pdf_clues
+def test_invalid_reader_context_preserves_independent_current_pdf(change):
+    from allfold.application.document_metadata import validate_document_pdf_clues
     value = envelope()
+    body = 'https://cdn.example/main.pdf?token=' + 'x' * 9000
+    value['pdf_clues'] = pdf_clues(landing_url='https://publisher.example/article?q=' + 'q' * 9000,
+        candidates=[{'stage': 'P4', 'rule_id': 'R037', 'url': body, 'referer': 'https://reader.example/article?q=' + 'r' * 9000}])
     value['reader_result'] = {'url': 'https://cdn.example/main.pdf',
         'referer': None, 'context_changed': False, 'context_key': 'a'*64, **change}
-    with pytest.raises(DocumentMetadataFailed):
-        validate_document_pdf_clues(value)
+    result = validate_document_pdf_clues(value)
+    assert result.reader_result is None
+    assert result.current_candidates[0].url == body
+    assert result.current_candidates[0].referer == value['pdf_clues']['candidates'][0]['referer']
+    assert 'invalid-url' in result.facts.diagnostics
 
 
 @pytest.mark.parametrize('change', [
-    {'candidates': [{'stage': 'P4', 'rule_id': 'R037', 'url': 'http://127.0.0.1/private.pdf'}]},
-    {'candidates': [{'stage': 'P4', 'rule_id': 'R037', 'url': 'https://user:password@cdn.example/private.pdf'}]},
     {'candidates': [{'stage': 'P4', 'rule_id': 'R037', 'url': 'https://cdn.example/main.pdf', 'body': 'secret'}]},
     {'identifiers': [{'kind': 'pii', 'value': 'secret', 'rule_id': 'R024', 'cookie': 'secret'}]},
     {'status': 'failed'},

@@ -9,7 +9,8 @@ class BrowserFailure extends Error {
 }
 function cloudflareChallenge(access,status=access?.status) {
   const markers=access?.markers || {};
-  return !!(markers.cloudflareBlocking || access?.cfMitigated && !markers.content
+  // The native main-response header remains authoritative with localized page copy.
+  return !!(markers.cloudflareBlocking || access?.cfMitigated
     || markers.cloudflareVisible && !markers.content
     || markers.robot && access?.cloudflareFrame
     || markers.cloudflareTitle && status>=400 && !markers.content

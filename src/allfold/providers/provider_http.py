@@ -95,7 +95,8 @@ def _transport_failure(provider, error):
                 httpx.ProtocolError, httpx.DecodingError, httpx.InvalidURL, httpx.TooManyRedirects, httpx.UnsupportedProtocol))
             else 'transport')
     return ProviderFailure(f'{provider}: network request failed ({type(error).__name__})',
-        kind=kind, code='timeout' if isinstance(error, httpx.TimeoutException) else 'network_error',
+        kind=kind, code=('timeout' if isinstance(error, httpx.TimeoutException) else
+                        'redirect-limit' if isinstance(error, httpx.TooManyRedirects) else 'network_error'),
         transient=temporary, transport_error=subtype,
         outcome='not_sent' if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
         else 'unknown')

@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, quote, urlencode, urlsplit
 import httpx
 
 from allfold.identifiers import valid_doi
-from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError, RESPONSE_SAMPLE_BYTES
+from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError
 from allfold.pdf_facts import crossref_pdf_refresh_required
 from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, content_platform, needs_p2_query
 from allfold.providers.provider_http import (ProviderReadClient, ProviderFailure,
@@ -39,10 +39,16 @@ def check_public_request(request, *, resolver=public_dns_addresses):
     """Check the actual next request, not just a previously seen landing URL."""
     try:
         normalize_public_http_url(str(request.url))
+    except ValueError:
+        raise UnsafePdfTarget('PDF request target is not a verified public destination') from None
+    try:
         addresses = resolver(request.url.host, request.url.port or (443 if request.url.scheme == 'https' else 80))
+    except OSError:
+        raise ProviderFailure('PDF target DNS resolution failed', kind='transport', code='dns-failed') from None
+    try:
         if not addresses or any(not ipaddress.ip_address(value).is_global for value in addresses):
             raise ValueError('Non-public DNS answer')
-    except (ValueError, OSError):
+    except ValueError:
         raise UnsafePdfTarget('PDF request target is not a verified public destination') from None
 
 
@@ -70,7 +76,7 @@ class PdfHttpClient:
     that capability a PDF is pending, never falsely reported as downloaded.
     """
     def __init__(self, *, guard, cancel_event, deadline, pacing_state=None,
-                 credentials=(), resolver=public_dns_addresses, max_redirects=6, **http_options):
+                 credentials=(), resolver=public_dns_addresses, **http_options):
         self._resolver = resolver
         self._credentials = dict(credentials)
         if not self._credentials.keys() <= {'ieee', 'elsevier', 'wiley_tdm', 'aps_harvest', 'springer_metadata'}:
@@ -78,7 +84,6 @@ class PdfHttpClient:
         self._credential = None
         self._reader = _FiniteReader('pdf-discovery', guard=guard, cancel_event=cancel_event,
             deadline=deadline, pacing_state=pacing_state, request_url_guard=self._before_request, **http_options)
-        self._reader.http.max_redirects = max_redirects
         self.closed = False
 
     @property
@@ -89,6 +94,10 @@ class PdfHttpClient:
         self._reader.check_parent_deadline()
         check_public_request(request, resolver=self._resolver)
         self._reader.check_parent_deadline()
+        chain = request.extensions['allfold_pdf_redirects']
+        if request.url in chain:
+            raise ProviderFailure('PDF HTTP redirect repeated a request', kind='protocol', code='redirect-loop')
+        chain.add(request.url)
         for name in _SECRET_HEADERS:
             request.headers.pop(name, None)
         if self._credential:
@@ -117,7 +126,8 @@ class PdfHttpClient:
         self._credential = credential
         try:
             result = self._reader.read(lambda: self._reader.http.build_request('GET', url,
-                headers={'User-Agent': 'allfold/0.1.0', **(headers or {})}), self._reader.operation(),
+                headers={'User-Agent': 'allfold/0.1.0', **(headers or {})},
+                extensions={'allfold_pdf_redirects': set()}), self._reader.operation(),
                 decode=decode, follow_redirects=True, stream=True)
             self._reader.check_parent_deadline()
             return result
@@ -128,20 +138,18 @@ class PdfHttpClient:
             self._credential = None
 
     @staticmethod
-    def bounded_response(response):
+    def current_response(response):
         body = bytearray()
         partial = False
         try:
             for chunk in response.iter_bytes():
-                available = RESPONSE_SAMPLE_BYTES - len(body)
-                body.extend(chunk[:available])
-                if len(chunk) > available:
-                    partial = True
-                    break
+                body.extend(chunk)
         except (httpx.TransportError, httpx.DecodingError):
             # Only this owned metadata/HTML read is a source failure. Exceptions
             # from the downstream PDF consumer remain outside this boundary.
-            raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
+            if not body:
+                raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
+            partial = True
         # HTTPX response.request.url is the real final request after redirects.
         return CurrentResponse(str(response.request.url), response.headers.get('content-type', ''),
             bytes(body), response.status_code, partial=partial,
@@ -174,19 +182,16 @@ class PdfHttpClient:
                 # Metadata discovery must not consume a possible PDF to sniff it.
                 # Only the actual transfer owner can identify and save its bytes.
                 return transfer(response, candidate) if transfer is not None else CandidateResult('pending')
-            return CandidateResult.current(self.bounded_response(response))
+            return CandidateResult.current(self.current_response(response))
         try:
             return self._read(candidate.url, decode, headers=headers, credential=credential)
-        except ProviderHTTPError as error:
-            return CandidateResult.failed({401: 'authorization', 403: 'authorization', 402: 'quota',
-                404: 'not-found'}.get(error.status, 'source-failed'))
-        except (ProviderFailure, UnsafePdfTarget):
-            return CandidateResult.failed('source-failed')
+        except (ProviderFailure, UnsafePdfTarget) as error:
+            return CandidateResult.failed(_failure_code(error))
 
     def json(self, url, *, credential=None):
         def decode(response):
             from allfold.pdf_responses import json_sample
-            current = self.bounded_response(response)
+            current = self.current_response(response)
             try:
                 issues = []
                 result = json_sample(current.body, partial=current.partial, report=issues.append)
@@ -245,7 +250,8 @@ def springer_metadata_inputs(raw, target, inputs):
         if not isinstance(row, dict) or valid_doi(row.get('doi')) != target.identity_doi:
             continue
         for entry in row.get('url', ()) if isinstance(row.get('url'), list) else ():
-            if isinstance(entry, dict) and entry.get('format', '').lower() == 'pdf' and isinstance(entry.get('value'), str):
+            if (isinstance(entry, dict) and isinstance(entry.get('format'), str)
+                    and entry['format'].lower() == 'pdf' and isinstance(entry.get('value'), str)):
                 inputs = _qualified_known(inputs, entry['value'], 'API09', 'url.pdf')
     return inputs
 
@@ -296,7 +302,9 @@ class PdfDiscoveryIO:
                         inputs = replace(inputs, alternative_ids=tuple(dict.fromkeys((*inputs.alternative_ids,
                             *(v for v in alternatives if isinstance(v, str) and len(v) <= 512)))))
                     for entry in row.get('link', ()) if isinstance(row.get('link'), list) else ():
-                        if isinstance(entry, dict) and entry.get('content-type', '').partition(';')[0].lower() == 'application/pdf' and isinstance(entry.get('URL'), str):
+                        if (isinstance(entry, dict) and isinstance(entry.get('content-type'), str)
+                                and entry['content-type'].partition(';')[0].lower() == 'application/pdf'
+                                and isinstance(entry.get('URL'), str)):
                             inputs = _qualified_known(inputs, entry['URL'], 'API02', 'link')
                     primary = row.get('resource', {}).get('primary', {}) if isinstance(row.get('resource'), dict) else {}
                     url = primary.get('URL') if isinstance(primary, dict) else None
@@ -327,12 +335,13 @@ class PdfDiscoveryIO:
             except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
 
-    def document(self, target):
+    def document(self, target, *, prepared_source=None, prepared_record=None, prepared_viewer=None):
         if self.context is None or not (target.identity_doi or target.article_url):
             return None
         from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
         try:
-            return read_document_pdf_clues(self.context, confirmed_article_url=target.article_url)
+            return read_document_pdf_clues(self.context, confirmed_article_url=target.article_url,
+                prepared_source=prepared_source, prepared_record=prepared_record, prepared_viewer=prepared_viewer)
         except DocumentMetadataFailed:
             raise PdfSourceReadError('Article PDF clues were not retrieved') from None
 
@@ -377,11 +386,19 @@ class PdfDiscoveryIO:
 
 def _public_url(value):
     try:
-        return normalize_public_http_url(value)
+        return normalize_public_http_url(value) if isinstance(value, str) else None
     except ValueError:
         return None
 
 
 def _failure_code(error):
+    if isinstance(error, UnsafePdfTarget):
+        return 'unsafe-target'
+    if error.code in {'redirect-loop', 'redirect-limit', 'dns-failed'}:
+        return error.code
+    if error.code == 'invalid-json':
+        return 'parse-failed'
+    if error.code in {'network_error', 'timeout', 'response-read-failed'}:
+        return 'transport-failed'
     return {401: 'authorization', 403: 'authorization', 402: 'quota', 404: 'not-found'}.get(
         getattr(error, 'status', None), 'source-failed')

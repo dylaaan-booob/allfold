@@ -599,7 +599,7 @@ def test_replaced_workspace_path_cannot_renew_authority_or_release_into_replacem
 
 
 @pytest.mark.parametrize('phase', ['P1', 'P2', 'unavailable'])
-def test_factory_keeps_optional_pdf_credentials_and_redirect_limit_out_of_openalex_options(tmp_path, caplog, phase):
+def test_factory_keeps_optional_pdf_credentials_out_of_openalex_options(tmp_path, caplog, phase):
     secret, requests = 'controlled-wiley-only-secret', []
     def handler(request):
         requests.append(request)
@@ -611,7 +611,6 @@ def test_factory_keeps_optional_pdf_credentials_and_redirect_limit_out_of_openal
             return httpx.Response(200, headers={'content-type': 'application/pdf'})
         return httpx.Response(404)
     host, _, paper, options = setup_host(tmp_path, handler)
-    options['max_redirects'] = 6
     if phase != 'unavailable':
         options['credentials'] = (('wiley_tdm', secret),)
     selected = target(paper)

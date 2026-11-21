@@ -6,7 +6,8 @@ const {configureBrowserIdentity} = require('./browser-identity.cjs');
 const {validDOI,articleURL}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
 const {BodyActionRuntime}=require('./body-action-runtime.cjs');
-const {qualifyReader,publicClueURL}=require('./pdf-clues.cjs');
+const {qualifyReader,publicClueURL,matchingScienceDirectAssetGet}=require('./pdf-clues.cjs');
+const {readEbscoSource,ebscoEntry}=require('./ebsco-source.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
@@ -15,7 +16,7 @@ const {institutionAuthPage}=require('../auth/institution-auth.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
 const {waitFor,pause,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
-const {PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
+const {reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
 const {sharedSessionEvents}=require('./session-events.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 const {PageBudget}=require('./page-budget.cjs');
@@ -272,10 +273,11 @@ class BrowserRuntime {
     if(context?.active && !context.signal.aborted && context.failure)
       throw new BrowserFailure('authentication','institution_credentials_rejected');
   }
-  async inspectAuthentication(tab) {
+  async inspectAuthentication(tab,{documentOnly=false}={}) {
     const wc=tab.view.webContents;
     if(wc.isDestroyed())throw new BrowserFailure('navigation','page_closed');
-    if(wc.isLoadingMainFrame())return {step:'loading',waiting:true};
+    const loading=()=>wc.isLoadingMainFrame() && !(documentOnly && tab.navigation.current?.documentReady);
+    if(loading())return {step:'loading',waiting:true};
     let binding;
     try {binding=await this.documentBinding(tab,{signal:tab.taskSignal,deadline:tab.navigation.current?.deadline});}
     catch(error) {
@@ -298,7 +300,7 @@ class BrowserRuntime {
     try {state=carsiPage?{step:'none',waiting:false}:await frame.executeJavaScript('('+institutionAuthPage.toString()+')(...'
       +JSON.stringify(['inspect',null,null,mode])+')');}
     catch (_) {state={step:'manual',waiting:true,code:'auth_execution_failed'};}
-    if(!this.documentCurrent(binding) || wc.isLoadingMainFrame())return {step:'loading',waiting:true};
+    if(!this.documentCurrent(binding) || loading())return {step:'loading',waiting:true};
     return {...state,binding};
   }
   async handleAuthentication(tab) {
@@ -631,6 +633,7 @@ class BrowserRuntime {
     const owner=tab.taskOwner;
     const automatic=this.ownsPage(owner,tab.id) && (owner.taskTab===tab || tab.loadOwner===owner || (!!tab.opener && tab.opener===owner.taskTab));
     return {automatic,owner:automatic?owner:null,
+      ...(owner?.association.paper_id && {pageLoadLimit:null}),
       signal:automatic?(signal || tab.taskSignal || owner?.signal):undefined,
       deadline:automatic?(deadline ?? tab.navigation?.current?.deadline ?? Infinity):Infinity,
       enabled:automatic && !this.destroying && owner.phase!=='business' && tab.loadAllowed!==false,
@@ -653,19 +656,18 @@ class BrowserRuntime {
     owner.phase='business';
     for(const tab of this.tabs.values())if(tab.navigation.current?.owner===owner)tab.navigation.finish();
   }
-  async inspectPage(tab,{signal,deadline=Infinity,stage='navigation',step='verification',extraWaiting,onWaiting,automaticDeadline=deadline,navigationChain}={}) {
+  async inspectPage(tab,{signal,deadline=Infinity,stage='navigation',step='verification',extraWaiting,onWaiting,automaticDeadline=deadline,navigationChain,documentOnly=false}={}) {
     checkCanceled(signal);this.checkTaskResources();
     if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
     tab.navigation.check();
-    if(tab.view.webContents.isLoadingMainFrame() || (tab.navigation.current?.active && !tab.navigation.current.loaded))
+    if(tab.navigation.isLoading(documentOnly))
       return {doc:null,waiting:false,loading:true};
     try {return await inspectPage({signal,deadline,automaticDeadline,stage,step,onWaiting,
-      authentication:()=>this.checkAuthentication(tab),inspectAuthentication:()=>this.inspectAuthentication(tab),
+      authentication:()=>this.checkAuthentication(tab),inspectAuthentication:()=>this.inspectAuthentication(tab,{documentOnly}),
       probe:()=>this.accessState(tab,{signal,deadline}),current:doc=>{
         tab.navigation.check();
         if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
-        return this.documentCurrent(doc) && !tab.view.webContents.isLoadingMainFrame()
-          && !(tab.navigation.current?.active && !tab.navigation.current.loaded);
+        return this.documentCurrent(doc) && !tab.navigation.isLoading(documentOnly);
       },
       extraWaiting:doc=>!!extraWaiting?.(doc) || !!(tab.authContext?.active && tab.authContext.institution
         && new URL(doc.url).origin!=='https://ds.carsi.edu.cn'),
@@ -691,7 +693,7 @@ class BrowserRuntime {
     } catch(error){if(tab.navigation.current?.chain===chain)this.finishPageLoad(tab);throw error;}
   }
 
-  async openPaperPage(data,identity,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS}={}) {
+  async openPaperPage(data,identity,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS,documentOnly=false}={}) {
     const {workspace_identity:workspace,paper_id:paper}=data;
     if(typeof workspace!=='string' || !/^[a-f0-9]{64}$/.test(workspace)
       || typeof paper!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(paper))
@@ -731,16 +733,17 @@ class BrowserRuntime {
         tab.pageAttempt=attempt;
         this.associatePage(tab,{role,doi});
         const contents=tab.view.webContents;
-        const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url && !contents.isLoadingMainFrame();
+        const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url
+          && (documentOnly || !contents.isLoadingMainFrame());
         const previous=tab.paperDocument;
         if(previous?.identityKey===identityKey && matches(previous.doc) && !tab.navigation.current?.failure) {
-          const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,
+          const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,documentOnly,
             onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
           if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)
             return {...doc,identity:paperIdentity};
         }
         tab.paperDocument=null;
-        const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting});
+        const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting,documentOnly});
         if(!matches(doc) || this.paperPages.get(key)!==tab)throw new BrowserFailure('navigation','document_changed');
         this.finishPageLoad(tab);
         const confirmed={...doc,identity:paperIdentity};
@@ -752,7 +755,6 @@ class BrowserRuntime {
         if(index || !error.rebuildPage || signal?.aborted || owner.phase!=='loading'
           || !this.ownsPage(owner,tab?.id) || this.paperPages.get(key)!==tab)throw error;
         if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
-        deadline=Math.min(deadline,Date.now()+PAGE_RECOVERY_MS);
         firstFailure=error;sourcePageId=tab.id;previousOrigin=origin(tab.navigation.current?.url);
         record('recovery_scheduled',error,{page_id:tab.id,dispatch_outcome:'not_dispatched'});
         await this.retirePageAttempt(attempt);
@@ -761,7 +763,7 @@ class BrowserRuntime {
     }
   }
 
-  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting}={}) {
+  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,httpReferrer,documentOnly=false}={}) {
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     await waitFor(()=>this.ready,signal,deadline);
@@ -784,13 +786,13 @@ class BrowserRuntime {
       checkCanceled(bounded);
       validate();
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
-      const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target),
-        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target});
+      const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target,{httpReferrer}),
+        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target,httpReferrer,documentOnly});
       chain=tab.navigation.current.chain;
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
-      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,
-        onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
+      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,documentOnly,
+        onWaiting:(waiting,diagnostic,document)=>{if(waiting)onWaiting?.(diagnostic,document);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;
     } catch(error) {
@@ -809,13 +811,13 @@ class BrowserRuntime {
     if(!tab || !this.tabs.has(tab.id))throw new BrowserFailure('navigation','page_closed');
     if(!options.independent)tab.navigation.check();
     const frame=tab.view.webContents.mainFrame;
-    if(frame.url.length>4096)throw new BrowserFailure('navigation','page_probe_unconfirmed');
     const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,
       url:frame.url,navigationGeneration:tab.documentGeneration,...(options.identity?{identity:options.identity}:{})};
     const known=tab.documentIds.get(frame.frameToken);
     if(known)binding.documentId=known;
     const result=await this.documents.call(binding,action,options.args || {},options);
     if(action==='extract'||action==='pdf')return result;
+    if(action==='ebsco')return {...binding,...result,status:tab.status};
     checkCanceled(options.signal);
     if(!options.independent)tab.navigation.check();
     if(!this.documentCurrent(binding))throw new BrowserFailure('navigation','document_changed');
@@ -843,6 +845,7 @@ class BrowserRuntime {
   }
   extractPaperPdfClues(data,options={}) {
     if(Object.hasOwn(data,'wantAbstract') || Object.hasOwn(data,'reader_access_only') && data.reader_access_only!==true)throw new BrowserFailure('navigation','document_operation_failed');
+    if(Object.hasOwn(data,'prepared_source'))return this.extractEbscoSource(data,options);
     if(data.reader_access_only) {
       if(data.reader || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id)
         || !Number.isSafeInteger(data.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
@@ -854,12 +857,27 @@ class BrowserRuntime {
     }
     return this.extractPaperDocument(data,{...options,metadata:false});
   }
-  async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata}={}) {
-    if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only')))throw new BrowserFailure('navigation','document_operation_failed');
+  async extractEbscoSource(data,options) {
+    if(!['ebsco','ebsco-viewer'].includes(data.prepared_source) || data.reader || data.reader_access_only || !data.service_id
+      || !Number.isSafeInteger(data.target_page_id) || !Number.isSafeInteger(data.deadline_ms)
+      || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))
+      throw new BrowserFailure('navigation','document_operation_failed');
+    const verify=this.pinPreparedPaperAccess(data);
+    const context=this.accessContexts.get(this.accessKey(data));
+    const owner=this.operation,validateRecovery=owner.validateRecovery;
+    owner.validateRecovery=async next=>{verify();await validateRecovery?.(next);verify();};
+    try {
+      return await readEbscoSource(this,data,context,{...options,verify});
+    } finally {
+      owner.validateRecovery=validateRecovery;
+    }
+  }
+  async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata,observeReaderNavigation}={}) {
+    if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only') || Object.hasOwn(data,'prepared_source')))throw new BrowserFailure('navigation','document_operation_failed');
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
     const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async options=>{verifyAccess();await validateRecovery?.(options);verifyAccess();};
-    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies;
+    let requestGuard,headerGuard,readerFailure,readerRequest,priorCookies,lastReaderGet;
     try {
       let doc;
       if(readerKind) {
@@ -871,38 +889,50 @@ class BrowserRuntime {
           if(signal?.aborted || Date.now()>=deadline || !publicClueURL(details.url)) {
             readerFailure=new BrowserFailure('navigation',signal?.aborted?'canceled':'pdf_target_refused');return {cancel:true};
           }
-          if(details.resourceType==='mainFrame')readerRequest={id:details.id,url:details.url,method:details.method,referer:null};
+          if(details.resourceType==='mainFrame') {
+            readerRequest={id:details.id,url:details.url,method:details.method,referer:null};
+            if(readerKind==='sciencedirect' && details.method==='GET')lastReaderGet=readerRequest;
+          }
         });
         headerGuard=this.sessionEvents.subscribe('beforeSendHeaders',details=>{
           if(details.webContentsId===tab.id && details.id===readerRequest?.id)
             readerRequest.referer=Object.entries(details.requestHeaders||{}).find(([name])=>name.toLowerCase()==='referer')?.[1] || null;
         });
         doc=await this.navigate(data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
-      } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
+      } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting,documentOnly:!metadata});
       const tab=this.tabs.get(doc.pageId);
       const result=await this.readDocument(tab,metadata?'extract':'pdf',{signal,deadline,identity:data.identity,
         args:metadata?{wantAbstract:data.wantAbstract}:{readerKind}});
       let pdf=result.clues;
       // Only a missing, delayed toolbar needs another snapshot. An optional
       // observation cannot erase content already captured by the original read.
-      const hydrationEnd=Math.min(deadline,Date.now()+2000);
-      while(!readerKind && pdf.platform==='sciencedirect' && pdf.status==='complete'
-        && !pdf.candidates.length && Date.now()<hydrationEnd) {
+      let toolbarPending=result.toolbarPending;
+      while(!metadata && !readerKind && !pdf.candidates.length && toolbarPending) {
         try {
-          await waitFor(()=>pause(signal,Math.min(200,hydrationEnd-Date.now())),signal,deadline,'navigation','document_operation');
+          await waitFor(()=>pause(signal,200),signal,deadline,'navigation','document_operation');
           const next=await this.readDocument(tab,'pdf',{signal,deadline,identity:data.identity,args:{readerKind:null}});
-          if(next.clues.candidates.length)pdf=next.clues;
-          else if(next.clues.status!=='complete')break;
-        }catch(error){checkCanceled(signal);break;}
+          toolbarPending=next.toolbarPending;
+          if(next.clues.candidates.length || next.clues.status!=='failed')pdf=next.clues;
+        }catch(error){checkCanceled(signal);if(error.diagnostic?.code!=='document_changed')throw error;}
       }
       checkCanceled(signal);verifyAccess();
+      if(readerKind==='sciencedirect')try {
+        observeReaderNavigation?.({method:readerRequest?.method,lastGetURL:lastReaderGet?.url});
+      }catch(_) {}
       const metadata_status=!result.metadata?'failed':result.diagnostics?.some(code=>
         ['date_scan_failed','abstract_candidate_failed','abstract_budget_exceeded'].includes(code))?'partial':'complete';
-      const readerCookies=readerKind && readerRequest?.method==='GET'
+      // A verification POST can finish at the exact PDF that Chromium already
+      // requested by GET. Preserve that observed GET and its Referer.
+      const lastRequest=readerRequest;
+      const retainedGet=readerKind==='sciencedirect' && lastRequest?.method==='POST' && doc.status===200 && !pdf.candidates.length
+        ?matchingScienceDirectAssetGet(data.reader.identifier,lastReaderGet,pdf.landing_url):null;
+      const readerCookies=readerKind && (lastRequest?.method==='GET' || retainedGet)
         ?await waitFor(()=>this.sessionEvents.cookieContext(data.reader.url),signal,deadline):null;
+      let handoff=readerRequest?.method==='GET'?readerRequest:null;
+      if(retainedGet)handoff=readerRequest===lastRequest && this.documentCurrent(doc)?retainedGet:null;
       return {outcome:'retrieved',...(metadata?{metadata:result.metadata,metadata_status,
           extraction_diagnostics:result.diagnostics} : {}),
-        ...(readerKind && readerRequest?.method==='GET'?{reader_result:{url:readerRequest.url,referer:readerRequest.referer,
+        ...(readerKind && handoff?{reader_result:{url:handoff.url,referer:handoff.referer,
           context_changed:priorCookies!==readerCookies,context_key:readerCookies}}:{}),
         pdf_clues:readerKind?{...pdf,candidates:pdf.candidates.map(candidate=>({...candidate,stage:data.reader.stage,rule_id:data.reader.rule_id}))}:pdf};
     } catch(error){throw readerFailure || error;}
@@ -1007,6 +1037,7 @@ class BrowserRuntime {
       throw new BrowserFailure('navigation','navigation_active');
     const context={kind:'access',key,accessKind:kind,tab,scopeId:data.service_scope.scope_id,serviceId:data.service_id || null,
       preparationKey:data.preparation_key,authenticationKey:data.authentication_key,valid:true,pins:new Set(),loan:null,lastUsed:Date.now()};
+    if(kind==='target')context.ebscoEntry=ebscoEntry(tab.view.webContents.getURL());
     tab.resourceOwner=context;tab.resource.owner=context;this.accessContexts.set(key,context);
     return context;
   }

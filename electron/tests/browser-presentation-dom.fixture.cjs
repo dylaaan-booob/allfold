@@ -100,9 +100,11 @@ app.whenReady().then(async()=>{
       await ready(()=>host("$('browser-tabs').textContent.includes('Background Tab')"),'background title update');
       assert(await host('focusedPageButton.isConnected&&document.activeElement===focusedPageButton'),'Tab lost keyboard focus on a background update');
       assert(browser.selected===tab,'Background update changed the selected page');
-      await click(win.webContents,`#browser-tabs [data-page-id="${other.id}"] button`);assert(browser.selected===other,'page switch');
+      await click(win.webContents,`#browser-tabs [data-page-id="${other.id}"] button`);
+      await ready(()=>Promise.resolve(browser.selected===other),'page switch');
       await click(win.webContents,'#browser-tabs-toggle');
-      await click(win.webContents,selector);assert(browser.selected===tab,'page restore');
+      await click(win.webContents,selector);
+      await ready(()=>Promise.resolve(browser.selected===tab),'page restore');
       await click(win.webContents,'#browser-return');
       assert(await host("document.activeElement.id==='browser-open'&&$('fixture-workspace-draft').value==='preserved'"),'Workspace draft and focus return');
       assert(!browser.presentation.mounted,'Workspace intercepted by native view');

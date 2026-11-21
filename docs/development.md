@@ -137,6 +137,19 @@ files, SQLite, local HTTP and temporary profiles, never personal configuration,
 Workspace, covers, accounts or Zotero. Source/build, rendered fixtures, live-service
 acceptance and GitHub CI are distinct evidence.
 
+Native executable fixtures share `electron/tests/fixture-process.cjs`. Each owns
+an isolated POSIX process group, keeps its existing deadline/output limit, and
+ends that group on parent exit or test cancellation. This prevents a timed-out
+Electron/Python descendant from retaining the runner's output pipes. Fixture
+stdout streams once as case progress; bounded stderr remains available on failure.
+This test-only cleanup never targets the running application or personal data.
+
+Workspace field tests overlap the public read with an active collection and a
+real SQLite commit in a disposable library. Browser PDF fixtures exercise the
+owned requests, actual cookie send policy and terminal save. Recovery checks
+distinguish an ordinary GET or the browser's verification from replaying the
+application's own form action.
+
 ### GitHub Actions scope
 
 [Safety checks](../.github/workflows/ci.yml) runs on PRs, pushes to `main` and manual

@@ -36,6 +36,9 @@ def test_springer_encodes_complete_doi_but_binds_original_target():
     ('www.pnas.org', 'pnas', 'R015', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
     ('pubs.rsna.org', 'rsna', 'R016', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y?download=true'),
     ('www.worldscientific.com', 'world_scientific', 'R017', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y?download=true'),
+    ('epubs.siam.org', 'atypon', 'R039', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
+    ('www.liebertpub.com', 'atypon', 'R039', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
+    ('pubs.aiaa.org', 'atypon', 'R039', '/doi/pdf/10.1234/AbC/Part(2)%3Fx=Y'),
 ])
 def test_each_direct_template_is_host_and_content_bound(host, platform, rule, expected):
     paper = target(host, platform)
@@ -54,6 +57,12 @@ def test_spie_never_guesses_between_journal_and_proceedings():
     assert (conference.rule_id, conference.url) == ('R013', 'https://www.spiedigitallibrary.org/Proceedings/Download?urlId=10.1234%2FAbC%2FPart(2)%3Fx%3DY')
     assert list(iter_p1_candidates(replace(paper, content_type='unknown'))) == []
     assert list(iter_p1_candidates(target('projecteuclid.org', 'project_euclid', 'conference-paper'))) == []
+
+
+@pytest.mark.parametrize('host', ['epubs.siam.org', 'www.liebertpub.com', 'pubs.aiaa.org'])
+def test_shared_doi_direct_entry_requires_journal_article(host):
+    paper = target(host, 'atypon', 'conference-paper')
+    assert list(iter_p1_candidates(paper)) == []
 
 
 def test_plos_uses_only_established_journal_slug_and_printable():
@@ -93,8 +102,8 @@ def test_sciencedirect_checks_each_alternative_id_and_preserves_bounded_variants
     inputs = PdfRuleInputs(paper, alternative_ids=('not-a-pii', 'S014067362400123X'))
     candidates = iter_p2_candidates(paper, inputs)
     first = next(candidates)
-    assert (first.rule_id, first.url) == ('R024', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft')
-    assert next(candidates).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'
+    assert (first.rule_id, first.url) == ('R024', 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true')
+    assert next(candidates).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
     assert list(iter_p2_candidates(paper, PdfRuleInputs(paper, alternative_ids=('junk', '12345678901234567')))) == []
     punctuated = PdfRuleInputs(paper, identifiers=(('pii', 'S0140-6736(24)00123-4'),))
     assert list(iter_p2_candidates(paper, punctuated)) == []
@@ -112,7 +121,7 @@ def test_known_scidir_pdf_does_not_require_pii_and_has_bound_field():
 
 def test_pii_can_only_be_extracted_from_explicit_platform_paths():
     paper = target('www.sciencedirect.com', 'sciencedirect', article_url='https://www.sciencedirect.com/science/article/pii/S014067362400123X')
-    assert next(iter_p2_candidates(paper)).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft'
+    assert next(iter_p2_candidates(paper)).url == 'https://www.sciencedirect.com/science/article/pii/S014067362400123X/pdfft?download=true'
     assert list(iter_p2_candidates(replace(paper, article_url='https://www.sciencedirect.com/search/S014067362400123X'))) == []
 
 
@@ -120,7 +129,7 @@ def test_sciencedirect_template_retains_the_actual_article_origin_and_referer():
     article='http://www.sciencedirect.com:12345/science/article/pii/S014067362400123X'
     paper=target('www.sciencedirect.com','sciencedirect',article_url=article)
     candidate=next(iter_p2_candidates(paper))
-    assert candidate.url==article+'/pdfft' and candidate.referer==article
+    assert candidate.url==article+'/pdfft?download=true' and candidate.referer==article
 
 
 @pytest.mark.parametrize('article_url', [
@@ -208,7 +217,8 @@ def test_clinicalkey_requires_its_own_access_and_ready_session():
      'R036', 'https://proceedings.mlr.press/v235/AbC24a/AbC24a.pdf?token=AbC'),
 ])
 def test_each_existing_article_url_transform_preserves_request_spelling(host, platform, article_url, rule, expected):
-    paper = target(host, platform, article_url=article_url)
+    paper = replace(target(host, platform, article_url=article_url),
+        doi='10.1234/AbC/Part2' if rule in {'R029', 'R030'} else '10.1234/AbC')
     candidate, = iter_p2_candidates(paper)
     assert (candidate.rule_id, candidate.url, candidate.target) == (rule, expected, paper)
     assert list(iter_p2_candidates(replace(paper, article_url=article_url.replace(host, 'unrelated.example.org')))) == []
@@ -306,13 +316,14 @@ def test_inputs_are_bounded_immutable_and_target_binding_cannot_be_replaced():
 def test_adoption_catalogue_keeps_all_ids_conditions_and_source_references():
     from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 
-    assert set(RULE_CATALOG) == {f'R{i:03}' for i in range(1, 73)}
+    assert set(RULE_CATALOG) == {f'R{i:03}' for i in range(1, 74)}
     assert set(API_CATALOG) == {f'API{i:02}' for i in range(1, 18)}
     for item in (*RULE_CATALOG.values(), *API_CATALOG.values()):
         assert item.expression and item.requirements and item.access and item.adoption
         assert item.source_ids and all(re.fullmatch(r'S[0-9]{3}', source) for source in item.source_ids)
         assert item.spec_ref == 'docs/pdf-source-discovery.md#' + item.rule_id.lower()
     assert RULE_CATALOG['R009'].status == 'conditional'
+    assert RULE_CATALOG['R073'].status == 'conditional' and RULE_CATALOG['R073'].stages == ('P4',)
     assert RULE_CATALOG['R021'].status == RULE_CATALOG['R027'].status == 'extension'
     assert all(RULE_CATALOG[f'R{i:03}'].status == 'historical' for i in range(62, 73))
     assert all(API_CATALOG[f'API{i:02}'].status == 'non-pdf' for i in (5, 10, 11, 14))
@@ -325,6 +336,41 @@ def test_encoded_doi_octets_are_preserved_and_literal_percent_is_escaped_once():
     paper = replace(target(), doi='10.1234/AbC%2fDef%FF/100%')
     candidate, = iter_p1_candidates(paper)
     assert candidate.url == 'https://link.springer.com/content/pdf/10.1234%2FAbC%2fDef%FF%2F100%25.pdf'
+
+
+@pytest.mark.parametrize('host,platform,article_prefix,article_end,pdf_prefix,pdf_end', [
+    ('iopscience.iop.org', 'iop', '/article/', '/meta', '/article/', '/pdf'),
+    ('journals.aps.org', 'aps', '/prl/abstract/', '', '/prl/pdf/', ''),
+    ('ascopubs.org', 'asco', '/doi/full/', '', '/doi/pdfdirect/', ''),
+    ('ahajournals.org', 'aha', '/doi/reader/', '', '/doi/pdf/', ''),
+    ('journals.healio.com', 'healio', '/doi/epdf/', '', '/doi/pdf/', ''),
+    ('journals.uchicago.edu', 'chicago', '/doi/full/', '', '/doi/pdf/', ''),
+])
+@pytest.mark.parametrize('doi_suffix,url_suffix', [
+    ('AbC%2FDef', 'AbC%2fDef'),
+    ('AbC/Def', 'AbC%2fDef'),
+    ('AbC%2FDef', 'AbC/Def'),
+    ('AbC%FFDef', 'AbC%FFDef'),
+])
+def test_article_doi_transform_compares_equal_octets_without_rewriting_the_url(
+        host, platform, article_prefix, article_end, pdf_prefix, pdf_end, doi_suffix, url_suffix):
+    origin = 'https://' + host
+    article = origin + article_prefix + '10.1234/' + url_suffix + article_end + '?mode=Keep'
+    paper = replace(target(host, platform, article_url=article), doi='10.1234/' + doi_suffix)
+    candidate, = iter_p2_candidates(paper)
+    assert candidate.target is paper
+    assert candidate.url == origin + pdf_prefix + '10.1234/' + url_suffix + pdf_end + '?mode=Keep'
+
+
+@pytest.mark.parametrize('suffix,other_suffix', [
+    ('AbC%FFDef', 'AbC%FEDef'),
+    ('AbC%2FDef', 'AbC%252FDef'),
+    ('AbC%20Def', 'AbC%09Def'),
+])
+def test_article_doi_transform_does_not_collapse_different_encoded_octets(suffix, other_suffix):
+    article = 'https://ahajournals.org/doi/reader/10.1234/' + other_suffix
+    paper = replace(target('ahajournals.org', 'aha', article_url=article), doi='10.1234/' + suffix)
+    assert list(iter_p2_candidates(paper)) == []
 
 
 def test_known_fields_do_not_reactivate_historical_or_non_pdf_services():
