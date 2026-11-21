@@ -1,9 +1,9 @@
 {
-  "status": "ebsco_details_link_live_recheck_and_reset_pending",
+  "status": "acceptance_complete_workspace_reset_verified",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
-  "production_code_sha": "10e5038e36d6e669a3c949f3a57d2362f8d5e098",
-  "runtime_head_sha": "b7fe32912080237f60c8bf44cb88c7b47f95673e",
+  "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+  "runtime_head_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
   "pairs": [
     {
       "pair_id": "F01-1",
@@ -12087,6 +12087,285 @@
         "ui_preparation": "Independent CARSI EBSCO entitlement, exact details tab and Translator confirmed. Details load its embedded PDF section automatically. No manual preview."
       },
       "diagnostic_evidence": "Sanitized native timeline in private a921407-f24-6-details-immediate.zip plus per-side click and file association intervals."
+    },
+    {
+      "pair_id": "F24-7",
+      "sample_id": "F24",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "runtime_head_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "cohort": "repair_retest",
+      "measurement_stratum": "Prepared institutional EBSCO, direct details link in normal Download",
+      "comparison_eligibility_note": "Same edition and exact file bytes. Normal user waits from different starting states. Zotero already has the record open and can have browser/cache context from the details page.",
+      "comparable_body_version": true,
+      "timing_comparison_eligible": true,
+      "transfer_efficiency_comparison_eligible": false,
+      "difference_seconds": [
+        15.487,
+        16.208
+      ],
+      "ratio": [
+        2.0416,
+        2.1132
+      ],
+      "allfold": {
+        "local_pdf_and_association_utc": [
+          "2026-11-20T14:09:50.546+00:00",
+          "2026-11-20T14:09:50.802+00:00"
+        ],
+        "click_utc": [
+          "2026-11-20T14:09:20.034Z",
+          "2026-11-20T14:09:20.191Z"
+        ],
+        "wait_seconds": [
+          30.355,
+          30.768
+        ],
+        "file_bytes": 1762961,
+        "page_count": 39,
+        "actual_file_source": "EBSCO content delivery",
+        "pdf_version": "INFORMS Just Accepted manuscript",
+        "result": "automatic_success",
+        "human_intervention": false,
+        "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+        "electron_version": "45.0.0",
+        "chromium_version": "156.0.8078.48",
+        "source": "P4",
+        "source_rule": "R073",
+        "attempt": 7,
+        "native_observation": {
+          "prepared_ebsco_discovery_seconds": 20.759,
+          "details_direct_entry_observed": true,
+          "stream_seconds": 7.587,
+          "stream_first_byte_from_operation_start_seconds": 1.955,
+          "initial_publisher_response": "access-challenge",
+          "initial_publisher_attempt_seconds": 1.954,
+          "community_and_profile_until_search_seconds": 10.476,
+          "doi_search_until_record_open_seconds": 6.214,
+          "record_open_through_direct_link_seconds": 4.065
+        },
+        "ui_preparation": "Separate CARSI EBSCO full-text verification. The prepared Community Service page was retained. The original managed-page limit had been restored before Download. No manual PDF preview.",
+        "content_check": "Correct title and DOI in the local PDF, verified association and durable file for the original Paper. Same SHA-256 as the Zotero copy."
+      },
+      "zotero": {
+        "local_pdf_and_association_utc": [
+          "2026-11-20T14:10:40.393+00:00",
+          "2026-11-20T14:10:40.669+00:00"
+        ],
+        "click_utc": [
+          "2026-11-20T14:10:25.801Z",
+          "2026-11-20T14:10:25.833Z"
+        ],
+        "wait_seconds": [
+          14.56,
+          14.868
+        ],
+        "file_bytes": 1762961,
+        "page_count": 39,
+        "actual_file_source": "EBSCO content delivery",
+        "pdf_version": "INFORMS Just Accepted manuscript",
+        "result": "automatic_success",
+        "human_intervention": false,
+        "connector_version": "5.0.217",
+        "desktop_version": "10.0.9",
+        "chrome_version": "157.0.8103.80",
+        "translator": "EBSCO Discovery Layer",
+        "link_mode": "imported_url",
+        "ui_preparation": "Independent normal CARSI EBSCO article details with PDF entry and a new Save context. No manual PDF preview. The browser may load the inline full-text section.",
+        "content_check": "Correct title and DOI in the local PDF and imported attachment verified under its new parent in the dedicated trial collection."
+      },
+      "diagnostic_evidence": "Private d237ee7-f24-7-ebsco-immediate.zip and the retained per-product click and endpoint observations."
+    },
+    {
+      "pair_id": "F23-6",
+      "sample_id": "F23",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "runtime_head_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "cohort": "repair_retest",
+      "measurement_stratum": "Prepared institutional EBSCO, direct details link in normal Download",
+      "comparison_eligibility_note": "Same edition and exact file bytes. Normal user waits from different starting states. Zotero already has the record open and can have browser/cache context from the details page.",
+      "comparable_body_version": true,
+      "timing_comparison_eligible": true,
+      "transfer_efficiency_comparison_eligible": false,
+      "difference_seconds": [
+        19.294,
+        19.949
+      ],
+      "ratio": [
+        2.4028,
+        2.4832
+      ],
+      "allfold": {
+        "local_pdf_and_association_utc": [
+          "2026-11-20T14:14:57.264+00:00",
+          "2026-11-20T14:14:57.519+00:00"
+        ],
+        "click_utc": [
+          "2026-11-20T14:14:24.120Z",
+          "2026-11-20T14:14:24.216Z"
+        ],
+        "wait_seconds": [
+          33.048,
+          33.399
+        ],
+        "file_bytes": 2996661,
+        "page_count": 29,
+        "actual_file_source": "EBSCO content delivery",
+        "pdf_version": "EBSCO publisher PDF",
+        "result": "automatic_success",
+        "human_intervention": false,
+        "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+        "electron_version": "45.0.0",
+        "chromium_version": "156.0.8078.48",
+        "source": "P4",
+        "source_rule": "R073",
+        "attempt": 6,
+        "native_observation": {
+          "prepared_ebsco_discovery_seconds": 22.316,
+          "details_direct_entry_observed": true,
+          "stream_seconds": 9.433,
+          "stream_first_byte_from_operation_start_seconds": 1.444,
+          "initial_publisher_response": "access-authorization",
+          "initial_publisher_attempt_seconds": 1.069,
+          "community_and_profile_until_search_seconds": 13.688,
+          "doi_search_until_record_open_seconds": 5.814,
+          "record_open_through_direct_link_seconds": 2.808
+        },
+        "ui_preparation": "Separate CARSI EBSCO full-text verification. The prepared Community Service page was retained. The original managed-page limit had been restored before Download. No manual PDF preview.",
+        "content_check": "Correct title and DOI in the local PDF, verified association and durable file for the original Paper. Same SHA-256 as the Zotero copy."
+      },
+      "zotero": {
+        "local_pdf_and_association_utc": [
+          "2026-11-20T14:13:29.943+00:00",
+          "2026-11-20T14:13:30.223+00:00"
+        ],
+        "click_utc": [
+          "2026-11-20T14:13:16.469Z",
+          "2026-11-20T14:13:16.493Z"
+        ],
+        "wait_seconds": [
+          13.45,
+          13.754
+        ],
+        "file_bytes": 2996661,
+        "page_count": 29,
+        "actual_file_source": "EBSCO content delivery",
+        "pdf_version": "EBSCO publisher PDF",
+        "result": "automatic_success",
+        "human_intervention": false,
+        "connector_version": "5.0.217",
+        "desktop_version": "10.0.9",
+        "chrome_version": "157.0.8103.80",
+        "translator": "EBSCO Discovery Layer",
+        "link_mode": "imported_url",
+        "ui_preparation": "Independent normal CARSI EBSCO article details with PDF entry and a new Save context. No manual PDF preview. The browser may load the inline full-text section.",
+        "content_check": "Correct title and DOI in the local PDF and imported attachment verified under its new parent in the dedicated trial collection."
+      },
+      "diagnostic_evidence": "Private d237ee7-f23-6-ebsco-immediate.zip and the retained per-product click and endpoint observations."
+    },
+    {
+      "pair_id": "R073-Fresh-2",
+      "sample_id": "R073-Fresh-2",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "runtime_head_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "platform": "EBSCO Business Source Complete",
+      "configured_service": "EBSCO",
+      "cohort": "mechanism_supplement",
+      "measurement_stratum": "Prepared institutional EBSCO, direct details link in normal Download",
+      "comparison_eligibility_note": "Same edition and exact file bytes. Normal user waits from different starting states. Zotero already has the record open and can have browser/cache context from the details page.",
+      "comparable_body_version": true,
+      "timing_comparison_eligible": true,
+      "transfer_efficiency_comparison_eligible": false,
+      "difference_seconds": [
+        17.999,
+        18.684
+      ],
+      "ratio": [
+        2.2733,
+        2.3538
+      ],
+      "allfold": {
+        "local_pdf_and_association_utc": [
+          "2026-11-20T14:34:59.167+00:00",
+          "2026-11-20T14:34:59.418+00:00"
+        ],
+        "click_utc": [
+          "2026-11-20T14:34:26.933Z",
+          "2026-11-20T14:34:27.032Z"
+        ],
+        "wait_seconds": [
+          32.135,
+          32.485
+        ],
+        "file_bytes": 4846719,
+        "page_count": 20,
+        "actual_file_source": "EBSCO content delivery",
+        "pdf_version": "EBSCO publisher PDF",
+        "result": "automatic_success",
+        "human_intervention": false,
+        "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+        "electron_version": "45.0.0",
+        "chromium_version": "156.0.8078.48",
+        "source": "P4",
+        "source_rule": "R073",
+        "attempt": 1,
+        "native_observation": {
+          "prepared_ebsco_discovery_seconds": 12.628,
+          "details_direct_entry_observed": true,
+          "stream_seconds": 18.479,
+          "stream_first_byte_from_operation_start_seconds": 4.838,
+          "initial_publisher_response": "access-authorization",
+          "initial_publisher_attempt_seconds": 0.81,
+          "community_and_profile_until_search_seconds": 5.247,
+          "doi_search_until_record_open_seconds": 3.447,
+          "record_open_through_direct_link_seconds": 3.931
+        },
+        "ui_preparation": "Separate CARSI EBSCO full-text verification. The prepared Community Service page was retained. The original managed-page limit had been restored before Download. No manual PDF preview.",
+        "content_check": "Correct title and DOI in the local PDF, verified association and durable file for the original Paper. Same SHA-256 as the Zotero copy."
+      },
+      "zotero": {
+        "local_pdf_and_association_utc": [
+          "2026-11-20T14:36:40.506+00:00",
+          "2026-11-20T14:36:40.808+00:00"
+        ],
+        "click_utc": [
+          "2026-11-20T14:36:26.672Z",
+          "2026-11-20T14:36:26.705Z"
+        ],
+        "wait_seconds": [
+          13.801,
+          14.136
+        ],
+        "file_bytes": 4846719,
+        "page_count": 20,
+        "actual_file_source": "EBSCO content delivery",
+        "pdf_version": "EBSCO publisher PDF",
+        "result": "automatic_success",
+        "human_intervention": false,
+        "connector_version": "5.0.217",
+        "desktop_version": "10.0.9",
+        "chrome_version": "157.0.8103.80",
+        "translator": "EBSCO Discovery Layer",
+        "link_mode": "imported_url",
+        "ui_preparation": "Independent normal CARSI EBSCO article details with PDF entry and a new Save context. No manual PDF preview. The browser may load the inline full-text section.",
+        "content_check": "Correct title and DOI in the local PDF and imported attachment verified under its new parent in the dedicated trial collection."
+      },
+      "diagnostic_evidence": "Private d237ee7-r073-fresh-2-ebsco-immediate.zip and the retained per-product click and endpoint observations."
     }
   ],
   "coverage_gaps": [
@@ -12181,10 +12460,10 @@
       "gap": "F23/F24 have exact licensed EBSCO records. Ordinary Allfold Download received direct publisher access denials and saved related preprints. Zotero saved the EBSCO publisher and Just Accepted versions. Allfold's authorized Browser viewer later saved the correct F23 publisher PDF and the active record-to-viewer trace contained PDF responses. Live F23-5 and F24-4 on 148adcc finished the original Paper Download and Zotero saves with byte-equal licensed editions in each pair. The F24-5 repeat on c9fbf52 also saved the same licensed PDF and remained 20.123–20.821 s slower. Its publisher response was an authorization denial, leaving the source-order challenge branch unobserved live. R073-Fresh-1 verified another byte-identical licensed publisher PDF and still favored Zotero by 9.813–10.492 s. F25 had no EBSCO match and no local publisher PDF on either side."
     }
   ],
-  "parity_conclusions": "The 20 November revised criterion accepts a user-wait difference of about five seconds. Cambridge, IEEE, Springer, the comparable Taylor & Francis and Wiley observations, and Project Euclid publisher OA fit that criterion in the measured strata. The normal earlier ScienceDirect F29–F31 pairs also fit it. Material EBSCO, SIAM F19 and historical ScienceDirect challenge delays were investigated and remain documented with attempted repairs. There are no final comparable Zotero timings for the repaired ScienceDirect or Oxford diagnostics, and no verified direct-publisher INFORMS pair.",
+  "parity_conclusions": "The 20 November revised criterion accepts a user-wait difference of about five seconds. Cambridge, IEEE, Springer, the comparable Taylor & Francis and Wiley observations, and Project Euclid publisher OA fit that criterion in the measured strata. The normal earlier ScienceDirect F29–F31 pairs also fit it. The repaired EBSCO details-link path saved the correct licensed edition on both original Papers. Material EBSCO, SIAM F19 and historical ScienceDirect challenge delays were investigated and remain documented with attempted repairs. There are no final comparable Zotero timings for the repaired ScienceDirect or Oxford diagnostics, and no verified direct-publisher INFORMS pair.",
   "acceptance_disposition": {
     "effective_date_asia_shanghai": "2026-11-20",
-    "latest_live_tested_production_code_sha": "a9214072393dcc5c3a1225f80d824cb8c4e8aeca",
+    "latest_live_tested_production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
     "approximately_acceptable_allfold_delay_seconds": 5,
     "timing_rule": "Investigate materially longer waits and attempt a fix. Retain the observed delay, the evidence for its cause, and any unverified part when it remains. The approximate threshold is an acceptance guide, not a product timeout or a strict timing-parity requirement.",
     "success_endpoint": "A verified correct PDF is saved locally and linked to the correct item, with assisted, fallback and different-version outcomes recorded separately.",
@@ -12194,7 +12473,13 @@
       "operator_example_timing_eligible": false,
       "first_live_retest": "F24-6",
       "first_live_stop": "Community selector page_probe_unconfirmed, before the details-link lookup. A visible EBSCO WebForm postback had been projected as an HTTP link.",
-      "status": "Isolated direct, Viewer fallback and Community postback regressions passed. The new branch has yet to run through the modified Community entry on a live Download."
+      "status": "The Community entry and direct details link worked in real Download on the two original Papers and an additional Paper entered by normal Discover. Both products saved byte-identical licensed PDFs in all three pairs.",
+      "original_retest_pairs": ["F24-7", "F23-6"],
+      "new_mechanism_pair": "R073-Fresh-2",
+      "new_mechanism_pair_note": "The original quoted title was rejected by the local OpenAlex query compiler and a misplaced click repeated that invalid submission. One valid lexical query then collected the target Paper and one other match. The original Discover configuration was restored exactly.",
+      "real_source_order_trigger": "F24-7 encountered a challenge on the direct publisher entry and saved the licensed body from EBSCO before publisher Reader recovery.",
+      "remaining_wait": "The three new direct-link pairs remain 15.487–19.949 s slower on Allfold. Community entry and record discovery dominate the two original Papers. The new 4,846,719-byte Paper took 12.628 s to discover and 18.479 s to stream, with first byte at 4.838 s. Exact Zotero stage timings and cache use were unavailable.",
+      "measurement_setting_restored": "The managed-page total was temporarily 32 during preparation after a retained target was evicted. It was restored to 16 before the measured actions. The saved configuration hash matched the initial one."
     },
     "historical_extra_allfold_failures": [
       {
@@ -12210,25 +12495,31 @@
     ],
     "untriggered_branches": [
       {
-        "path": "Direct publisher challenge before EBSCO source",
-        "retests": ["F24-5", "R073-Fresh-1"],
-        "observation": "Both live retests saved the licensed EBSCO PDF after direct publisher authorization denial. The challenge ordering change is covered by isolated tests and did not run in those live attempts."
-      },
-      {
         "path": "Oxford client navigation block after verification",
         "retests": ["F08-3", "F09 Allfold-only diagnostic", "Oxford untouched Allfold-only control"],
         "observation": "The old block did not recur after rights were restored. All three saved the correct publisher PDFs directly. The blocked request's exact method and origin and Oxford's comparable paired saving time remain unconfirmed."
       }
     ],
     "workspace_reset": {
-      "status": "pending"
+      "status": "completed_and_verified",
+      "scope": "The whole configured workspace directory, including the Paper library, Documents, permanent exclusions and Run snapshots",
+      "confirmed_utc": "2026-11-21T01:16:14.885Z",
+      "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+      "product_result": "Workspace permanently deleted. A later explicit Run can recreate it.",
+      "before": {"papers": 75, "candidates": 36, "downloaded": 39, "trash": 0},
+      "after": {"workspace_directory_exists": false, "candidates": 0, "downloaded": 0, "trash": 0},
+      "retained": {"journals": 68, "services": 12, "configuration_and_user_state_match": true, "saved_credentials_match": true, "covers_present": true, "diagnostic_files_preserved": true},
+      "zotero_collection": "Allfold PDF acceptance 2026-11-16",
+      "zotero_parent_items_retained": 104,
+      "zotero_attached_files_rechecked": 6,
+      "post_reset_run_started": false
     }
   },
   "environment": {
     "macos": "27.2.1 (26B131)",
     "electron": "45.0.0",
     "chromium": "156.0.8078.48",
-    "chrome": "157.0.8103.51 initially; later About/on-disk157.0.8103.79 in same Default profile, exact transition time not observed",
+    "chrome": "157.0.8103.51 initially. Later Chrome About and on-disk bundle showed 157.0.8103.79 in the same Default profile. The running framework and bundle were both 157.0.8103.80 for the final EBSCO originals.",
     "zotero_desktop": "10.0.9",
     "zotero_connector": "5.0.217",
     "nominal_endpoint_poll_ms": 250,
@@ -13900,8 +14191,8 @@
     },
     "source_order_repair_revision": "c9fbf52c7d5955916e1078ec3303c046319de8ed",
     "source_order_repair_full_pr_check": "https://github.com/dylaaan-booob/allfold/actions/runs/44565268319/job/135705175164",
-    "source_order_repair_live_status": "F24-5 verified the licensed EBSCO save on this revision. Publisher authorization denial led to EBSCO after a 2.210 s response. R073-Fresh-1 verified a licensed copy on the untouched Paper. Both publisher requests returned authorization denials, leaving the changed recovery ordering unexercised.",
-    "workspace_reset": "pending"
+    "source_order_repair_live_status": "F24-5 verified the licensed EBSCO save after a 2.210 s publisher authorization denial. R073-Fresh-1 likewise verified a licensed copy after denial. The later F24-7 pair on d237ee7 exercised the publisher challenge ordering and saved the licensed body through EBSCO while the publisher Reader was deferred.",
+    "workspace_reset": "Completed. See acceptance_disposition.workspace_reset for the final verification."
   },
   "coverage_exclusions": [
     {

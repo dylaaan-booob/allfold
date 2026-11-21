@@ -3,14 +3,16 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-**The original series uses the criteria revised on 20 November 2026
+**Acceptance uses the criteria revised on 20 November 2026
 (Asia/Shanghai).** 30 of the 31 frozen Papers were started. The subscription
 requirement excluded one Project Euclid Paper under the agreed publisher-OA
-scope. Three untouched supplemental Papers were also measured. The results retain
-94 pair slots including repeats, alongside separate pilot and diagnostic records.
-The first live EBSCO details-link retest on `a921407` encountered a Community
-entry failure before the new lookup ran. The original observations and the
-follow-up are retained.
+scope. Four supplemental Papers were also measured. The results retain
+97 pair slots including repeats, alongside separate pilot and diagnostic records.
+The first EBSCO details-link retest on `a921407` stopped at the Community entry.
+The final production code at `d237ee7491c421aaa07aef289ed33db12618db6d`
+saved the authorized EBSCO edition on both original Papers and a new Paper
+through the verified details link. EBSCO and the large SIAM warm repeat retain
+material wait gaps.
 
 A difference of about five seconds is acceptable for comparable user waits.
 Materially longer waits still require investigation and an attempted repair.
@@ -28,7 +30,9 @@ Zotero Desktop 10.0.9 / Connector 5.0.217. After sleep, Chrome About was observe
 first at 157.0.8103.51 and later at 157.0.8103.79 (also the on-disk version); no
 operator-triggered update/restart was performed. The exact running-binary
 transition time is unknown and is not claimed as a performance improvement.
-Connector could reach Desktop and local
+For the final EBSCO original retests, the active Chrome framework and the
+installed bundle both showed 157.0.8103.80. Connector 5.0.217 and Zotero
+Desktop 10.0.9 were unchanged. Connector could reach Desktop and local
 PDF saving was proven with actual imported attachments. A dedicated acceptance
 collection holds the trials. PDF saving was enabled; snapshots and automatic
 sync were disabled. PDFTranslate 2.4.8 and Style 6.0.111 remained enabled.
@@ -91,8 +95,8 @@ product's Reject/delete/Restore flow; metadata and Download availability survive
 The immutable [31-paper manifest](pdf-pairing-manifest.json) was committed before
 the first formal click. The [formal results](pdf-pairing-formal-results.json)
 retain all original samples, failures, preparation, versions and repetitions.
-Across those slots Allfold has 87 automatic local-PDF successes, one assisted
-success and six failures. Zotero has 68 automatic and three assisted local-PDF
+Across those slots Allfold has 90 automatic local-PDF successes, one assisted
+success and six failures. Zotero has 71 automatic and three assisted local-PDF
 successes, one visible attachment failure, eleven attempts with no local PDF
 at the observation horizon, ten operator interruptions and one observation
 interruption with unknown product terminal state. These are
@@ -110,7 +114,7 @@ is a task result but is not a publisher-version success.
 | Wiley | 3 / 3 | Allfold saved seven publisher OA files. Zotero saved one preprint and three publisher files, with two interrupted attempts and one parent-only save through the horizon. | F14 same-publication controls and F15 favor Allfold. F16-3 saved on Allfold in 7.079–7.434 s after both institution checks. No comparable F16 timing point. |
 | SIAM | 3 / 3 | Allfold saved five related preprints and nine publisher PDFs. Zotero saved thirteen publisher PDFs, with one interruption. | F17/F18 satisfy the revised timing criterion in all six same-version pairs. F19 has longer first and large-file warm waits. Its publisher PDF saved after normal reauthentication. See the cache diagnosis below. |
 | INFORMS PubsOnline | 3 / 3 target Papers | Allfold's direct publisher sources returned authorization denials on F23/F24/F25. Zotero's direct F25 saved the parent only. | No verified direct-publisher PDF pair. The separate EBSCO records for F23/F24 provide their own authorized access. |
-| EBSCO Business Source Complete | 2 matching representative records, 1 supplemental | Both products saved identical licensed copies in F23-5, F24-4, F24-5 and the untouched R073-Fresh-1. Prior Allfold preprint saves remain in the table. | The Viewer repair restored licensed saves on both originals and worked on the untouched Paper. All four comparable waits favor Zotero. The latest F24 and fresh Paper did not encounter the challenge that triggers the source-order change. |
+| EBSCO Business Source Complete | 2 matching representative records, 2 supplemental | Seven comparable pairs saved identical licensed copies. Earlier preprint saves remain in the table. | The Viewer repair restored licensed saves. The new details link worked on both originals and a new Paper. F24-7 exercised the changed source order during a real publisher challenge. Allfold took 15.487–19.949 s longer across the three direct-link pairs. |
 | ScienceDirect | 6 / 6 plus two supplemental mechanism Papers | Earlier paired files, failures and substitutes are retained. With the last ScienceDirect fix, F27, both untouched Papers and the F26 Allfold-only control each saved the verified publisher publication automatically through the first Reader. | F29/F30/F31 were within about five seconds. The older F27 challenge pair was materially slower. The fixed Reader passed real saving on the four Papers, with no comparable Zotero completion for those retests. |
 
 ### Paired wait by platform and observed access
@@ -144,6 +148,7 @@ a longer Allfold wait.
 | SIAM, institutional, warm repeat of the large publisher file | 1 / 1 | F19-4 | +16.738 to +17.761 | 4.7138–5.5953 | +16.738 to +17.761 |
 | EBSCO Business Source Complete, institutional, Viewer repair retest | 2 / 2 | F24-4, F23-5 | +33.955 to +34.661 | 3.3298–3.4386 | +23.198 to +45.456 |
 | EBSCO Business Source Complete, institutional, F24 after Source restart | 1 / 1 | F24-5 | +20.123 to +20.821 | 2.9194–3.0556 | +20.123 to +20.821 |
+| EBSCO Business Source Complete, institutional, direct details link | 2 / 2 | F24-7, F23-6 | +17.391 to +18.079 | 2.2222–2.2982 | +15.487 to +19.949 |
 | ScienceDirect, OA, first saves with warm site sessions | 2 / 2 | F29-1, F31-1 | +3.973 to +4.782 | 1.2723–1.3381 | +3.513 to +5.239 |
 | ScienceDirect, institutional, first save with warm site sessions | 1 / 1 | F30-1 | +0.337 to +1.283 | 1.0198–1.0781 | +0.337 to +1.283 |
 | ScienceDirect, institutional, automatic Reader challenge recovery | 1 / 1 | F27-2 | +23.696 to +24.400 | 2.3128–2.3771 | +23.696 to +24.400 |
@@ -155,6 +160,8 @@ preprint after opening the ScienceDirect article. Its user-wait difference was
 F03-7 and F03-8 show the first and warm Springer Session requests separately
 below. The assisted ScienceDirect pair F27-5 also retains its total wait below.
 Oxford and direct INFORMS PubsOnline lack a comparable publisher pair in these strata.
+The EBSCO details-link supplement R073-Fresh-2 is kept outside the original-paper
+strata. Its one pair had A−Z of +17.999 to +18.684 s and A/Z of 2.2733–2.3538.
 
 After the user rebooted and signed into CARSI in Chrome, the checkout was
 launched at `40d4356` with rebuilt UI and the same production code as `69b9a41`.
@@ -2134,8 +2141,63 @@ control. It binds one native main-frame POST to the verified managed Document
 and the same-origin Community endpoint before the request is sent. GET redirects
 in that request chain may continue to the verified search profile. The isolated
 native regression checks the one POST, the qualified PDF handoff and refusal of
-a changed submission destination, a child-frame submit and a repeated POST. Follow-up live
-evidence for that repair is pending.
+a changed submission destination, a child-frame submit and a repeated POST.
+
+In the previous Login batch, EBSCO reported Opened and its retained page was
+immediately closed with `access_evicted`. For preparation of `d237ee7`, the
+managed page total was temporarily raised from 16 to 32 through Settings.
+The Login batch ended, its retained EBSCO Community page stayed live, and the
+limit was restored to 16 before any timed download. The saved configuration
+hash matched the pre-adjustment hash. Each product's independent session
+showed the exact EBSCO record and PDF entry. Chrome's new detail page could
+load its inline full-text section. Neither side was manually previewed.
+
+| Original Paper / order | Allfold local wait | Zotero local wait | A−Z | A/Z | Matching local PDF |
+| --- | --- | --- | --- | --- | --- |
+| F24-7 / A→Z | 30.355–30.768 s | 14.560–14.868 s | +15.487 to +16.208 s | 2.0416–2.1132 | 39 pages, 1,762,961 bytes, Just Accepted |
+| F23-6 / Z→A | 33.048–33.399 s | 13.450–13.754 s | +19.294 to +19.949 s | 2.4028–2.4832 | 29 pages, 2,996,661 bytes, publisher PDF |
+
+Both pairs verified title, DOI, local association and equality of the saved
+files by SHA-256. Each Allfold action logged `ebsco_direct_pdf_entry` before the
+R073 stream completed. F24's direct publisher entry returned a challenge after
+1.954 s. EBSCO saved the license-matched file before publisher Reader recovery
+was needed. This is the live trigger absent in F24-5 and R073-Fresh-1. F23's
+publisher request denied authorization after 1.069 s.
+
+Allfold spent 20.759 s on F24 discovery and 22.316 s on F23 discovery. On the
+retained Community route, opening the selector and reaching the search profile
+took 10.476 and 13.688 s respectively. The DOI search through record opening
+took 6.214 and 5.814 s. Opening and verifying the record and resolving its
+direct link took another 4.065 and 2.808 s. The record check and lookup are
+measured together. No Viewer opened in these attempts. The body operations
+took 7.587 and 9.433 s, with first byte after 1.955 and 1.444 s. Zotero already
+had its exact article record at the start of Save. Its internal stage timings
+were unavailable. These observations locate the remaining wait in preparing
+the Community/profile and finding the record, with additional transfer time.
+
+The F23 wait was 8.244–8.955 s shorter than the old measured Viewer path.
+The F24 wait overlapped the F24-5 Viewer result. The live publisher and cache
+conditions varied across those retests. The new measurements verify the
+direct-link path and the correct save. The repeated large timing gap is
+recorded under the revised acceptance criterion.
+
+The operator's example, DOI `10.1287/ijoc.2024.0765`, supplied the new Paper
+R073-Fresh-2. Discover rejected the full quoted title because it contains
+hyphens. A misplaced click during result inspection also submitted the invalid
+expression a second time. Neither attempt created a Paper. One corrected
+OpenAlex Discover using lexical phrases completed. It created the target and
+one other match. The original query, months and Provider selection were
+restored, and the saved configuration hash matched. The new mechanism sample
+was frozen after collection and before either measured save.
+
+Allfold saved the licensed 20-page, 4,846,719-byte publisher PDF to the new
+Paper in 32.135–32.485 s. Zotero imported the byte-identical PDF to a new item
+in 13.801–14.136 s. Both were automatic. Allfold's publisher attempt returned
+an authorization denial after 0.810 s. The EBSCO direct discovery took 12.628 s
+and its Session stream took 18.479 s, with first byte after 4.838 s. The
+transfer was the largest measured phase on this Paper. Cache use and Zotero's
+internal transfer time were not observed. This pair verifies the different
+journal and new-record path and leaves a +17.999 to +18.684 s wait gap.
 
 ## Acceptance disposition and cleanup
 
@@ -2153,13 +2215,35 @@ publisher PDFs. F27's repaired action still took 63.154–63.498 s with two real
 challenges. The final retests lack comparable Zotero completions, so the report
 records the functional improvement and leaves the paired time benefit unmeasured.
 
-F24-5 and the fresh EBSCO sample received publisher authorization denials
-instead of the challenges that would exercise the source-order change. The
-changed challenge path is covered by isolated regressions. Oxford F08 and F09
-and the untouched Oxford control saved directly after access was restored. The
+F24-5 and the earlier fresh EBSCO sample received publisher authorization
+denials. F24-7 later exercised the changed source order live. Oxford F08 and
+F09 and the untouched Oxford control saved directly after access was restored. The
 old navigation block did not recur, so its request method and origin remain
 unknown and the guard was left in place. Older results and these coverage limits
 remain visible. No further live repetitions were required to elicit these paths.
 
-Workspace Reset is pending. The local trial evidence and Zotero acceptance
-collection are already outside the configured Workspace.
+At the last tested production revision `d237ee7`,
+`npm --prefix electron run check` checked 65 files,
+`uv run --locked pytest` passed 1,685 tests with two existing warnings, and
+`npm --prefix electron test` passed all 255 tests locally. The follow-up
+commits addressed the Standards and Spec review findings. The independent
+native review reported no remaining actionable defect. The PR's full Safety
+checks passed on this production revision.
+[Production revision Safety check](https://github.com/dylaaan-booob/allfold/actions/runs/44747655318/job/136327019869)
+
+On 21 November 2026 at 09:16 Asia/Shanghai, Settings → Reset → Workspace
+displayed the configured `workspace` directory and its full-Workspace scope.
+After confirmation, the product reported “Workspace permanently deleted.
+A later explicit Run can recreate it.” Before Reset there were 75 Paper
+records, 36 Candidates, 39 Downloaded and no Trash items. The Workspace
+directory, database and Documents were absent afterwards. Candidates,
+Downloaded and Trash all read zero. The final check did not start a Run.
+
+The configuration bytes and UserState revision and content matched before
+and after. The 68 Journals, 12 Services, saved credential file, covers and
+existing diagnostics were retained. Raw measurements and diagnostics are in
+the original local evidence directory outside Workspace. The dedicated
+Zotero collection `Allfold PDF acceptance 2026-11-16` retained its 104 parent
+items. Six representative local PDF attachments, including all three final
+EBSCO files, were rechecked under their parents and had identical hashes
+before and after Reset.

@@ -2373,5 +2373,41 @@
         "initial_repetitions": 1
       }
     ]
+  },
+  "ebsco_details_link_supplement": {
+    "selection_utc": "2026-11-20T14:31:53.886628+00:00",
+    "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
+    "scope": "One separately frozen EBSCO direct-link mechanism supplement. The earlier manifest and choice of representative samples are preserved.",
+    "samples": [
+      {
+        "sample_id": "R073-Fresh-2",
+        "paper_id": "ef01149e-9473-45df-8be5-1303815e299d",
+        "doi": "10.1287/ijoc.2024.0765",
+        "title": "An Adaptive Federated Learning Algorithm with Attenuated Memory on Non-IID and Long-Tail Data",
+        "journal": "INFORMS Journal on Computing",
+        "article_url": "https://pubsonline.informs.org/doi/10.1287/ijoc.2024.0765",
+        "order": [
+          "allfold",
+          "zotero"
+        ],
+        "cohort": "postfix_mechanism",
+        "platform": "EBSCO Business Source Complete",
+        "configured_service": "EBSCO",
+        "configured_access_method": "CARSI institutional EBSCO",
+        "publication_date": "2026-03-02",
+        "frozen_at_utc": "2026-11-20T14:31:53.886628+00:00",
+        "oa_status_at_selection": "Institutional EBSCO full text was demonstrated in the operator example. The real study separately verifies access and the saved edition.",
+        "body_state": "New Allfold Paper created through supported Discover. Collection complete, no associated body or prior Download, cleanup settled.",
+        "discovery_facts": "Normal OpenAlex Discover and product collection. No injected PDF or detail locator.",
+        "selection_reason": "The operator showed a Zotero Save on the EBSCO article details. The Allfold Paper is new and tests the details link on a different journal from F23 and F24.",
+        "planned_mechanism_tags": [
+          "EBSCO R073 details download link",
+          "Community profile entry when offered",
+          "Same-record Viewer fallback only if naturally required"
+        ],
+        "cache_at_selection": "Operator Zotero-only save recorded separately. This pair uses a new normal Connector save context. Allfold has not previously downloaded it.",
+        "initial_repetitions": 1
+      }
+    ]
   }
 }
