@@ -7,7 +7,7 @@ const {validDOI,articleURL}=require('./article-identity.cjs');
 const {DocumentRuntime}=require('./document-runtime.cjs');
 const {BodyActionRuntime}=require('./body-action-runtime.cjs');
 const {qualifyReader,publicClueURL,matchingScienceDirectAssetGet}=require('./pdf-clues.cjs');
-const {readEbscoSource}=require('./ebsco-source.cjs');
+const {readEbscoSource,ebscoEntry}=require('./ebsco-source.cjs');
 const {EventEmitter}=require('node:events');
 const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
@@ -16,7 +16,7 @@ const {institutionAuthPage}=require('../auth/institution-auth.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
 const {waitFor,pause,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
-const {PAGE_RECOVERY_MS,reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
+const {reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
 const {sharedSessionEvents}=require('./session-events.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 const {PageBudget}=require('./page-budget.cjs');
@@ -633,6 +633,7 @@ class BrowserRuntime {
     const owner=tab.taskOwner;
     const automatic=this.ownsPage(owner,tab.id) && (owner.taskTab===tab || tab.loadOwner===owner || (!!tab.opener && tab.opener===owner.taskTab));
     return {automatic,owner:automatic?owner:null,
+      ...(owner?.association.paper_id && {pageLoadLimit:null}),
       signal:automatic?(signal || tab.taskSignal || owner?.signal):undefined,
       deadline:automatic?(deadline ?? tab.navigation?.current?.deadline ?? Infinity):Infinity,
       enabled:automatic && !this.destroying && owner.phase!=='business' && tab.loadAllowed!==false,
@@ -692,7 +693,7 @@ class BrowserRuntime {
     } catch(error){if(tab.navigation.current?.chain===chain)this.finishPageLoad(tab);throw error;}
   }
 
-  async openPaperPage(data,identity,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS}={}) {
+  async openPaperPage(data,identity,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS,documentOnly=false}={}) {
     const {workspace_identity:workspace,paper_id:paper}=data;
     if(typeof workspace!=='string' || !/^[a-f0-9]{64}$/.test(workspace)
       || typeof paper!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(paper))
@@ -732,16 +733,17 @@ class BrowserRuntime {
         tab.pageAttempt=attempt;
         this.associatePage(tab,{role,doi});
         const contents=tab.view.webContents;
-        const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url && !contents.isLoadingMainFrame();
+        const matches=doc=>this.documentCurrent(doc) && contents.getURL()===doc.url
+          && (documentOnly || !contents.isLoadingMainFrame());
         const previous=tab.paperDocument;
         if(previous?.identityKey===identityKey && matches(previous.doc) && !tab.navigation.current?.failure) {
-          const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,
+          const doc=await this.waitForPage(tab,{signal:attempt.signal,deadline,documentOnly,
             onWaiting:(waiting,diagnostic)=>{if(waiting)onWaiting?.(diagnostic);}});
           if(tab.paperDocument===previous && matches(previous.doc) && doc.url===previous.doc.url)
             return {...doc,identity:paperIdentity};
         }
         tab.paperDocument=null;
-        const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting});
+        const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting,documentOnly});
         if(!matches(doc) || this.paperPages.get(key)!==tab)throw new BrowserFailure('navigation','document_changed');
         this.finishPageLoad(tab);
         const confirmed={...doc,identity:paperIdentity};
@@ -753,7 +755,6 @@ class BrowserRuntime {
         if(index || !error.rebuildPage || signal?.aborted || owner.phase!=='loading'
           || !this.ownsPage(owner,tab?.id) || this.paperPages.get(key)!==tab)throw error;
         if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
-        deadline=Math.min(deadline,Date.now()+PAGE_RECOVERY_MS);
         firstFailure=error;sourcePageId=tab.id;previousOrigin=origin(tab.navigation.current?.url);
         record('recovery_scheduled',error,{page_id:tab.id,dispatch_outcome:'not_dispatched'});
         await this.retirePageAttempt(attempt);
@@ -810,13 +811,13 @@ class BrowserRuntime {
     if(!tab || !this.tabs.has(tab.id))throw new BrowserFailure('navigation','page_closed');
     if(!options.independent)tab.navigation.check();
     const frame=tab.view.webContents.mainFrame;
-    if(frame.url.length>4096)throw new BrowserFailure('navigation','page_probe_unconfirmed');
     const binding={pageId:tab.id,processId:frame.processId,frameToken:frame.frameToken,
       url:frame.url,navigationGeneration:tab.documentGeneration,...(options.identity?{identity:options.identity}:{})};
     const known=tab.documentIds.get(frame.frameToken);
     if(known)binding.documentId=known;
     const result=await this.documents.call(binding,action,options.args || {},options);
     if(action==='extract'||action==='pdf')return result;
+    if(action==='ebsco')return {...binding,...result,status:tab.status};
     checkCanceled(options.signal);
     if(!options.independent)tab.navigation.check();
     if(!this.documentCurrent(binding))throw new BrowserFailure('navigation','document_changed');
@@ -866,7 +867,7 @@ class BrowserRuntime {
     const owner=this.operation,validateRecovery=owner.validateRecovery;
     owner.validateRecovery=async next=>{verify();await validateRecovery?.(next);verify();};
     try {
-      return await readEbscoSource(this,data,context.tab.view.webContents.getURL(),{...options,verify});
+      return await readEbscoSource(this,data,context,{...options,verify});
     } finally {
       owner.validateRecovery=validateRecovery;
     }
@@ -898,22 +899,21 @@ class BrowserRuntime {
             readerRequest.referer=Object.entries(details.requestHeaders||{}).find(([name])=>name.toLowerCase()==='referer')?.[1] || null;
         });
         doc=await this.navigate(data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
-      } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting});
+      } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting,documentOnly:!metadata});
       const tab=this.tabs.get(doc.pageId);
       const result=await this.readDocument(tab,metadata?'extract':'pdf',{signal,deadline,identity:data.identity,
         args:metadata?{wantAbstract:data.wantAbstract}:{readerKind}});
       let pdf=result.clues;
       // Only a missing, delayed toolbar needs another snapshot. An optional
       // observation cannot erase content already captured by the original read.
-      const hydrationEnd=Math.min(deadline,Date.now()+2000);
-      while(!readerKind && pdf.platform==='sciencedirect' && pdf.status==='complete'
-        && !pdf.candidates.length && Date.now()<hydrationEnd) {
+      let toolbarPending=result.toolbarPending;
+      while(!metadata && !readerKind && !pdf.candidates.length && toolbarPending) {
         try {
-          await waitFor(()=>pause(signal,Math.min(200,hydrationEnd-Date.now())),signal,deadline,'navigation','document_operation');
+          await waitFor(()=>pause(signal,200),signal,deadline,'navigation','document_operation');
           const next=await this.readDocument(tab,'pdf',{signal,deadline,identity:data.identity,args:{readerKind:null}});
-          if(next.clues.candidates.length)pdf=next.clues;
-          else if(next.clues.status!=='complete')break;
-        }catch(error){checkCanceled(signal);break;}
+          toolbarPending=next.toolbarPending;
+          if(next.clues.candidates.length || next.clues.status!=='failed')pdf=next.clues;
+        }catch(error){checkCanceled(signal);if(error.diagnostic?.code!=='document_changed')throw error;}
       }
       checkCanceled(signal);verifyAccess();
       if(readerKind==='sciencedirect')try {
@@ -1037,6 +1037,7 @@ class BrowserRuntime {
       throw new BrowserFailure('navigation','navigation_active');
     const context={kind:'access',key,accessKind:kind,tab,scopeId:data.service_scope.scope_id,serviceId:data.service_id || null,
       preparationKey:data.preparation_key,authenticationKey:data.authentication_key,valid:true,pins:new Set(),loan:null,lastUsed:Date.now()};
+    if(kind==='target')context.ebscoEntry=ebscoEntry(tab.view.webContents.getURL());
     tab.resourceOwner=context;tab.resource.owner=context;this.accessContexts.set(key,context);
     return context;
   }

@@ -52,7 +52,7 @@ class NavigationRecovery {
       nav.pendingStart=false;nav.started=true;nav.loaded=false;
       nav.url=event.url ?? url;
       nav.frame=nativeFrame(event,processId,routingId);
-      if(nav.loadDeadline==null && (nav.automatic || Number.isFinite(nav.deadline)))nav.loadDeadline=this.now()+PAGE_LOAD_MS;
+      this.beginLoadDeadline(nav);
     });
     on('did-navigate',(_event,url,status)=>{
       if(!this.matches(url))return;
@@ -160,7 +160,8 @@ class NavigationRecovery {
       failure.rebuildPage=true;
       return this.recordFailure(failure,undefined,'limit');
     }
-    const limit=Math.min(nav.deadline,nav.loadDeadline ?? Infinity);
+    const limit=nav.deadline;
+    nav.loadDeadline=null;
     const wait=Math.round(REFRESH_DELAY_MS*2**nav.reloads*(0.75+this.random()*0.5));
     nav.chain.reloads++;
     nav.chain.lastFailure=failure;
@@ -171,7 +172,6 @@ class NavigationRecovery {
       checkCanceled(signal);
       if(this.current!==nav || !this.allowed(nav))throw new BrowserFailure('navigation','document_changed');
       if(this.now()>=nav.deadline)throw timeoutFailure('navigation','request');
-      if(this.now()>=limit)throw this.pageLoadTimeout(nav);
     };
     this.changed();
     void (async()=>{
@@ -236,14 +236,14 @@ class NavigationRecovery {
     nav.chain.replayFollowingGets=false;
   }
   begin({automatic=false,owner=null,signal,deadline=Infinity,enabled=true,resume=false,replayable=false,valid=()=>true,
-    beforeRefresh,recoveryReport,initialURL=null,replayFollowingGets=false,httpReferrer}={}) {
+    beforeRefresh,recoveryReport,initialURL=null,replayFollowingGets=false,httpReferrer,pageLoadLimit=PAGE_LOAD_MS}={}) {
     const previous=this.current;
     const sameOwner=owner && previous?.owner===owner;
     this.finish({preserve:resume});
     const chain=resume && previous?.owner===owner?previous.chain:{reloads:0,lastFailure:null,requestIds:new Set(),replayFollowingGets};
     const nav=this.current={generation:++this.generation,chain,get reloads(){return chain.reloads;},automatic,owner,signal,enabled,
       replayable,valid,beforeRefresh,recoveryReport,deadline:sameOwner?Math.min(deadline,previous.deadline):deadline,
-      loadDeadline:sameOwner && resume?previous.loadDeadline:null,active:true,pendingStart:true,started:false,
+      pageLoadLimit,loadDeadline:sameOwner && resume?previous.loadDeadline:null,active:true,pendingStart:true,started:false,
       loaded:false,failure:null,url:initialURL,httpReferrer};
     this.report('info','page_load_started',{page_id:this.tab.id,generation:nav.generation});
     this.watchSignal(nav);
@@ -264,7 +264,7 @@ class NavigationRecovery {
     const nav=this.current;
     if(!nav)return this.begin(options);
     nav.detach?.();
-    const {owner,signal,deadline=Infinity,enabled=true,valid,beforeRefresh,recoveryReport}=options;
+    const {owner,signal,deadline=Infinity,enabled=true,valid,beforeRefresh,recoveryReport,pageLoadLimit=PAGE_LOAD_MS}=options;
     const sameOwner=nav.owner===owner;
     nav.automatic=true;nav.owner=owner;nav.signal=signal;nav.enabled=enabled;
     if(options.replayable!==undefined)nav.replayable=options.replayable;
@@ -272,7 +272,9 @@ class NavigationRecovery {
     nav.valid=valid;nav.beforeRefresh=beforeRefresh;nav.recoveryReport=recoveryReport;
     nav.deadline=sameOwner?Math.min(nav.deadline,deadline):deadline;
     nav.active=!nav.failure;
-    if(!nav.loaded && nav.loadDeadline==null)nav.loadDeadline=this.now()+PAGE_LOAD_MS;
+    nav.pageLoadLimit=pageLoadLimit;
+    if(pageLoadLimit===null)nav.loadDeadline=null;
+    if(!nav.loaded)this.beginLoadDeadline(nav);
     this.watchSignal(nav);
     return nav;
   }
@@ -289,6 +291,10 @@ class NavigationRecovery {
   isLoading(documentOnly=false) {
     const nav=this.current;
     return !(documentOnly && nav?.documentReady) && (this.contents.isLoadingMainFrame() || !!nav?.active && !nav.loaded);
+  }
+  beginLoadDeadline(nav) {
+    if(nav.pageLoadLimit!=null && nav.loadDeadline==null && (nav.automatic || Number.isFinite(nav.deadline)))
+      nav.loadDeadline=this.now()+nav.pageLoadLimit;
   }
   track(run) {
     const nav=this.current,token=nav.dispatchToken={};
@@ -316,7 +322,7 @@ class NavigationRecovery {
   history(run,options) {this.historyOptions=options;run();}
   async dispatch(run,options) {
     const nav=this.begin(options),owner=nav.owner;
-    if(nav.loadDeadline==null && (nav.automatic || Number.isFinite(nav.deadline)))nav.loadDeadline=this.now()+PAGE_LOAD_MS;
+    this.beginLoadDeadline(nav);
     try {
       this.track(run);
       while(true) {

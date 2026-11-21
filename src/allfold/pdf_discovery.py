@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field, replace
 import re
-import sys
+from hashlib import sha256
 import time
 from threading import Event
 from urllib.parse import parse_qs, urldefrag, urlsplit
@@ -24,12 +24,13 @@ from allfold.url_safety import normalize_public_http_url
 
 
 SUPPORTED_PDF_TARGET_TYPES = ARTICLE_TYPES | {'unknown'}
-RESPONSE_SAMPLE_BYTES = 262144
+def _request_key(candidate):
+    return (sha256(urldefrag(candidate.url)[0].encode()).digest(), candidate.action)
 
 
 @dataclass(frozen=True)
 class CurrentResponse:
-    """One bounded already-requested response; never a license to probe its URL."""
+    """One already-requested response; never a license to probe its URL."""
     url: str = field(repr=False)
     content_type: str
     body: bytes = field(repr=False, default=b'')
@@ -41,19 +42,13 @@ class CurrentResponse:
     context_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
-        normalize_public_http_url(self.url)
-        if (not isinstance(self.url, str) or len(self.url) > 8192 or not isinstance(self.body, bytes)
+        if (not isinstance(self.url, str) or not normalize_public_http_url(self.url) or not isinstance(self.body, bytes)
                 or type(self.partial) is not bool or type(self.context_changed) is not bool
                 or self.context_key is not None and (not isinstance(self.context_key, str)
                     or not re.fullmatch(r'[a-f0-9]{64}', self.context_key))):
-            raise ValueError('Current response exceeds the finite parse budget')
-        if len(self.body) > RESPONSE_SAMPLE_BYTES:
-            object.__setattr__(self, 'body', self.body[:RESPONSE_SAMPLE_BYTES])
-            object.__setattr__(self, 'partial', True)
-        if self.redirect_url is not None:
-            normalize_public_http_url(self.redirect_url)
-            if len(self.redirect_url) > 8192:
-                raise ValueError('Current redirect exceeds the finite parse budget')
+            raise ValueError('Invalid current response')
+        if self.redirect_url is not None and not normalize_public_http_url(self.redirect_url):
+            raise ValueError('Invalid current redirect')
 
 
 @dataclass(frozen=True)
@@ -180,11 +175,11 @@ class PdfDiscovery:
         self._route = self._facts_route(self._route)
         self._retries = max_retries
         self._seen, self._diagnostics = set(), []
-        self._seen_bytes, self._state_full = 0, False
         self._failed, self._fallback, self._used = False, False, False
         self._document_attempted = False
         self._publisher_access_blocked = False
         self._ebsco_attempted = False
+        self._ebsco_viewer_attempted = False
         self._initial = tuple(candidates) if candidates is not None else None
         self._consumed = 0
         self._observe = observe
@@ -371,7 +366,7 @@ class PdfDiscovery:
 
     def _available_direct(self, candidate):
         return (not self._reader_entry(candidate) and _eligible(candidate)
-            and (urldefrag(candidate.url)[0], candidate.action) not in self._seen)
+            and _request_key(candidate) not in self._seen)
 
     def _ebsco_candidates(self):
         if self._ebsco_attempted or self.io is None or not callable(getattr(type(self.io), 'ebsco_candidates', None)):
@@ -384,9 +379,10 @@ class PdfDiscovery:
             return ()
 
     def _ebsco_viewer(self, candidate):
-        if (candidate.rule_id != 'R073' or candidate.field != 'ebsco_download_link'
+        if (self._ebsco_viewer_attempted or candidate.rule_id != 'R073' or candidate.field != 'ebsco_download_link'
                 or self.io is None or not callable(getattr(type(self.io), 'ebsco_viewer', None))):
             return ()
+        self._ebsco_viewer_attempted = True
         try:
             return self._call(self.io.ebsco_viewer, candidate)
         except PdfSourceReadError as error:
@@ -430,7 +426,7 @@ class PdfDiscovery:
                 if updated.target != query_target:
                     raise ValueError('Query result changed original PDF target')
                 self.inputs = replace(updated, target=self.target)
-                candidates = tuple(c for c in self._rules('P2') if (urldefrag(c.url)[0], c.action) not in self._seen)
+                candidates = tuple(c for c in self._rules('P2') if _request_key(c) not in self._seen)
                 # A newly applicable template is an attempt, not a complete
                 # input answer that suppresses an already configured API.
                 sufficient_inputs = bool(candidates)
@@ -439,7 +435,7 @@ class PdfDiscovery:
                     # whose inputs were unavailable earlier. Continue this P2
                     # path in place rather than restarting the discovery chain.
                     candidates += tuple(replace(c, stage='P2') for c in self._rules('P1'))
-                candidates = tuple(c for c in candidates if (urldefrag(c.url)[0], c.action) not in self._seen)
+                candidates = tuple(c for c in candidates if _request_key(c) not in self._seen)
                 yield self._ordered_entries(candidates)
                 if self._publisher_access_blocked and not self._ebsco_attempted:
                     yield self._ebsco_candidates()
@@ -447,7 +443,7 @@ class PdfDiscovery:
                     break
         # Stable body URLs already have authority to be tried. A qualified
         # Reader refreshes its own entry inside the chain, not the article.
-        failed_p4 = any(not c.reader_kind and (urldefrag(c.url)[0], c.action) in self._seen for c in saved_p4)
+        failed_p4 = any(not c.reader_kind and _request_key(c) in self._seen for c in saved_p4)
         current = self._document() if self._document_needed() or failed_p4 else ()
         current_entries = (*sorted((c for c in current if c.stage == 'P3'),
             key=lambda c: 0 if c.field == 'citation_pdf_url' else 1),
@@ -459,7 +455,7 @@ class PdfDiscovery:
             # or restart the missing-input API queries.
             for stage in ('P1', 'P2'):
                 templates.extend(c for c in self._rules(stage)
-                    if (urldefrag(c.url)[0], c.action) not in self._seen)
+                    if _request_key(c) not in self._seen)
         yield self._ordered_entries((*current_entries, *templates))
         if not self._ebsco_attempted:
             yield self._ebsco_candidates()
@@ -501,16 +497,16 @@ class PdfDiscovery:
         for url in openalex_pdf_urls(raw, self.target.identity_doi):
             yield PdfCandidate(self.target, 'P5', 'OPENALEX', 'openalex', url)
 
-    def _chain(self, original, consume):
+    def _chain(self, original, consume, *, viewer_fallback):
         from allfold.pdf_responses import parse_current_response, reader_context, access_limited
         if (self._initial is None and not original.action and not original.referer_observed
                 and original.referer is None and self._route.article_url):
             original = replace(original, referer=self._route.article_url)
         # Explicit next-hop relationships, not an expected publisher hop count.
-        # Identical response/edge observations stop loops; byte capacity bounds
-        # retained response state independently of the captured parent deadline.
+        # Keep fingerprints of the used requests and responses to detect
+        # repeated edges without retaining their bodies or signed URLs.
         pending = [(original, None, object())]
-        edges, responses, state_bytes = set(), set(), 0
+        edges, responses = set(), set()
         attempts = {}
         request_context_key, reader_context_key = None, None
         while pending:
@@ -521,24 +517,14 @@ class PdfDiscovery:
                 raise ValueError('Candidate target changed')
             if not _eligible(candidate):
                 continue
-            key = (urldefrag(candidate.url)[0], candidate.action)
+            key = _request_key(candidate)
             edge = (key, evidence)
             if edge in edges or candidate.action and key in self._seen:
                 continue
             if key in self._seen and evidence is None:
                 continue
             edges.add(edge)
-            state_bytes += len(candidate.url.encode()) + 64
-            if state_bytes > 1048576:
-                self._note(original.stage, original.rule_id, 'response-state-budget')
-                return None
-            if key not in self._seen:
-                self._seen_bytes += sys.getsizeof(key) + sum(sys.getsizeof(value) for value in key)
-                if self._seen_bytes > 1048576:
-                    self._state_full = True
-                    self._note(original.stage, original.rule_id, 'candidate-state-budget')
-                    return None
-                self._seen.add(key)
+            self._seen.add(key)
             result = self._call(consume, candidate)
             retries = 0
             while isinstance(result, CandidateResult) and result.kind == 'retry' and retries < self._retries:
@@ -584,15 +570,11 @@ class PdfDiscovery:
                 # observations; either can advance, while A -> B -> A repeats.
                 if response.context_key is not None:
                     request_context_key = response.context_key
-                observation = (response.url, response.status, response.content_type, response.body,
-                    response.redirect_url, response.access, request_context_key, reader_context_key)
+                observation = (sha256(response.url.encode()).digest(), response.status, response.content_type,
+                    sha256(response.body).digest(), sha256((response.redirect_url or '').encode()).digest(),
+                    response.partial, response.access, request_context_key, reader_context_key)
                 if observation in responses:
                     self._note(original.stage, original.rule_id, 'response-loop')
-                    self._failed = True
-                    continue
-                state_bytes += len(response.body)
-                if state_bytes > 1048576:
-                    self._note(original.stage, original.rule_id, 'response-state-budget')
                     self._failed = True
                     continue
                 responses.add(observation)
@@ -649,7 +631,7 @@ class PdfDiscovery:
                             self._note(original.stage, original.rule_id, error.diagnostic, service_id)
                 if access_limited(response):
                     self._note(original.stage, original.rule_id, result.diagnostic or 'access-blocked')
-            if not following and ebsco_direct and result.diagnostic != 'service-invalidated':
+            if not following and ebsco_direct and viewer_fallback() and result.diagnostic != 'service-invalidated':
                 following = self._ebsco_viewer(original)
                 if following:
                     # The actual Viewer can issue the same URL in a new request context.
@@ -660,13 +642,14 @@ class PdfDiscovery:
                 self._failed = True
             else:
                 eligible = tuple(item for item in following
-                    if (urldefrag(item.url)[0], item.action) != key or fresh_reader
+                    if _request_key(item) != key or fresh_reader
                     or result.response is not None and result.response.context_changed)
                 if not eligible:
                     self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True
                 pending.extend((item, observation, lineage if index == 0 else object())
                     for index, item in reversed(tuple(enumerate(eligible))))
+            result = response = None
         return None
 
     def _run_batch(self, candidates, consume):
@@ -674,6 +657,10 @@ class PdfDiscovery:
         deferred = deque()
         active = None
         prepared_before_recovery = False
+        def viewer_fallback():
+            return not any(item.rule_id == 'R073' and item.field == 'ebsco_download_link'
+                and self._available_direct(item) for item in entries)
+
         try:
             while entries or deferred or active is not None:
                 if active is None:
@@ -697,9 +684,10 @@ class PdfDiscovery:
                     if candidate is not None:
                         self.check()
                         if (not _eligible(candidate)
-                                or (urldefrag(candidate.url)[0], candidate.action) in self._seen):
+                                or _request_key(candidate) in self._seen):
                             continue
-                        active = (self._chain(candidate, consume), self._consumed, self._entry_scope(candidate))
+                        chain = self._chain(candidate, consume, viewer_fallback=viewer_fallback)
+                        active = (chain, self._consumed, self._entry_scope(candidate))
                 chain, before, scope = active
                 try:
                     publisher_challenge = next(chain)
@@ -708,8 +696,6 @@ class PdfDiscovery:
                     if done.value is not None:
                         return done.value
                     self._failed = self._failed or self._consumed > before
-                    if self._state_full:
-                        return
                 else:
                     if self._initial is not None:
                         continue
@@ -744,7 +730,5 @@ class PdfDiscovery:
             result = self._run_batch(candidates, consume)
             if result is not None:
                 return result
-            if self._state_full:
-                break
         self.check()
         return DiscoveryResult('exhausted', fallback_used=self._fallback, diagnostics=tuple(self._diagnostics))

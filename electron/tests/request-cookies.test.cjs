@@ -10,7 +10,10 @@ function fixture() {
   client.isAttached=()=>attached;
   client.attach=()=>{assert.equal(attached,false);attached=true;calls.push('attach');};
   client.detach=()=>{attached=false;calls.push('detach');client.emit('detach');};
-  client.sendCommand=async(method,params)=>{calls.push([method,params]);return {cookies:[
+  client.sendCommand=async(method,params)=>{calls.push([method,params]);
+    if(method==='Page.getFrameTree')return {frameTree:{frame:{securityOrigin:contents.mainFrame.origin,
+      domainAndRegistry:new URL(contents.mainFrame.origin).hostname}}};
+    return {cookies:[
     {name:'regular',value:'native'},
     {name:'partition',value:'private-value',partitionKey:{topLevelSite:'https://publisher.example'}},
     {name:'opaque',value:'never',partitionKeyOpaque:true},
@@ -26,7 +29,8 @@ test('cookie context reads only the qualified native page partition and releases
   const cookies=await readPartitionCookies(f.browser,'https://publisher.example/pdf','https://publisher.example/article',{validate:()=>{}});
   assert.deepEqual(cookies.cookies.map(c=>c.name),['partition']);
   assert.deepEqual(cookies.metadata.map(c=>c.name),['regular']);
-  assert.deepEqual(f.calls,['attach',['Network.getCookies',{urls:['https://publisher.example/pdf']}],'detach']);
+  assert.deepEqual(f.calls,['attach',['Page.getFrameTree',undefined],['Network.getCookies',{urls:['https://publisher.example/pdf']}],
+    ['Page.getFrameTree',undefined],'detach']);
   assert.equal(f.client.isAttached(),false);
 });
 test('missing, foreign and already attached contexts keep the existing Session path',async()=>{
@@ -42,24 +46,25 @@ test('missing, foreign and already attached contexts keep the existing Session p
   assert.equal(await readPartitionCookies(f.browser,'https://publisher.example/pdf','https://publisher.example/article',options),null);
   assert.deepEqual(f.calls,[]);
 });
-test('cross-origin contexts supplement only explicitly unrestricted SameSite cookies',async()=>{
-  const f=fixture();
-  f.client.sendCommand=async()=>({cookies:['Strict','Lax','None',undefined].map((sameSite,index)=>({
-    name:'cookie'+index,value:'value',sameSite,partitionKey:{topLevelSite:'https://publisher.example'}}))});
-  const result=await readPartitionCookies(f.browser,'https://cdn.other.example/pdf','https://publisher.example/article',{validate:()=>{}});
-  assert.deepEqual(result.cookies.map(c=>c.sameSite),['None']);
-});
 test('an ordinary same-name value changed since the metadata query keeps its priority',()=>{
   const url='https://publisher.example/pdf',headers={Cookie:'sid=current'};
-  const cookie={name:'sid',value:'partition',domain:'publisher.example',path:'/',expires:-1,partitionKey:{}};
+  const cookie={name:'sid',value:'partition',domain:'publisher.example',path:'/',expires:-1,partitionKey:{},sameSite:'None'};
   assert.deepEqual(withPartitionCookies(headers,url,url,{cookies:[cookie],metadata:[cookie]}),headers);
   const ordinary={...cookie,value:'current',partitionKey:undefined};
   assert.deepEqual(withPartitionCookies(headers,url,url,{cookies:[cookie],metadata:[ordinary,{...ordinary,path:'/pdf'}]}),headers);
 });
-test('native page changes discard the cookie result and concurrent reads serialize their clients',async()=>{
+test('same-site page changes preserve the cookie result and a site change revokes it',async()=>{
   const f=fixture(),send=f.client.sendCommand;
-  f.client.sendCommand=async(...args)=>{const result=await send(...args);f.tab.documentGeneration++;return result;};
-  assert.equal(await readPartitionCookies(f.browser,'https://publisher.example/pdf','https://publisher.example/article',{validate:()=>{}}),null);
+  f.client.sendCommand=async(...args)=>{const result=await send(...args);if(args[0]==='Network.getCookies') {
+    f.tab.documentGeneration++;f.contents.mainFrame.frameToken='new-document';
+    f.contents.getURL=()=>'https://publisher.example/new?query=1#anchor';f.contents.isLoadingMainFrame=()=>true;
+  }return result;};
+  const result=await readPartitionCookies(f.browser,'https://publisher.example/pdf',null,{page:f.tab});
+  assert.deepEqual(result.cookies.map(c=>c.name),['partition']);
+  f.client.sendCommand=async(...args)=>{const result=await send(...args);
+    if(args[0]==='Network.getCookies')f.contents.mainFrame.origin='https://other.example';return result;};
+  assert.equal(await readPartitionCookies(f.browser,'https://publisher.example/pdf',null,{page:f.tab}),null);
+  f.contents.mainFrame.origin='https://publisher.example';
   f.client.sendCommand=send;f.calls.length=0;
   await Promise.all([1,2].map(()=>readPartitionCookies(f.browser,'https://publisher.example/pdf','https://publisher.example/article',{validate:()=>{}})));
   assert.equal(f.calls.filter(c=>c==='attach').length,2);assert.equal(f.calls.filter(c=>c==='detach').length,2);

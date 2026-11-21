@@ -1261,6 +1261,7 @@ def test_long_known_chain_uses_parent_deadline_instead_of_hop_or_operation_count
         seen.append(c)
         if len(seen)==60:return CandidateResult.pdf(transfer_complete=True)
         return CandidateResult.current(CurrentResponse(c.url,'text/html',
+            b'<!--' + b'x' * 280000 + b'-->' +
             ('<iframe src="https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123&hop='+str(len(seen))+'"></iframe>').encode()))
     result=PdfDiscovery(paper).run(consume)
     assert result.status=='transferred' and len(seen)==60 and not result.fallback_used
@@ -1309,6 +1310,34 @@ def test_unrelated_deep_reader_json_cannot_erase_a_qualified_link():
     result=PdfDiscovery(paper,candidates=(candidate,)).run(consume)
     assert result.status=='transferred' and seen[-1]=='https://cdn.example.org/body.pdf'
     assert ('P2','R024','parse-failed') in result.diagnostics
+
+
+@pytest.mark.parametrize(('host', 'path', 'rule', 'carrier'), [
+    ('www.sciencedirect.com', '/science/article/pii/S014067362400123X/pdfft', 'R024',
+     '{"article":{"pdfDownload":{"urlMetadata":"https://cdn.example.org/body.pdf"}},"tail":"'),
+    ('journals.lww.com', '/journal/_layouts/15/oaks.journals/downloadpdf.aspx?an=22222222-222222222-22222', 'R060',
+     '{"pdfDownloadDetails":{"pdfUrl":"https://cdn.example.org/body.pdf"},"tail":"'),
+])
+def test_fixed_reader_data_retains_download_with_large_unrelated_tail(host, path, rule, carrier):
+    from allfold.pdf_rules import PdfCandidate
+    from allfold.pdf_responses import parse_current_response
+    paper = target(host)
+    candidate = PdfCandidate(paper, 'P4', rule, paper.platform or 'generic', 'https://' + host + path)
+    body = ('<script type="application/json">' + carrier + 'x' * 140000 + '"}</script>').encode()
+    parsed = parse_current_response(candidate, CurrentResponse(candidate.url, 'text/html', body))
+    assert [item.url for item in parsed] == ['https://cdn.example.org/body.pdf']
+
+
+def test_verified_article_generic_entry_survives_partial_tail_without_repeated_doi():
+    from allfold.pdf_rules import PdfCandidate
+    from allfold.pdf_responses import parse_current_response
+    article = 'https://example.org/papers/an-article'
+    paper = target('example.org', article_url=article)
+    candidate = PdfCandidate(paper, 'P3', 'GENERIC', 'generic', article)
+    response = CurrentResponse(article, 'text/html', b'<main><a href="/body">Download PDF</a><aside', partial=True)
+    assert [item.url for item in parse_current_response(candidate, response)] == ['https://example.org/body']
+    conflict = b'<head><meta name="citation_doi" content="10.9999/someone-else"></head>'
+    assert not parse_current_response(candidate, replace(response, body=conflict + response.body))
 
 
 def test_reader_self_loop_failure_then_alternative_reports_actual_fallback():

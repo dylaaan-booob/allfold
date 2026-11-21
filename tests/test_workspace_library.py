@@ -28,9 +28,15 @@ def test_workspace_reads_only_sqlite_and_keeps_identity_only_body(tmp_path):
 
 
 def test_http_run_initializes_single_library_then_reopens_local_read_and_trash(tmp_path, monkeypatch):
-    from uuid import UUID
+    from concurrent.futures import ThreadPoolExecutor
+    import os
+    from pathlib import Path
+    import sqlite3
+    from threading import Event, get_ident
     import httpx
     from fastapi.testclient import TestClient
+    from allfold.application.collection_planner import ProductionCollectionService
+    from allfold.application.collection_runtime import BranchSpec
     from allfold.web.app import create_app
     from allfold.http_client import create_http_client
     from electron_test_helpers import OfflineBridge
@@ -39,6 +45,7 @@ def test_http_run_initializes_single_library_then_reopens_local_read_and_trash(t
 
     config, workspace = write_valid_config(tmp_path)
     config.write_text(config.read_text() + 'enabled_providers: [pubmed]\n')
+    collection_started, release_collection = Event(), Event()
     requests = []
     def respond(request):
         requests.append(request.url)
@@ -54,6 +61,11 @@ def test_http_run_initializes_single_library_then_reopens_local_read_and_trash(t
         return create_http_client(**(kwargs | {'transport': httpx.MockTransport(respond)}))
     monkeypatch.setattr('allfold.providers.provider_http.create_http_client', isolated_http)
     app = create_app(config, electron_bridge=OfflineBridge(), diagnostics_root=tmp_path / 'logs')
+    def wait_for_fixture(_context):
+        collection_started.set()
+        assert release_collection.wait(10), 'Fixture did not release the background collection'
+    monkeypatch.setattr(ProductionCollectionService, 'plan',
+        lambda self, **kwargs: (BranchSpec('fixture-wait', wait_for_fixture, service_id=None),))
     with TestClient(app, base_url='http://localhost') as client:
         empty = client.get('/api/ui-next/workspace')
         assert empty.status_code == 200 and not empty.json()['initialized']
@@ -70,17 +82,47 @@ def test_http_run_initializes_single_library_then_reopens_local_read_and_trash(t
         assert item['ordinary_dates'] == ['2026-04-02', '2026-09-12', '2026-10-03']
         assert not (workspace / 'Papers').exists() and not (workspace / 'Inbox.base').exists()
         workspace_id, paper_id = snapshot['workspace_id'], item['id']
-        # Run joins its publication, while the Paper's own collection may still
-        # be closing SQLite resources. The local read/edit phase starts after
-        # that exact collection settles.
-        registry = app.state.workspace_tasks.current()
-        with registry.paper_gate():
-            collection = registry._tasks.get(UUID(paper_id))
-        if collection is not None:
-            collection.future.result(5)
-        fields_response = client.get(f'/api/papers/{paper_id}/fields', params={'workspace_id': workspace_id})
-        assert fields_response.status_code == 200, fields_response.text
-        fields = fields_response.json()
+        try:
+            assert collection_started.wait(5)
+            read_fields = lambda: client.get(f'/api/papers/{paper_id}/fields', params={'workspace_id': workspace_id})
+            published = read_fields()
+            assert published.status_code == 200, published.text
+            assert published.json()['authors'] == ['Ada Smith']
+
+            # Schedule an ordinary journal unlink during the public reader's
+            # lstat. Return the opened inode's stat after the real commit to
+            # model observing an already-unlinked journal on macOS.
+            journal = workspace / 'papers.sqlite-journal'
+            reader_has_inode, writer_closed = Event(), Event()
+            writer_thread, lstat = get_ident(), Path.lstat
+            def stat_during_close(candidate, *args, **kwargs):
+                if candidate != journal or get_ident() == writer_thread or reader_has_inode.is_set():
+                    return lstat(candidate, *args, **kwargs)
+                with journal.open('rb') as old_journal:
+                    reader_has_inode.set()
+                    assert writer_closed.wait(5)
+                    return os.fstat(old_journal.fileno())
+
+            with ThreadPoolExecutor(1) as reader:
+                connection = sqlite3.connect(workspace / 'papers.sqlite')
+                try:
+                    connection.execute('UPDATE library_state SET revision = revision + 1')
+                    with monkeypatch.context() as scheduling:
+                        scheduling.setattr(Path, 'lstat', stat_during_close)
+                        overlapping = reader.submit(read_fields)
+                        assert reader_has_inode.wait(5)
+                        connection.commit()
+                        connection.close()
+                        writer_closed.set()
+                        fields_response = overlapping.result(5)
+                finally:
+                    connection.close()
+                    writer_closed.set()
+            assert fields_response.status_code == 200, fields_response.text
+            fields = fields_response.json()
+            assert fields['revision'] == published.json()['revision']
+        finally:
+            release_collection.set()
         # Local actions do not need the global Browser owner or Run slot.
         owner = app.state.browser_task_lock.acquire('fixture')
         try:

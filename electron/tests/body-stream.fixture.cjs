@@ -83,6 +83,21 @@ process.once('uncaughtException',failFixture);
       res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
       res.end('<title>Just a moment...</title>');return;
     }
+    if(['/cross-challenge','/post-only-challenge'].includes(req.url)) {
+      const other=origin.replace('pdf.','other.');
+      res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
+      res.end('<title>Just a moment...</title><script src="'+other+'/verification.js"></script>'
+        +'<iframe src="'+other+'/verification-frame"></iframe><form method="post" action="'+other
+        +(req.url==='/cross-challenge'?'/verify-access':'/one-shot')+'"><button id="fixture-check">Verify</button></form>');return;
+    }
+    if(req.url==='/verification.js'){res.end('window.verificationLoaded = true;');return;}
+    if(req.url==='/verification-frame'){res.end('<title>Verification frame</title>');return;}
+    if(req.url==='/verify-access'){
+      res.writeHead(303,{location:'/verified-body'});res.end();return;
+    }
+    if(req.url==='/one-shot' || req.url==='/verified-body'){
+      res.writeHead(200,{'content-type':'application/pdf'});res.end(payload);return;
+    }
     if(input.pathname==='/protected.pdf'&&!req.headers.cookie?.includes('fixture_access=ok')){
       if(input.searchParams.get('Signature')==='second'){
         res.writeHead(200,{'content-type':'text/html'});
@@ -91,8 +106,9 @@ process.once('uncaughtException',failFixture);
       }
       res.writeHead(403,{'content-type':'text/html','cf-mitigated':'challenge'});
       res.end('<title>Just a moment...</title><a id="fixture-check" href="?Signature=second">Continue</a>'
-        +'<img src="'+origin.replace('pdf.','other.')+'/unrelated-image">');return;
+        +'<img src="'+origin.replace('pdf.','other.')+'/verification-image">');return;
     }
+    if(req.url==='/verification-image'){res.writeHead(204);res.end();return;}
     if(req.url==='/fixture-check'){
       res.writeHead(302,{'set-cookie':'fixture_access=ok; Path=/protected.pdf; Secure; HttpOnly; SameSite=None; Partitioned',location:'/protected.pdf?Signature=renewed'});res.end();return;
     }
@@ -140,6 +156,10 @@ process.once('uncaughtException',failFixture);
         await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));
         canceledSolver=true;
         return {outcome:'not_executed',reason:'canceled'};
+      }
+      if(['/cross-challenge','/post-only-challenge'].includes(new URL(contents.getURL()).pathname)){
+        await contents.executeJavaScript('document.querySelector("#fixture-check").click()');
+        return {outcome:'solved'};
       }
       assert.equal(new URL(contents.getURL()).pathname,'/protected.pdf');
       solves.push(tab.id);
@@ -280,7 +300,7 @@ process.once('uncaughtException',failFixture);
   const code=await new Promise(resolve=>python.once('exit',resolve));
   try {
     if(dispatchError)throw dispatchError;
-    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,34);assert.equal(slowWitness,true);
+    assert.equal(code,0,stderr);assert.equal(complete,true,stderr);assert.equal(cases.length,37);assert.equal(slowWitness,true);
     assert.equal(solves.length,2);
     assert.equal(browser.tabs.has(solves[0]),false,'challenge page is destroyed before the managed retry settles');
     const protectedRequests=requests.filter(r=>r.url.startsWith('/protected.pdf?Signature='));
@@ -294,7 +314,12 @@ process.once('uncaughtException',failFixture);
     assert.match(protectedRequests[7].headers.cookie,/fixture_recent=rotated/);
     assert.doesNotMatch(protectedRequests[7].headers.cookie,/fixture_recent=original/);
     assert.equal(requests.filter(r=>r.url==='/unrelated-ready').length,2,'ordinary unchallenged HTML cannot trigger a new stream');
-    assert.equal(requests.filter(r=>r.url==='/unrelated-image').length,0,'recovery page cannot reach unrelated origins');
+    assert.ok(requests.some(r=>r.url==='/verification.js') && requests.some(r=>r.url==='/verification-frame'));
+    assert.deepEqual(requests.filter(r=>r.url==='/verify-access').map(r=>r.method),['POST']);
+    assert.deepEqual(requests.filter(r=>r.url==='/one-shot').map(r=>r.method),['POST']);
+    assert.deepEqual(requests.filter(r=>r.url==='/verified-body').map(r=>[r.method,r.headers.accept==='application/pdf']),
+      [['GET',false],['GET',true]]);
+    assert.ok(requests.some(r=>r.url==='/long?ticket='+('x'.repeat(9000))+'%2FB'));
     assert.equal(requests.filter(r=>r.url==='/fixture-check').length,1);
     assert.equal(canceledSolver,true,'canceling the captured Paper drains the waiting verification solver');
     assert.equal(requests.filter(r=>r.url==='/pending-challenge').length,2,'cancelled verification cannot resume the stream');
@@ -328,14 +353,17 @@ process.once('uncaughtException',failFixture);
     assert.equal(deniedPublisher[0].headers.referer,origin+'/fixture-publisher');
     assert.equal(requests.filter(r=>r.url==='/fixture-publisher').length,0,'a licensed body ends discovery before refreshing the refused publisher');
     assert.equal(requests.filter(r=>r.url==='/fixture-preprint').length,0);
-    const licensedRequests=requests.filter(r=>r.headers.host==='content.ebscohost.com');
-    assert.equal(licensedRequests.length,1,'the managed stream sends the sole licensed PDF request');
-    assert.equal(licensedRequests[0].url,'/cds/retrieve?Signature=A%2FB');
-    assert.equal(licensedRequests[0].headers.referer,undefined);
+    const licensedRequests=requests.filter(r=>r.headers.host==='content.ebscohost.com' && r.url==='/cds/retrieve?Signature=A%2FB');
+    assert.deepEqual(licensedRequests.map(r=>r.headers.accept==='application/pdf'),[false,true],
+      'one Viewer response supplies the entry for the managed stream');
+    assert.ok(licensedRequests.every(r=>r.headers.referer===undefined));
     const retained=[...browser.tabs.values()];assert.equal(retained.length,1,'only the prepared target is retained');
     await browser.closePage(retained[0]);
     assert.equal(browser.tabs.size,0,'all temporary pages drain before body completion');
-    for(const request of requests){assert.equal(request.method,'GET');assert.equal(request.headers['x-allfold-request-context'],undefined);
+    for(const request of requests){assert.equal(request.headers['x-allfold-request-context'],undefined);
+      if(['/cross-challenge','/post-only-challenge','/verification.js','/verification-frame','/verification-image',
+        '/verify-access','/one-shot','/verified-body'].includes(request.url))continue;
+      assert.equal(request.method,'GET');
       if(['doi.org',...ebscoHosts].includes(request.headers.host) || ['/fixture-publisher','/fixture-publisher-pdf'].includes(request.url))continue;
       if(request.url.startsWith('/cookie-progress'))continue; // Exact evolving values checked above.
       if(protectedRequests.includes(request) || ['/fixture-check','/unrelated-article'].includes(request.url))continue; // Browser challenge sequence checked above.

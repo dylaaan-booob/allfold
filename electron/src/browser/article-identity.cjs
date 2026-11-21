@@ -8,9 +8,10 @@ function validDOI(value) {
   return /^10\.\d{4,9}\/[^\s]+$/u.test(doi)?doi:null;
 }
 function articleURL(value) {
+  if(typeof value!=='string' || /[\s\x00-\x1f\x7f\\]/.test(value))return null;
   try {
     const url=new URL(value);
-    if(!['https:','http:'].includes(url.protocol) || url.username || url.password || url.href.length>4096)return null;
+    if(!['https:','http:'].includes(url.protocol) || url.username || url.password)return null;
     return url;
   }catch {return null;}
 }

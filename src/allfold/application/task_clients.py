@@ -145,7 +145,7 @@ class IndependentClientFactory:
             request_guard()
             options = dict(http_options or {})
             # These capabilities belong to the PDF reader, not ProviderReadClient.
-            pdf_options = {name: options.pop(name) for name in ('resolver', 'credentials', 'max_redirects')
+            pdf_options = {name: options.pop(name) for name in ('resolver', 'credentials')
                            if name in options}
             with ExitStack() as resources:
                 http = resources.enter_context(PdfHttpClient(guard=request_guard, cancel_event=cancel_event,

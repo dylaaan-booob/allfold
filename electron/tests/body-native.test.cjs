@@ -4,7 +4,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const runFixture=require('./fixture-process.cjs');
 test('native action messages require the original request, sender and frame before one dispatch',async t=>{
   const {EventEmitter}=require('node:events'),vm=require('node:vm');
-  const ipc=new EventEmitter(),messages=[],contents={mainFrame:{framesInSubtree:[]}};
+  const ipc=new EventEmitter(),messages=[],contents=Object.assign(new EventEmitter(),{mainFrame:{framesInSubtree:[]}});
   const doc={pageId:1,processId:2,frameToken:'source',url:'https://www.microbiologyresearch.org/article'};
   const frame={send:(_channel,message)=>messages.push(message)};
   const browser={documentFrame:()=>frame,tabs:new Map([[1,{id:1,view:{webContents:contents}}]])};

@@ -23,14 +23,14 @@ def target(host='www.sciencedirect.com', **values):
     b'<div>' * 70, b'<span data-unused="' + b'x' * 9000 + b'"></span>',
     b'<script type="application/ld+json">' + b'x' * 140000 + b'</script>'],
     ids=['response-prefix','nodes','depth','attribute','script'])
-def test_partial_html_retains_already_qualified_pdf_link(tail):
+def test_complete_html_finds_pdf_after_unrelated_markup_and_text(tail):
     seen=[]
     def handle(request):
         seen.append(str(request.url))
         if len(seen)==1:
             return httpx.Response(200, headers={'content-type':'text/html'}, content=(
-                b'<head><meta name="citation_doi" content="10.1234/AbC">'
-                b'<meta name="citation_pdf_url" content="https://cdn.example.org/body.pdf"></head>' + tail))
+                b'<head><meta name="citation_doi" content="10.1234/AbC">' + tail
+                + b'<meta name="citation_pdf_url" content="https://cdn.example.org/body.pdf"></head>'))
         return httpx.Response(200,headers={'content-type':'application/pdf'})
     from allfold.pdf_rules import KnownPdfUrl
     paper=target('publisher.example.org')
@@ -39,7 +39,7 @@ def test_partial_html_retains_already_qualified_pdf_link(tail):
         result=PdfDiscovery(paper,inputs=inputs).run(lambda c:http.consume(c,transfer=lambda *_:CandidateResult.pdf(transfer_complete=True)))
     assert result.status=='transferred' and result.fallback_used is False
     assert seen==['https://publisher.example.org/article','https://cdn.example.org/body.pdf']
-    assert any(reason=='partial-response' for _,_,reason in result.diagnostics)
+    assert all(reason != 'partial-response' for _, _, reason in result.diagnostics)
 
 
 def test_api_record_lists_match_target_after_old_count_limits():
@@ -58,19 +58,46 @@ def test_elsevier_links_after_unrelated_entries_remain_available():
     from allfold.pdf_responses import parse_current_response
     paper=target()
     candidate=PdfCandidate(paper,'P2','API06','sciencedirect','https://api.elsevier.com/content/article/doi/'+paper.doi)
-    body=json.dumps({'full-text-retrieval-response':{'coredata':{'prism:doi':paper.doi,'link':
+    body=json.dumps({'full-text-retrieval-response':{'coredata':{'other': 'x'*300000, 'prism:doi':paper.doi,'link':
         [{'@rel':'unrelated'}]*25+[{'@rel':'scidir-pdf','@href':'https://cdn.example.org/elsevier.pdf'}]}}}).encode()
     parsed=parse_current_response(candidate,CurrentResponse(candidate.url,'application/json',body))
     assert [item.url for item in parsed]==['https://cdn.example.org/elsevier.pdf']
 
 
-def test_partial_json_preserves_complete_matching_records_before_unrelated_tail():
-    body=(b'{"articles":[{"doi":"10.1234/AbC","article_number":"123456"}],"unused":"'+b'x'*300000+b'"}')
-    with client(lambda _:httpx.Response(200,headers={'content-type':'application/json'},content=body)) as http:
-        raw=http.json('https://ieeexploreapi.ieee.org/api/v1/search/articles')
-        assert raw.partial
-        inputs=ieee_metadata_inputs(raw,target(),PdfRuleInputs(target()))
-        assert inputs.identifiers == (('article_number','123456'),)
+def test_large_metadata_json_keeps_exact_ieee_and_springer_fields():
+    from allfold.pdf_http import springer_metadata_inputs
+    paper = target()
+    results = {'irrelevant': 'x' * 300000,
+        'articles': [{'doi': paper.doi, 'article_number': '123456'}],
+        'records': [{'doi': paper.doi, 'url': [{'format': 'pdf', 'value': 'https://cdn.example.org/body.pdf'}]}]}
+    with client(lambda _: httpx.Response(200, json=results)) as http:
+        raw = http.json('https://example.org/exact')
+    assert not raw.partial
+    assert ieee_metadata_inputs(raw, paper, PdfRuleInputs(paper)).identifiers == (('article_number', '123456'),)
+    assert springer_metadata_inputs(raw, paper, PdfRuleInputs(paper)).known_pdf_urls[0].url == 'https://cdn.example.org/body.pdf'
+
+
+@pytest.mark.parametrize(('last', 'expected'), [(8, None), (40, 'redirect-limit'), (None, 'redirect-loop')])
+def test_python_pdf_redirects_follow_httpx_limits_and_detect_repeated_gets(last, expected):
+    from allfold.providers.provider_http import ProviderFailure
+    seen = []
+
+    def serve(request):
+        hop = int(request.url.path[1:])
+        seen.append(hop)
+        if hop == last:
+            return httpx.Response(200, json={'record': 'reached'})
+        return httpx.Response(302, headers={'Location': f'/{(hop + 1) % 2 if last is None else hop + 1}'})
+
+    with client(serve) as http:
+        if expected is None:
+            assert http.json('https://example.org/0') == {'record': 'reached'}
+            assert seen == list(range(last + 1))
+        else:
+            with pytest.raises(ProviderFailure) as error:
+                http.json('https://example.org/0')
+            assert error.value.code == expected
+            assert seen == ([0, 1] if last is None else list(range(21)))
 
 
 @pytest.mark.parametrize('attribute',['class','id','data-doi','title'])
@@ -101,7 +128,7 @@ def test_oxford_citation_text_is_parsed_before_actual_pdf_transfer(mime):
     seen=[]
     def handle(request):
         seen.append(str(request.url))
-        if len(seen)==1:return httpx.Response(200,headers={'content-type':mime},text='@article{x, eprint={https://cdn.example.org/body.pdf}}')
+        if len(seen)==1:return httpx.Response(200,headers={'content-type':mime},text='%'+('x'*300000)+'\n@article{x, eprint={https://cdn.example.org/body.pdf}}')
         return httpx.Response(200,headers={'content-type':'application/octet-stream'},content=b'%PDF-fixture')
     paper=target('academic.oup.com')
     candidate=PdfCandidate(paper,'P2','R020','oup','https://academic.oup.com/Citation/Download?resourceId=123&resourceType=3&citationFormat=2')
@@ -182,7 +209,7 @@ def test_current_response_stream_failure_closes_source_and_allows_next_candidate
             transfer=lambda *_: CandidateResult.pdf(transfer_complete=True)))
     assert stream.closed and seen == ['https://pubs.acs.org/broken', 'https://cdn.example.org/Body.PDF']
     assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P2', True)
-    assert result.diagnostics == (('P2', 'API02', 'source-failed'),)
+    assert ('P2', 'API02', 'partial-response') in result.diagnostics
 
 
 def test_transfer_consumer_read_error_remains_terminal_instead_of_source_fallback():
@@ -679,5 +706,5 @@ def test_pdf_current_response_retains_its_own_cloudflare_header():
     from allfold.pdf_responses import access_limited
     response = httpx.Response(200, headers={'content-type': 'text/html', 'cf-mitigated': 'challenge'},
         content=b'<html><p>Please wait</p></html>', request=httpx.Request('GET', 'https://publisher.example.org/pdf'))
-    current = PdfHttpClient.bounded_response(response)
+    current = PdfHttpClient.current_response(response)
     assert current.access == 'challenge' and access_limited(current)

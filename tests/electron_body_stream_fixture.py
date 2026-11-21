@@ -188,6 +188,9 @@ async def main():
             ('protected-cdn-inline',secure_origin+'/protected.pdf?Signature=inline',None),
             ('unrelated-ready',origin+'/unrelated-ready',None),
             ('pending-challenge',origin+'/pending-challenge',None),
+            ('cross-challenge',origin+'/cross-challenge',None),
+            ('post-only-challenge',origin+'/post-only-challenge',None),
+            ('long-public-url',origin+'/long?ticket='+'x'*9000+'%2FB',None),
             ('background-cloudflare',origin+'/background-cloudflare',None),
             ('oxford-cdn',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/body.pdf',None),
             ('oxford-private-dns',origin.replace('pdf.example.org','academic.oup.com')+'/nar/article-pdf/51/2/870/123/blocked.pdf',None),
@@ -246,13 +249,13 @@ async def main():
                 saved = repo.get(paper.id)
             if path.startswith('disk-'):assert result.status=='local_failure'
             if path in {'challenge', 'html.pdf'}:
-                reason = 'access-challenge' if path == 'challenge' else 'access-login'
+                reason = 'access-blocked' if path == 'challenge' else 'access-login'
                 assert result.status == 'failed' and result.candidate_result.kind == 'failed'
                 assert result.candidate_result.diagnostic == reason
                 assert saved.download.reason == reason
             if path=='background-cloudflare':assert not saved.download.reason.startswith('access-')
             if path=='pending-challenge':assert result.status=='cancelled'
-            success = path.startswith('protected-cdn') or path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress'}
+            success = path.startswith('protected-cdn') or path in {'redirect?Signature=A%2FB','encoded','chunked','cross','close-delimited','slow-writer','cross-referer','completed-late-signals','oxford-cdn','ieee-reader','octet','missing-mime','wrong-mime','split-prefix','cookie-progress','cross-challenge','long-public-url'}
             assert (result.status == 'completed') == success, (path,result)
             assert (saved.body is not None) == success
             if success:

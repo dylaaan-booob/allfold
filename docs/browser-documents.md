@@ -36,9 +36,17 @@ closure cannot revoke a received snapshot result. Closure, renderer exit or
 cancellation before a result still fails the pending operation. The original
 Workspace/Paper/attempt and field generations govern persistence.
 
-A missing delayed ScienceDirect toolbar can prompt another PDF-only snapshot
-within the existing task window. Previously captured content survives an optional
-read failure. This does not add a replay, recovery state or snapshot identity gate.
+A ScienceDirect toolbar that reports loading or still has an empty placeholder
+can prompt another PDF-only snapshot within the Download deadline. A ready
+toolbar with no qualified PDF leaves other sources eligible. Date/Abstract
+collection keeps its independent observation. Current valid URLs and fields
+can survive an invalid auxiliary URL or a partial durable projection.
+
+EBSCO results and record details return fixed data from the observed page.
+The result can survive subsequent page updates. Following a result still
+requires the currently available link on the same search. When that link
+changes before dispatch, the task observes the active search again. A native
+form remains owned by its original dispatch and terminal response.
 Access classification uses the current main response and live visible structure.
 Hidden CAPTCHA resources, optional sign-in fields in readable content and ordinary
 error words do not independently block access. These observations are separate

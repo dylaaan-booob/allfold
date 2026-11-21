@@ -1,5 +1,13 @@
 {
-  "status": "acceptance_complete_workspace_reset_verified",
+  "status": "targeted_followup_pending",
+  "targeted_followup": {
+    "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+    "starting_pr_head_sha": "733a23d75430a9d6ef8bccef87ffdb3648e8df51",
+    "status": "awaiting_targeted_live_pairs",
+    "pairs": [],
+    "workspace_reset": null
+  },
+  "historical_status": "acceptance_complete_workspace_reset_verified",
   "manifest": "pdf-pairing-manifest.json",
   "manifest_frozen_at_utc": "2026-11-16T18:40:53.823107+00:00",
   "production_code_sha": "d237ee7491c421aaa07aef289ed33db12618db6d",
@@ -13946,7 +13954,7 @@
       "description": "The external evidence sanitizer matched an institution abbreviation inside a newly generated opaque parent key. Restored the exact key from raw observer evidence and limited abbreviation redaction to a standalone word. Product result, file, click and completion intervals were unchanged; raw records were never changed."
     }
   ],
-  "pending_fix": {
+  "historical_candidate_priority_checkpoint": {
     "scope": "Shared candidate priority across all supported platforms; direct qualified entries before deferred Reader/form work and optional discovery APIs. Existing Atypon Host family shares direct DOI entry viaR039 instead of a SIAM-only P1 rule.",
     "local_checks": {
       "javascript_files": 63,

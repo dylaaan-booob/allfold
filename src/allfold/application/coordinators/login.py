@@ -43,6 +43,7 @@ class ServicePreparation:
     manually_confirmed: bool = False
     recovery_action: str | None = None
     recovery: list | None = None
+    pdf_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class PreparedService:
     page_id: int | None
     key: str
     manually_confirmed: bool = False
+    pdf_source: str | None = None
 
 
 class LoginCoordinator:
@@ -97,7 +99,7 @@ class LoginCoordinator:
             service = next((service for service in saved.services if service.id == service_id), None)
             result = self._service_result(saved, service) if service is not None else None
             if result is not None and result.status == 'Opened':
-                return PreparedService(result.page_id, self._keys[service_id], result.manually_confirmed)
+                return PreparedService(result.page_id, self._keys[service_id], result.manually_confirmed, result.pdf_source)
             return None
 
     def prepared_page(self, saved, service_id):
@@ -280,6 +282,7 @@ class LoginCoordinator:
         return replace(current, status=status, waiting_for_user=False, diagnostic=diagnostic,
             recovery_action=None, recovery=normalize_recovery(data.get('recovery')) or None,
             page_id=target if opened else None,
+            pdf_source='ebsco' if opened and evidence.get('pdf_source') == 'ebsco' else None,
             reason=('target_opened' if opened else diagnostic.get('code') if diagnostic else
                     'target_closed' if data.get('outcome') == 'Opened' and target_closed else
                     'unverified_official_page' if data.get('outcome') == 'Opened' else data.get('reason', 'failed')))

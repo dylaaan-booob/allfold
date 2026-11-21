@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, quote, urlencode, urlsplit
 import httpx
 
 from allfold.identifiers import valid_doi
-from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError, RESPONSE_SAMPLE_BYTES
+from allfold.pdf_discovery import CandidateResult, CurrentResponse, P2Resolution, PdfSourceReadError
 from allfold.pdf_facts import crossref_pdf_refresh_required
 from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, content_platform, needs_p2_query
 from allfold.providers.provider_http import (ProviderReadClient, ProviderFailure,
@@ -70,7 +70,7 @@ class PdfHttpClient:
     that capability a PDF is pending, never falsely reported as downloaded.
     """
     def __init__(self, *, guard, cancel_event, deadline, pacing_state=None,
-                 credentials=(), resolver=public_dns_addresses, max_redirects=6, **http_options):
+                 credentials=(), resolver=public_dns_addresses, **http_options):
         self._resolver = resolver
         self._credentials = dict(credentials)
         if not self._credentials.keys() <= {'ieee', 'elsevier', 'wiley_tdm', 'aps_harvest', 'springer_metadata'}:
@@ -78,7 +78,6 @@ class PdfHttpClient:
         self._credential = None
         self._reader = _FiniteReader('pdf-discovery', guard=guard, cancel_event=cancel_event,
             deadline=deadline, pacing_state=pacing_state, request_url_guard=self._before_request, **http_options)
-        self._reader.http.max_redirects = max_redirects
         self.closed = False
 
     @property
@@ -89,6 +88,10 @@ class PdfHttpClient:
         self._reader.check_parent_deadline()
         check_public_request(request, resolver=self._resolver)
         self._reader.check_parent_deadline()
+        chain = request.extensions['allfold_pdf_redirects']
+        if request.url in chain:
+            raise ProviderFailure('PDF HTTP redirect repeated a request', kind='protocol', code='redirect-loop')
+        chain.add(request.url)
         for name in _SECRET_HEADERS:
             request.headers.pop(name, None)
         if self._credential:
@@ -117,7 +120,8 @@ class PdfHttpClient:
         self._credential = credential
         try:
             result = self._reader.read(lambda: self._reader.http.build_request('GET', url,
-                headers={'User-Agent': 'allfold/0.1.0', **(headers or {})}), self._reader.operation(),
+                headers={'User-Agent': 'allfold/0.1.0', **(headers or {})},
+                extensions={'allfold_pdf_redirects': set()}), self._reader.operation(),
                 decode=decode, follow_redirects=True, stream=True)
             self._reader.check_parent_deadline()
             return result
@@ -128,20 +132,18 @@ class PdfHttpClient:
             self._credential = None
 
     @staticmethod
-    def bounded_response(response):
+    def current_response(response):
         body = bytearray()
         partial = False
         try:
             for chunk in response.iter_bytes():
-                available = RESPONSE_SAMPLE_BYTES - len(body)
-                body.extend(chunk[:available])
-                if len(chunk) > available:
-                    partial = True
-                    break
+                body.extend(chunk)
         except (httpx.TransportError, httpx.DecodingError):
             # Only this owned metadata/HTML read is a source failure. Exceptions
             # from the downstream PDF consumer remain outside this boundary.
-            raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
+            if not body:
+                raise ProviderFailure('PDF current response could not be read', kind='protocol', code='response-read-failed') from None
+            partial = True
         # HTTPX response.request.url is the real final request after redirects.
         return CurrentResponse(str(response.request.url), response.headers.get('content-type', ''),
             bytes(body), response.status_code, partial=partial,
@@ -174,19 +176,21 @@ class PdfHttpClient:
                 # Metadata discovery must not consume a possible PDF to sniff it.
                 # Only the actual transfer owner can identify and save its bytes.
                 return transfer(response, candidate) if transfer is not None else CandidateResult('pending')
-            return CandidateResult.current(self.bounded_response(response))
+            return CandidateResult.current(self.current_response(response))
         try:
             return self._read(candidate.url, decode, headers=headers, credential=credential)
         except ProviderHTTPError as error:
             return CandidateResult.failed({401: 'authorization', 403: 'authorization', 402: 'quota',
                 404: 'not-found'}.get(error.status, 'source-failed'))
-        except (ProviderFailure, UnsafePdfTarget):
-            return CandidateResult.failed('source-failed')
+        except ProviderFailure as error:
+            return CandidateResult.failed(error.code if error.code in {'redirect-loop', 'redirect-limit'} else 'transport-failed')
+        except UnsafePdfTarget:
+            return CandidateResult.failed('unsafe-target')
 
     def json(self, url, *, credential=None):
         def decode(response):
             from allfold.pdf_responses import json_sample
-            current = self.bounded_response(response)
+            current = self.current_response(response)
             try:
                 issues = []
                 result = json_sample(current.body, partial=current.partial, report=issues.append)
@@ -327,13 +331,13 @@ class PdfDiscoveryIO:
             except (ProviderFailure, UnsafePdfTarget) as error:
                 yield P2Resolution(inputs, diagnostic=_failure_code(error))
 
-    def document(self, target, *, prepared_source=None, prepared_record=None):
+    def document(self, target, *, prepared_source=None, prepared_record=None, prepared_viewer=None):
         if self.context is None or not (target.identity_doi or target.article_url):
             return None
         from allfold.application.document_metadata import read_document_pdf_clues, DocumentMetadataFailed
         try:
             return read_document_pdf_clues(self.context, confirmed_article_url=target.article_url,
-                prepared_source=prepared_source, prepared_record=prepared_record)
+                prepared_source=prepared_source, prepared_record=prepared_record, prepared_viewer=prepared_viewer)
         except DocumentMetadataFailed:
             raise PdfSourceReadError('Article PDF clues were not retrieved') from None
 

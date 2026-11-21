@@ -35,30 +35,23 @@ or a private Electron Response field. Terminal native events remove request-ID
 references; cancellation and failed dispatch remove unused marker registrations.
 No URL, selected tab, Service label or request ordering supplies ownership.
 
-Ordinary body streams may query an existing same-Session native Page whose
-origin matches the qualified article Referer for partitioned cookies. The fixed
-`Network.getCookies` query uses Chromium's native page isolation key, rather than
-merging all partitions returned by Electron's Cookie API. This supplies Cookie
-partition context only; it does not claim the Page or grant Document/action/output
-authority. Existing task and Service validators run before and after the query.
-No Page navigation or extra HTTP request is introduced. Missing context or an
-intentional no-referrer continuation retains the existing Session path.
+Ordinary body streams can use a qualified native Page in the same Session as
+their partition context. The Page can have a valid context while the HTTP
+request omits Referer. `Network.getCookies` queries the requested URL with that
+Page's native isolation key. Main checks the schemeful top-level site before
+and after the query. Same-site document changes and navigation within the Page
+can preserve the context.
 
-Only matching partitioned cookies supplement the browser's ordinary Cookie header
-at the controlled request's `beforeSendHeaders` stage. Additions remain within the
-initial origin and each cookie's path/expiry. Chromium selects the Secure/partition
-context; its inclusive read does not apply actual SameSite send restrictions.
-Strict/Lax/unspecified additions require the verified top-level security origin to
-match the request origin; cross-origin additions require explicit SameSite=None.
-This conservatively skips cross-origin same-site Strict/Lax cases without guessing
-a registrable domain. Ordinary Cookie order is retained, with known longer paths
-inserted first and ordinary-first ties. A changed ordinary same-name credential
-without unambiguous current path metadata is not displaced. Only unpartitioned
-ordinary descriptors rank these existing header pairs; filtered, opaque or nonce
-partition records cannot supply that rank. Native abort detaches its own pending query and
-waits for it to settle; an already attached client is left untouched. Cookie values
-remain within Main and are neither written back to the jar nor exported/logged.
-See the [versioned mechanism evidence](partitioned-cookie-research.md).
+Chromium determines the request's SameSite eligibility from the native
+initiator and destination. The controlled dispatch can supplement its ordinary
+Cookie header with eligible partitioned values, including same-site
+cross-subdomain cookies. Additions remain within the initial origin and their
+own domain, path and expiry. A cross-site request can receive only
+SameSite=None additions. Ordinary Cookie order is retained, with known longer
+paths inserted first and ordinary-first ties. A newer ordinary value with an
+unknown path keeps its position. Values stay in Main and are never written
+back to the jar or logged. See the original mechanism investigation for the
+pinned Chromium version. [Partitioned Cookie research](partitioned-cookie-research.md)
 
 Main-frame `cf-mitigated: challenge` evidence is associated with its native Page
 and request ID through this same event owner, then reset on a new navigation.

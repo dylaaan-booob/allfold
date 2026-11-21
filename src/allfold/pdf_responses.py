@@ -3,7 +3,7 @@ from dataclasses import replace
 from html.parser import HTMLParser
 import json
 import re
-from urllib.parse import parse_qs, unquote, urljoin, urlsplit
+from urllib.parse import parse_qs, unquote, urldefrag, urljoin, urlsplit
 
 from allfold.http_access import html_access
 from allfold.identifiers import valid_doi
@@ -13,6 +13,12 @@ from allfold.url_safety import normalize_public_http_url
 
 def json_sample(body, *, partial=False, report=lambda code: None):
     """Keep complete fields/array members from one bounded JSON observation."""
+    if not partial:
+        try:
+            return json.loads(body)
+        except (ValueError, RecursionError):
+            report('parse-failed')
+            return None
     text = body.decode('utf-8', errors='replace')
     decoder = json.JSONDecoder()
     missing = object()
@@ -70,7 +76,7 @@ def _hidden_markup(node):
         or re.search(r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\b', attrs.get('style') or '', re.I))
 
 
-class _SmallHTML(HTMLParser):
+class _ResponseHTML(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.nodes, self.stack = [], []
@@ -78,22 +84,24 @@ class _SmallHTML(HTMLParser):
         self.partial = False
 
     def handle_starttag(self, tag, attrs):
-        if len(self.nodes) >= 4096 or len(self.stack) >= 64:
-            self.partial = True
-            raise ValueError('Response parse budget exceeded')
-        unsafe_scope = any(name in {'class', 'id', 'data-doi', 'role', 'style', 'hidden', 'aria-hidden', 'title'}
-            and len(value or '') > 8192 for name, value in attrs)
-        if any(len(value or '') > 8192 for _, value in attrs):
-            self.partial = True
-            attrs = [(name, value) for name, value in attrs if len(value or '') <= 8192]
-        node = {'tag': tag, 'attrs': dict(attrs), 'text': '', 'parents': tuple(self.stack), 'unsafe_scope': unsafe_scope}
-        self.nodes.append(node)
+        parent = self.stack[-1] if self.stack else None
+        node = {'tag': tag, 'attrs': dict(attrs), 'text': [], 'parent': parent, 'closed': False}
+        if (tag in {'a', 'meta', 'form', 'iframe', 'frame', 'object', 'article', 'html', 'body'}
+                or tag == 'script' and node['attrs'].get('type') == 'application/json'
+                or parent is not None and parent['tag'] in {'body', 'html'}):
+            self.nodes.append(node)
         if tag not in {'meta', 'link', 'img', 'br', 'hr', 'input', 'embed', 'source', 'base', 'area', 'wbr', 'param', 'col', 'frame'}:
             self.stack.append(node)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if self.stack and self.stack[-1]['tag'] == tag:
+            self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
         for index in range(len(self.stack) - 1, -1, -1):
             if self.stack[index]['tag'] == tag:
+                self.stack[index]['closed'] = True
                 del self.stack[index:]
                 break
 
@@ -104,12 +112,19 @@ class _SmallHTML(HTMLParser):
             if data.strip() and not any(node['tag']=='iframe' for node in self.stack):
                 self.shell_text = True
         for node in self.stack:
-            if node['tag'] in {'a', 'script', 'title', 'iframe'}:
-                remaining = 131072 - len(node['text'])
-                node['text'] += data[:remaining]
-                self.partial |= len(data) > remaining
-                if len(data) > remaining:
-                    node['unsafe_scope'] = True
+            if node['tag'] in {'a', 'iframe'} or node['tag'] == 'script' and node['attrs'].get('type') == 'application/json':
+                node['text'].append(data)
+
+
+def _ancestors(node):
+    while node is not None:
+        yield node
+        node = node['parent']
+
+
+def _node_text(node):
+    return ''.join(node['text'])
+
 
 
 def _reader_kind(candidate, actual):
@@ -125,7 +140,7 @@ def _reader_kind(candidate, actual):
             and (not initial.get('arnumber') or query.get('arnumber') == initial.get('arnumber'))):
         return 'ieee'
     if (url.hostname in {'opg.optica.org', 'osapublishing.org', 'www.osapublishing.org'}
-            and url.path == '/viewmedia.cfm' and query.get('uri') and len(query['uri'][0]) <= 256
+            and re.fullmatch(r'/(?:[A-Za-z0-9_-]+/)?viewmedia\.cfm', url.path) and query.get('uri') and len(query['uri'][0]) <= 256
             and (not initial.get('uri') or query.get('uri') == initial.get('uri'))):
         return 'optica'
     if (url.hostname == 'journals.lww.com'
@@ -168,7 +183,7 @@ def access_limited(response):
         return True
     if 'cpe00001' not in text and '_incapsula_resource' not in text:
         return False
-    parser = _SmallHTML()
+    parser = _ResponseHTML()
     try:
         parser.feed(response.body.decode('utf-8', errors='replace'))
     except (ValueError, RecursionError):
@@ -180,7 +195,7 @@ def access_limited(response):
     root = next((node for node in parser.nodes if node['tag']=='body'), None)
     if root is None:
         root = next((node for node in parser.nodes if node['tag']=='html'), None)
-    children = [node for node in parser.nodes if (node['parents'][-1] if node['parents'] else None) is root
+    children = [node for node in parser.nodes if node['parent'] is root
         and node['tag']!='head']
     if not children or parser.shell_text or any(node['tag']!='iframe' for node in children):
         return False
@@ -188,13 +203,13 @@ def access_limited(response):
     for frame in children:
         linked = urlsplit(urljoin(response.url, frame['attrs'].get('src','')))
         if ((linked.scheme,linked.netloc)==(source.scheme,source.netloc) and linked.path=='/_Incapsula_Resource'
-                and re.match(r'\s*Request unsuccessful\.\s*Incapsula incident ID:',frame['text'],re.I)):
+                and re.match(r'\s*Request unsuccessful\.\s*Incapsula incident ID:',_node_text(frame),re.I)):
             return True
     return False
 
 
 def _safe_next(candidate, base, value, **extra):
-    if not isinstance(value, str) or not value or len(value) > 8192:
+    if not isinstance(value, str) or not value:
         return None
     try:
         url = urljoin(base, value)
@@ -211,16 +226,18 @@ def _safe_next(candidate, base, value, **extra):
 def _excluded(node):
     return any(p['tag'] in {'nav', 'footer', 'aside'} or p['attrs'].get('role') in {'doc-bibliography', 'doc-endnotes'}
         or 'hidden' in p['attrs'] or p['attrs'].get('aria-hidden') == 'true'
-        or re.search(r'references|related|recommend|supplement', p['attrs'].get('id', '') + ' ' + p['attrs'].get('class', ''), re.I)
-        for p in (*node['parents'], node))
+        or _hidden_markup(p)
+        or re.search(r'references|related|recommend|supplement', ' '.join(p['attrs'].get(key, '') or ''
+            for key in ('id', 'class', 'title')), re.I)
+        for p in _ancestors(node))
 
 
 def _body_entry(node, base, doi, attribute='href'):
     attrs = node['attrs']
-    label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get(attribute, '')
+    label = _node_text(node) + ' ' + attrs.get('title', '') + ' ' + attrs.get(attribute, '')
     if _excluded(node) or re.search(r'supplement|supporting|appendix|whole issue|entire issue|issue pdf|other article', label, re.I):
         return False
-    for owner in (*node['parents'], node):
+    for owner in _ancestors(node):
         if 'data-doi' in owner['attrs'] and valid_doi(owner['attrs']['data-doi']) != doi:
             return False
     linked = urlsplit(urljoin(base, attrs.get(attribute, '')))
@@ -250,8 +267,16 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
     content = response.content_type.partition(';')[0].strip().lower()
     text = response.body.decode('utf-8', errors='replace')
     actual = urlsplit(response.url)
+    if candidate.rule_id == 'R073' and candidate.field == 'ebsco_download_link':
+        # This was a link from the verified record's PDF field. A JSON
+        # indirection needs its actual URL field, regardless of Content-Type.
+        if not text.lstrip().startswith('{'):
+            return ()
+        value = json_sample(response.body, partial=response.partial, report=report)
+        item = _safe_next(candidate, response.url, value.get('url')) if isinstance(value, dict) else None
+        return (item,) if item else ()
     if (candidate.rule_id == 'API06' and actual.hostname == 'api.elsevier.com'
-            and actual.path.startswith('/content/article/') and content in {'application/json', 'application/vnd.elsevier.article+json'}):
+            and actual.path.startswith('/content/article/') and text.lstrip().startswith('{')):
         try:
             data = json_sample(response.body, partial=response.partial, report=report).get('full-text-retrieval-response', {}).get('coredata', {})
             if valid_doi(data.get('prism:doi')) != candidate.target.identity_doi or not candidate.target.identity_doi:
@@ -279,18 +304,26 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         return ()
     if content not in {'text/html', 'application/xhtml+xml'} and not text.lstrip().startswith('<'):
         return ()
-    parser = _SmallHTML()
+    parser = _ResponseHTML()
     try:
         parser.feed(text)
     except (ValueError, RecursionError):
         parser.partial = True
     if parser.partial:
         report('partial-response')
-    nodes = [node for node in parser.nodes if not any(owner.get('unsafe_scope') for owner in (*node['parents'], node))]
+    nodes = parser.nodes
+    # A main-record conflict overrides even an already qualified Reader route.
+    dois = {valid_doi(node['attrs'].get('content')) for node in nodes
+        if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower()
+        in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and any(p['tag'] == 'head' for p in _ancestors(node['parent']))}
+    dois.discard(None)
+    wanted = candidate.target.identity_doi
+    if wanted and dois and dois != {wanted}:
+        return ()
     kind = _reader_kind(candidate, response.url)
     values = []
     def add(value, **extra):
-        item = _safe_next(candidate, response.url, value, **extra)
+        item = _safe_next(candidate, response.url, value, article_verified=True, **extra)
         if item and all(item.url != old.url for old in values):
             values.append(item)
     if kind:
@@ -302,19 +335,19 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
                 if match:
                     add(match[1].strip())
             if kind == 'sciencedirect':
-                if tag == 'a' and any(p['attrs'].get('id') == 'redirect-message' for p in node['parents']):
+                if tag == 'a' and any(p['attrs'].get('id') == 'redirect-message' for p in _ancestors(node['parent'])):
                     add(attrs.get('href'))
-                if tag == 'object' and node['parents'] and 'PdfEmbed' in node['parents'][-1]['attrs'].get('class', '').split():
+                if tag == 'object' and _ancestors(node['parent']) and 'PdfEmbed' in node['parent']['attrs'].get('class', '').split():
                     add(attrs.get('data'))
             if kind == 'ieee' and tag in {'frame', 'iframe'}:
                 add(attrs.get('src'))
             if kind == 'optica' and tag == 'frame' and any(
-                    (old['parents'][-1] if old['parents'] else None) is (node['parents'][-1] if node['parents'] else None)
+                    old['parent'] is node['parent']
                     for old in frames[:frames.index(node)]):
                 add(attrs.get('src'))
             if kind in {'sciencedirect', 'lww'} and tag == 'script' and attrs.get('type') == 'application/json':
                 try:
-                    data = json.loads(node['text'])
+                    data = json.loads(_node_text(node))
                     # Fixed data carriers only; no regex over arbitrary scripts,
                     # evaluation, graph traversal or recursive URL-key search.
                     value = (data.get('article', {}).get('pdfDownload', {}).get('urlMetadata')
@@ -326,17 +359,17 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
         if kind == 'optica':
             add(next(iter(parse_qs(actual.query).get('gotourl', ())), None))
         return tuple(values)
-    # HTTP article HTML is eligible only with exact scholarly DOI evidence in
-    # this response. Native article reads retain their stronger live binding.
-    # Unsafe candidate scopes cannot erase already observed conflicting identity.
-    dois = {valid_doi(node['attrs'].get('content')) for node in parser.nodes
-        if node['tag'] == 'meta' and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower()
-        in {'citation_doi', 'prism.doi', 'dc.identifier.doi'} and any(p['tag'] == 'head' for p in node['parents'])}
-    if dois != {candidate.target.identity_doi} or not candidate.target.identity_doi:
+    # An observed article relationship can carry through later HTML.
+    actual_doi = re.search(r'/doi/(?:abs/|full/|pdf/|epdf/|pdfplus/)?(10\.[0-9]{4,9}/.+)$', unquote(actual.path))
+    article = candidate.target.article_url
+    established = (candidate.article_verified
+        or bool(article and urldefrag(article)[0] == urldefrag(response.url)[0])
+        or bool(actual_doi and valid_doi(actual_doi[1]) == wanted and wanted))
+    if not (wanted and dois or established):
         return ()
     for name in ('citation_pdf_url', 'fulltext_pdf_url'):
         for node in nodes:
-            if (node['tag'] == 'meta' and any(p['tag'] == 'head' for p in node['parents'])
+            if (node['tag'] == 'meta' and any(p['tag'] == 'head' for p in _ancestors(node['parent']))
                     and (node['attrs'].get('name') or node['attrs'].get('property', '')).lower() == name):
                 add(node['attrs'].get('content'))
     host = actual.hostname or ''
@@ -346,7 +379,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
     atypon = host in ATYPON_HOSTS
     for node in nodes:
         tag, attrs = node['tag'], node['attrs']
-        label = node['text'] + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')
+        label = _node_text(node) + ' ' + attrs.get('title', '') + ' ' + attrs.get('href', '')
         if not _body_entry(node, response.url, candidate.target.identity_doi,
                 'data-article-url' if host == 'jamanetwork.com' and attrs.get('id') == 'pdf-link' else 'action' if tag == 'form' else 'href'):
             continue
@@ -358,7 +391,7 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
                 or host in {'emerald.com', 'www.emerald.com'} and 'intent_pdf_link' in classes
                 or host in {'opg.optica.org', 'osapublishing.org', 'www.osapublishing.org'} and attrs.get('id') == 'link-pdf'
                 or (host == 'elifesciences.org' or host.endswith('.elifesciences.org'))
-                    and any('article-download-list' in p['attrs'].get('class', '').split() for p in node['parents'])
+                    and any('article-download-list' in p['attrs'].get('class', '').split() for p in _ancestors(node['parent']))
                     and re.search(r'\bpdf\b', label, re.I))
             if selected:
                 add(attrs.get('href'))
@@ -371,22 +404,24 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
                     add(attrs['href'])
         if (tag == 'form' and (host == 'microbiologyresearch.org' or host.endswith('.microbiologyresearch.org'))
                 and 'ft-download-content__form--pdf' in classes
-                and any('download-pdf' in p['attrs'].get('class', '').split() for p in node['parents'])):
+                and any('download-pdf' in p['attrs'].get('class', '').split() for p in _ancestors(node['parent']))):
             add(attrs.get('action'), action='refresh_form')
     # Only one unambiguous main-article PDF entrance. Other article/issue and
     # supplement links are excluded before deciding ambiguity.
     generic = []
     for node in nodes:
-        if node['tag'] != 'a' or not _body_entry(node, response.url, candidate.target.identity_doi) or not any(p['tag'] in {'article', 'main'} for p in node['parents']):
+        if node['tag'] != 'a' or not _body_entry(node, response.url, candidate.target.identity_doi) or not any(p['tag'] in {'article', 'main'} for p in _ancestors(node['parent'])):
             continue
         attrs = node['attrs']
-        label = (node['text'] + ' ' + attrs.get('title', '')).strip()
+        label = (_node_text(node) + ' ' + attrs.get('title', '')).strip()
         if re.search(r'supplement|supporting|appendix|whole issue|entire issue|other article', label + ' ' + attrs.get('href', ''), re.I):
+            continue
+        if (response.partial or parser.partial) and not node['closed'] and attrs.get('type') != 'application/pdf':
             continue
         if re.fullmatch(r'(?:download\s+)?(?:(?:full[ -]?text|article)\s+)?pdf(?:\s+download)?', label, re.I) or attrs.get('type') == 'application/pdf':
             item = _safe_next(candidate, response.url, attrs.get('href'))
             if item and item.url not in generic:
                 generic.append(item.url)
-    if len(generic) == 1 and not (response.partial or parser.partial):
+    if len(generic) == 1:
         add(generic[0])
     return tuple(values)

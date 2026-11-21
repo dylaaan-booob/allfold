@@ -1,4 +1,12 @@
 {
+  "targeted_followup_schedule": [
+    {"sample": "F23", "doi": "10.1287/moor.2024.0601", "order": ["allfold", "zotero"], "purpose": "Original licensed body and profile reuse"},
+    {"sample": "F24", "doi": "10.1287/opre.2025.1741", "order": ["zotero", "allfold"], "purpose": "Publisher access and EBSCO licensed version"},
+    {"sample": "EBSCO follow-up", "doi": null, "order": ["allfold", "zotero"], "purpose": "Select an untested record in an accessible journal before opening a PDF"},
+    {"sample": "F26", "doi": "10.1016/j.neunet.2026.109263", "order": ["zotero", "allfold"], "purpose": "Ordinary GET and Reader/CDN save"},
+    {"sample": "F27", "doi": "10.1016/j.patcog.2026.114572", "order": ["allfold", "zotero"], "purpose": "Reader/CDN and original association"},
+    {"sample": "F08", "doi": "10.1093/biomet/asag050", "order": ["zotero", "allfold"], "purpose": "Original Oxford access control"}
+  ],
   "status": "frozen_before_formal_timing",
   "proposed_at_utc": "2026-11-16T18:32:05.397203+00:00",
   "seed": null,

@@ -48,7 +48,7 @@ def ephemeral_pdf_url(value: str) -> bool:
 
 def stable_discovery_url(value: str | None) -> str | None:
     """Keep an already public stable URL verbatim; never manufacture an unsigned URL."""
-    if not isinstance(value, str) or len(value) > 8192:
+    if not isinstance(value, str):
         return None
     try:
         normalized = normalize_public_http_url(value)
@@ -225,6 +225,8 @@ def merge_discovery_facts(existing, incoming):
 
 def bounded_discovery_facts(**values):
     groups = {name: values.pop(name, ()) for name in ('candidates', 'identifiers', 'links')}
+    if len((values.get('landing_url') or '').encode('utf-8')) > _MAX_SNAPSHOT_BYTES - 1024:
+        values.update(landing_url=None, status='partial', diagnostics=_ordered(values.get('diagnostics', ()), ('overflow',)))
     snapshot = PdfDiscoveryFacts(**values)
     overflow = False
     for name, items in groups.items():

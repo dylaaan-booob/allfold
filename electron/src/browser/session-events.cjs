@@ -21,7 +21,7 @@ const cookieName=pair=>pair.split('=',1)[0];
 class SharedSessionEvents {
   constructor(session,timing) {
     this.session=session;this.cooldown=new BrowserCooldown(timing);this.handlers=new Map();this.closed=false;
-    this.requests=new Map();this.fetches=new Map();
+    this.requests=new Map();this.fetches=new Map();this.pageRequestGuards=new Map();
     this.cookieContextSecret=randomBytes(32);
     this.downloads=new Set();this.downloadGuards=new Map();this.items=new Set();this.taskPages=new Set();
     this.installed=[];
@@ -29,11 +29,21 @@ class SharedSessionEvents {
       ['onBeforeSendHeaders','beforeSendHeaders',true],['onHeadersReceived','headersReceived',true],
       ['onBeforeRedirect','beforeRedirect'],['onCompleted','completed'],['onErrorOccurred','errorOccurred']]) {
       if(typeof session.webRequest?.[native]!=='function')continue;
-      session.webRequest[native](FILTER,(details,finish)=>this.dispatch(event,details,callback?finish:undefined));
+      session.webRequest[native](FILTER,(details,finish)=>{
+        const guard=event==='beforeRequest' && this.pageRequestGuards.get(details.webContentsId);
+        if(guard)void Promise.resolve().then(()=>guard(details)).then(
+          ()=>this.dispatch(event,details,finish),()=>finish({cancel:true}));
+        else this.dispatch(event,details,callback?finish:undefined);
+      });
       this.installed.push(native);
     }
     this.downloadListener=(event,item,contents,frame)=>this.routeDownload(event,item,contents,frame);
     session.on?.('will-download',this.downloadListener);
+  }
+  guardPageRequests(contents,validate) {
+    const id=contents.id;
+    this.pageRequestGuards.set(id,validate);
+    contents.once('destroyed',()=>this.pageRequestGuards.delete(id));
   }
   subscribe(event,handler,{signal}={}) {
     if(this.closed)throw Error('Browser Session is closed');
@@ -65,6 +75,8 @@ class SharedSessionEvents {
           state.requestHeaders=withPartitionCookies(state.requestHeaders,details.url,
             request.controlled.initialURL,request.controlled.partitionCookies);
         const controlled=request?.controlled;
+        if(controlled?.partitionOrigin)for(const name of Object.keys(state.requestHeaders))
+          if(name.toLowerCase()==='origin')delete state.requestHeaders[name];
         if(controlled?.navigationCookies && controlled.initialURL===details.url && details.method==='GET') {
           // This was the Chromium-selected header for this exact top-level
           // GET in the same Session. Consume it before any redirect can reuse it.
@@ -154,12 +166,19 @@ class SharedSessionEvents {
     const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,navigationCookies,
       validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
+    // Electron's URLLoader uses Origin as its native initiator. Chromium
+    // computes Sec-Fetch-Site from it using the real registry rules. Remove
+    // the internal input in beforeSendHeaders, preserving HTTP Referer policy.
+    if(context.partitionCookies?.cookies.length && context.partitionCookies.origin && !headers.has('Origin')) {
+      headers.set('Origin',context.partitionCookies.origin);controlled.partitionOrigin=true;
+    }
     // The deadline belongs to this physical request, including its response body.
     const bounded=Number.isFinite(deadline)?AbortSignal.timeout(Math.max(1,Math.ceil(deadline-Date.now()))):null;
     const signals=[signal,bounded].filter(Boolean);
     const requestSignal=signals.length?AbortSignal.any(signals):undefined;
     try {
-      const response=await this.session.fetch(url,{...options,headers,signal:requestSignal});
+      const response=await this.session.fetch(url,{...options,headers,
+        ...(controlled.partitionOrigin && {mode:'no-cors'}),signal:requestSignal});
       try{check();}catch(error) {
         try{await response.body?.cancel();}catch(_){}
         throw error;
@@ -306,6 +325,7 @@ class SharedSessionEvents {
   }
   dispose() {
     if(this.closed)return;this.closed=true;
+    this.pageRequestGuards.clear();
     for(const name of this.installed)this.session.webRequest[name](null);
     this.session.removeListener?.('will-download',this.downloadListener);
     for(const guard of this.downloadGuards.values())guard.remove();

@@ -211,7 +211,7 @@ def application_host(tmp_path, *, metadata=None):
     return host,workspace,paper,bridge,candidate
 
 
-def prepared_application_host(tmp_path, *, metadata=None, service_updates=None):
+def prepared_application_host(tmp_path, *, metadata=None, service_updates=None, pdf_source=None):
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.login import LoginCoordinator
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
@@ -224,11 +224,54 @@ def prepared_application_host(tmp_path, *, metadata=None, service_updates=None):
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
     login.start(host.config_path, manual_service_id=service.id)
-    native.operations.get(timeout=2)[2].set_result(opened(17))
+    result = opened(17)
+    if pdf_source:
+        result['evidence']['pdf_source'] = pdf_source
+    native.operations.get(timeout=2)[2].set_result(result)
     login.join()
     host.login, host.browser_lock = login, lock
     authority = host._capture_authority(service.id, ())
     return host, workspace, paper, bridge, replace(candidate, access=authority)
+
+
+@pytest.mark.parametrize('context_changed', [True, False])
+def test_download_revisits_a_challenge_only_when_the_request_context_advances(tmp_path, context_changed):
+    from concurrent.futures import Future
+    from pathlib import Path
+    from allfold.application.body_downloads import submit_body_download
+    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+
+    def execute(action, data, *_args, **_kwargs):
+        assert action == 'stream_paper_body'
+        bridge.calls.append((action, data))
+        result = Future()
+        calls = len(bridge.calls)
+        if calls < 3:
+            advanced = calls == 2 and context_changed
+            result.set_result(dict(outcome='response', kind='response', response=dict(url=candidate.url,
+                content_type='text/html', body='Verification', status=403, access='challenge',
+                context_changed=advanced, context_key=('b' if advanced else 'a') * 64)))
+        else:
+            body, output = b'%PDF-completed-after-access', data['output']
+            (Path(data['workspace_root']) / output['temporary']).write_bytes(body)
+            result.set_result(dict(outcome='stream_complete', kind='pdf', pdf_type=True,
+                transfer_complete=True, size_bytes=len(body), output_file=output['file'], final_url=candidate.url))
+        return result
+
+    bridge.execute = execute
+    try:
+        task = submit_body_download(host, paper, candidates=(candidate,))
+        result = task.future.result(3)
+        if context_changed:
+            assert result.status == 'completed'
+            assert (workspace / result.paper.body.relative_path).read_bytes() == b'%PDF-completed-after-access'
+        else:
+            assert result.status == 'failed'
+        assert [data.get('recover_access', False) for _, data in bridge.calls] == (
+            [False, True, True] if context_changed else [False, True])
+    finally:
+        host.shutdown()
+        host.join()
 
 
 @pytest.mark.parametrize(('institutional_referer', 'ready', 'direct'), [
@@ -264,7 +307,7 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
     metadata = PaperMetadata(title='Same title', publication_type='journal', journal_issns=(A,),
         discovery_facts=facts)
     host, workspace, paper, bridge, bound = prepared_application_host(tmp_path, metadata=metadata,
-        service_updates={'name': 'EBSCO', 'access_url': 'https://search.ebscohost.com/'})
+        service_updates={'name': 'Licensed Library', 'access_url': 'https://proxy.example.org/library'}, pdf_source='ebsco')
 
     def execute(action, data, progress=None, **kwargs):
         bridge.calls.append((action, data))

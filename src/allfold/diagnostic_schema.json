@@ -114,7 +114,11 @@
         "service_cooldown_ended",
         "page_access",
         "pdf_source_result",
-        "ebsco_direct_pdf_entry"
+        "ebsco_direct_pdf_entry",
+        "ebsco_profile_ready",
+        "ebsco_profile_reused",
+        "ebsco_record_ready",
+        "ebsco_viewer_reused"
       ]
     },
     "action": {
@@ -704,6 +708,14 @@
         "service-unprepared",
         "service-invalidated",
         "redirect-scope",
+        "redirect-loop",
+        "redirect-limit",
+        "unsafe-target",
+        "unsafe-referer",
+        "dns-failed",
+        "page-access-failed",
+        "transport-failed",
+        "missing-native-response",
         "response-loop",
         "response-state-budget",
         "condition-unavailable",

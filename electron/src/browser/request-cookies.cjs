@@ -6,27 +6,20 @@ const pending=new WeakMap();
 // Electron cookies.get includes all partitions but omits their keys. Never merge
 // that unqualified list or move cookies between Sessions. This query reads no
 // document content, navigates no page, and keeps values within Main.
-async function readPartitionCookies(browser,url,sourceURL,{signal,validate,page}={}) {
-  if(!sourceURL)return null; // An explicit no-referrer continuation supplies no guessed page context.
-  let source;
-  try{source=new URL(sourceURL);if(!['http:','https:'].includes(source.protocol))return null;}catch(_){return null;}
+async function readPartitionCookies(browser,url,sourceURL,{signal,validate=()=>{},page}={}) {
+  if(!sourceURL && !page)return null;
+  const source=URL.canParse(sourceURL)?new URL(sourceURL).origin:null;
+  const current=tab=>{const contents=tab.view.webContents;
+    return browser.tabs.get(tab.id)===tab && !tab.closing && contents.session===browser.partition
+      && !contents.isDestroyed() && !contents.isCrashed();};
   const tab=(page?[page]:[...(browser.tabs?.values() || [])]).find(tab=>{
-    const contents=tab.view.webContents;
-    try{return !tab.closing && contents.session===browser.partition && !contents.isDestroyed() && !contents.isCrashed()
-      && !contents.isLoadingMainFrame() && new URL(contents.getURL()).origin===source.origin;}catch(_){return false;}
+    try{return current(tab) && (!source || tab.view.webContents.mainFrame.origin===source);}catch(_){return false;}
   });
   if(!tab)return null;
   const contents=tab.view.webContents,prior=pending.get(contents) || Promise.resolve();
   const run=prior.catch(()=>{}).then(async()=>{
     validate();
-    if(browser.tabs.get(tab.id)!==tab || tab.closing || contents.isDestroyed() || contents.isCrashed()
-      || contents.session!==browser.partition || contents.isLoadingMainFrame())return null;
-    const location=contents.getURL(),frame=contents.mainFrame,generation=tab.documentGeneration;
-    if(new URL(location).origin!==source.origin || frame.origin!==source.origin)return null;
-    const current=()=>browser.tabs.get(tab.id)===tab && !tab.closing && !contents.isDestroyed() && !contents.isCrashed()
-      && contents.session===browser.partition && !contents.isLoadingMainFrame() && contents.getURL()===location
-      && tab.documentGeneration===generation && contents.mainFrame.processId===frame.processId
-      && contents.mainFrame.frameToken===frame.frameToken && contents.mainFrame.origin===source.origin;
+    if(!current(tab))return null;
     const client=contents.debugger;
     if(!client || client.isAttached())return null;
     let attached=false;
@@ -36,14 +29,25 @@ async function readPartitionCookies(browser,url,sourceURL,{signal,validate,page}
     try {
       client.attach('1.3');attached=true;signal?.addEventListener('abort',abort,{once:true});
       validate();
+      // Chrome supplies the registrable domain for the committed root even
+      // when its URL or renderer changes during the query.
+      const site=async()=>{
+        const {frameTree:{frame}}=await client.sendCommand('Page.getFrameTree');
+        const origin=new URL(frame.securityOrigin);
+        if(!['http:','https:'].includes(origin.protocol) || contents.mainFrame.origin!==origin.origin)return null;
+        return {origin:origin.origin,key:`${origin.protocol}//${frame.domainAndRegistry || origin.hostname}`};
+      };
+      const before=await site();
+      if(!before || source && before.origin!==source || !current(tab))return null;
       const result=await client.sendCommand('Network.getCookies',{urls:[url]});
       validate();
-      if(!current() || !Array.isArray(result.cookies))return null;
-      // The query is inclusive of SameSite cookies. Only the actual same-origin
-      // top-level document proves Strict/Lax eligibility without a site guess.
-      const sameOrigin=new URL(url).origin===source.origin;
-      return {cookies:result.cookies.filter(cookie=>cookie.partitionKey && !cookie.partitionKeyOpaque
-        && (sameOrigin || cookie.sameSite==='None')),
+      if(!current(tab) || !Array.isArray(result.cookies))return null;
+      const after=await site();validate();
+      if(!current(tab) || after?.key!==before.key)return null;
+      // Network.getCookies is inclusive of SameSite. Dispatch applies the
+      // actual Chromium request's site relation before sending these cookies.
+      return {origin:before.origin,cookies:result.cookies.filter(cookie=>!cookie.partitionKeyOpaque
+        && cookie.partitionKey?.topLevelSite===before.key),
         metadata:result.cookies.filter(cookie=>!cookie.partitionKey && !Object.hasOwn(cookie,'partitionKeyOpaque'))};
     }catch(_) {validate();return null;}
     finally {
@@ -79,7 +83,12 @@ function withPartitionCookies(headers,url,initialURL,context) {
   // The wire header omits paths. Multiple ordinary descriptors for an identical
   // pair do not prove which one was sent; leave that current credential intact.
   for(const [pair,path] of paths)if(path===null)paths.delete(pair);
+  const contextOrigin=context.origin && new URL(context.origin);
+  const site=Object.entries(headers).find(([name])=>name.toLowerCase()==='sec-fetch-site')?.[1];
+  const sameSite=site==='same-site' || site==='same-origin'
+    || contextOrigin?.hostname===target.hostname && contextOrigin.protocol===target.protocol;
   const additions=context.cookies.filter(cookie=>cookie.partitionKey && !cookie.partitionKeyOpaque
+      && (sameSite || cookie.sameSite==='None')
       && typeof cookie.name==='string' && typeof cookie.value==='string'
       && !/[\s;=\r\n]/.test(cookie.name) && !/[;\r\n]/.test(cookie.value)
       && applies(cookie,target) && !present.has(cookie.name+'='+cookie.value))

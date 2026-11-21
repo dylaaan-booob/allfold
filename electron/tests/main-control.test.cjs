@@ -199,6 +199,18 @@ test('fixed extraction dispatch retains legal empty success after native owner c
   assert.equal(f.logs.find(event=>event.event==='task_finished').outcome,'retrieved');
 });
 
+test('recovery authority can arrive after five seconds within the parent operation',async t=>{
+  const {validateRecovery,settleRecoveryAuthority}=require('../src/workflows/recovery-authority.cjs');
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:1000});
+  const current={id:'fixture',action:'stream_paper_body',controller:new AbortController()};
+  let request;
+  const result=validateRecovery(current,value=>{request=value;},{deadline:10000});
+  t.mock.timers.tick(5100);
+  settleRecoveryAuthority(current,{check_id:request.check_id,data:{allowed:true}});
+  await result;
+  assert.equal(current.authority,null);
+});
+
 test('local body operations bypass Browser and remain Main-owned through actual shell settlement',async()=>{
   const f=fixture(),started=deferred(),settled=deferred();
   f.context.shell={};

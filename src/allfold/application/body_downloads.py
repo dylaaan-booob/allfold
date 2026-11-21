@@ -30,7 +30,6 @@ class _BodyRequest:
     service_id: str | None = None
     service_reason: str | None = None
     service_ids: tuple[str, ...] = ()
-    ebsco_assigned: bool = False
 
 
 @dataclass(frozen=True)
@@ -188,6 +187,8 @@ def _consume(reservation, repository, files, candidate, progress):
         parent_task_id=reservation.parent_task_id)
     if credential is not None:
         payload['pdf_credential'] = credential
+    if candidate.referer is None and candidate.target.article_url:
+        payload['cookie_source'] = candidate.target.article_url
     if candidate.recover_access:
         payload['recover_access'] = True
     with registry.paper_gate():
@@ -231,8 +232,11 @@ def _consume(reservation, repository, files, candidate, progress):
             diagnostic='access-'+access if access in {'challenge','login','authorization'} else None)
     else:
         reason = 'file-io' if kind == 'local_failure' else None
-        if kind == 'failed' and value.get('diagnostic_code') == 'access-challenge':
-            reason = 'access-challenge'
+        if kind == 'failed':
+            from allfold.recovery_diagnostics import SCHEMA
+            diagnostic = value.get('diagnostic_code')
+            if diagnostic in SCHEMA['fields']['pdf_reason']['enum']:
+                reason = diagnostic
         result = CandidateResult(kind if kind in {'pending','failed','local_failure','cancelled','stale','expired'} else 'failed',
             diagnostic=reason)
     # Never start the next candidate until this writer/output actually settled.
@@ -295,7 +299,9 @@ class _BodyDiscoveryIO:
         self.io = PdfDiscoveryIO(None, document_context=self.context)
         self.resources = ExitStack()
         self.oce_authority = None
-        self.challenge_endpoints = set()
+        self.recovered_challenges = set()
+        self.ebsco_record = None
+        self.ebsco_viewer_url = None
         self.openalex_available = reservation.body_request.candidates is None
 
     def _http(self):
@@ -335,32 +341,35 @@ class _BodyDiscoveryIO:
 
     def ebsco_candidates(self, target):
         request = self.reservation.body_request
-        if not request.ebsco_assigned or not target.identity_doi or target.content_type != 'journal-article':
+        if not request.service_id or not target.identity_doi or target.content_type != 'journal-article':
             return ()
         from allfold.application.task_authority import ServiceAccessUnavailable
         try:
             authority = self.reservation.registry._authority(request.service_id, ())
-        except ServiceAccessUnavailable as error:
-            raise PdfSourceReadError('EBSCO access is unavailable', diagnostic=error.diagnostic,
-                service_id=request.service_id) from None
+        except ServiceAccessUnavailable:
+            return ()
         except (OSError, ValueError, RuntimeError):
             raise PdfSourceReadError('EBSCO access changed', diagnostic='service-invalidated',
                 service_id=request.service_id) from None
-        if authority.native_access().target_page_id is None:
-            raise PdfSourceReadError('EBSCO needs a prepared search profile', diagnostic='service-unprepared',
-                service_id=request.service_id)
+        binding = authority.native_access()
+        if binding.pdf_source != 'ebsco' or binding.target_page_id is None:
+            return ()
         return self._read_ebsco(target, authority, 'ebsco')
 
     def ebsco_viewer(self, candidate):
-        record = urlsplit(candidate.referer or '')._replace(query='', fragment='').geturl()
-        return self._read_ebsco(candidate.target, candidate.access, 'ebsco-viewer', prepared_record=record)
+        return self._read_ebsco(candidate.target, candidate.access, 'ebsco-viewer',
+            prepared_record=self.ebsco_record, prepared_viewer=self.ebsco_viewer_url)
 
-    def _read_ebsco(self, target, authority, mode, *, prepared_record=None):
+    def _read_ebsco(self, target, authority, mode, *, prepared_record=None, prepared_viewer=None):
         parsed = self._read(lambda operation, io: io.document(target, prepared_source=mode,
-            prepared_record=prepared_record), authority)
+            prepared_record=prepared_record, prepared_viewer=prepared_viewer), authority)
         if parsed is None or not parsed.current_candidates:
             raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
                 service_id=authority.service_id)
+        if mode == 'ebsco':
+            self.ebsco_record = next((item.referer for item in parsed.current_candidates
+                if item.field == 'ebsco_download_link'), None)
+            self.ebsco_viewer_url = parsed.ebsco_viewer_url
         return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url,
                 referer=item.referer, field=item.field if mode == 'ebsco' else None, access=authority, referer_observed=True)
             for item in parsed.current_candidates
@@ -370,16 +379,15 @@ class _BodyDiscoveryIO:
         # The same live parser also handles a ScienceDirect article fallback.
         def read(operation, _io):
             parsed = _document_candidates(operation, self.repository, candidate, response)
-            if (parsed is not None or response.access != 'challenge' or candidate.action
-                    or candidate.credential or candidate.recover_access):
+            if (parsed is not None or response.access != 'challenge' or candidate.action or candidate.credential
+                    or candidate.recover_access and not response.context_changed and response.url == candidate.url):
                 return parsed
-            actual = urlsplit(response.url)
-            # Signed query variants of the same endpoint must not reopen an
-            # unchanged access barrier within this Download and Service scope.
-            endpoint = (actual.scheme, actual.netloc, actual.path, operation.service_id)
-            if endpoint in self.challenge_endpoints or reader_context(candidate, response.url):
+            actual, request, source = (urlsplit(value or '')._replace(fragment='').geturl()
+                                       for value in (response.url, candidate.url, candidate.referer))
+            challenge = (actual, request, source, operation.service_id, response.status, response.context_key)
+            if challenge in self.recovered_challenges or reader_context(candidate, response.url):
                 return None
-            self.challenge_endpoints.add(endpoint)
+            self.recovered_challenges.add(challenge)
             # Recovery and transfer share one native owner so the actual Page
             # context is available to the succeeding Session GET.
             return SimpleNamespace(current_candidates=(replace(candidate, url=response.url,
@@ -620,8 +628,7 @@ def _discard(reservation, reason):
 
 
 def submit_body_download(host, paper, *, candidates=None, service_id=None, deadline=None, progress=None,
-                         target=None, facts=(), http_options=None, provider_authority=None, service_reason=None, service_ids=(),
-                         ebsco_assigned=False):
+                         target=None, facts=(), http_options=None, provider_authority=None, service_reason=None, service_ids=()):
     """Trusted composition entry; public callers supply identities through the service."""
     registry = host.current()
     if registry.workspace_id != paper.workspace_id:
@@ -639,8 +646,8 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
     direct = tuple((item.namespace, item.value) for item in paper.identities)
     if candidates is not None:
         candidates = tuple(candidates)
-        if not candidates or sum(len(item.url.encode()) for item in candidates) > 1048576:
-            raise ValueError('Confirmed candidates must fit the task memory budget')
+        if not candidates:
+            raise ValueError('Confirmed candidates are required')
         target = candidates[0].target
         for candidate in candidates:
             if (not isinstance(candidate, PdfCandidate) or candidate.target != target
@@ -659,7 +666,7 @@ def submit_body_download(host, paper, *, candidates=None, service_id=None, deadl
         body_request=_BodyRequest(primary, candidates, progress, target, tuple(facts), http_options, direct, provider_authority,
             paper.download.token.attempt if paper.download else 0, service_id,
             service_reason or ('service-unassigned' if service_id is None else None),
-            tuple(service_ids or ((service_id,) if service_id else ())), ebsco_assigned))
+            tuple(service_ids or ((service_id,) if service_id else ()))))
     if isinstance(reservation, PaperRecord):
         return BodyResult('completed', reservation)
     with registry.paper_gate():
@@ -760,10 +767,7 @@ class BodyDownloadService:
         service_id, assignment = paper_service_assignment(paper.metadata, journals)
         related = tuple(sorted({journal.access_service_id for journal in journals_for_paper(paper.metadata, journals)
             if journal.access_service_id}))
-        ebsco = any(service.id == service_id and urlsplit(service.access_url).hostname in {
-            'search.ebscohost.com', 'research.ebsco.com', 'discovery.ebsco.com'}
-            for service in saved.access_services)
-        return service_id, {'ambiguous': 'service-ambiguous', 'unassigned': 'service-unassigned'}.get(assignment), related, ebsco
+        return service_id, {'ambiguous': 'service-ambiguous', 'unassigned': 'service-unassigned'}.get(assignment), related
 
     def projection(self, paper, *, cleanup_pending=False):
         registry = self.host.peek()
@@ -842,7 +846,7 @@ class BodyDownloadService:
                     raise StaleWriteError('Original Download qualification changed')
         if local:
             return self.local_body(paper, action='open') if self.local_body is not None else BodyResult('local-body', paper)
-        service_id, service_reason, service_ids, ebsco = self._service(paper)
+        service_id, service_reason, service_ids = self._service(paper)
         # Keep the original optional Provider epoch without making an earlier
         # successful P1/native path depend on that unused credential.
         try:
@@ -852,7 +856,7 @@ class BodyDownloadService:
         target, facts = saved_pdf_target(paper)
         return submit_body_download(self.host, paper, target=target, facts=facts, service_id=service_id,
             service_reason=service_reason, service_ids=service_ids, provider_authority=provider_authority,
-            http_options=self.http_options, ebsco_assigned=ebsco)
+            http_options=self.http_options)
 
     def cancel(self, paper_id, workspace_id, task_id, attempt):
         from uuid import UUID

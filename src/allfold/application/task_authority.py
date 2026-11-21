@@ -22,6 +22,7 @@ class NativeAccessBinding:
     preparation_key: str | None = None
     target_page_id: int | None = None
     manually_confirmed: bool = False
+    pdf_source: str | None = None
 
     def payload(self):
         if self.service_id is None:
@@ -76,4 +77,4 @@ class TaskAuthority:
         if self.service_id is None:
             return NativeAccessBinding()
         return NativeAccessBinding(tuple(self._saved.scope.items()), self.service_id,
-            self._prepared.key, self._prepared.page_id, self._prepared.manually_confirmed)
+            self._prepared.key, self._prepared.page_id, self._prepared.manually_confirmed, self._prepared.pdf_source)

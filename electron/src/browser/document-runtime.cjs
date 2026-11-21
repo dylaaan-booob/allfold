@@ -12,12 +12,12 @@ const doiCasefold=Object.freeze(require('./doi-casefold.json'));
 function boundedResult(action,value) {
   const invalid=()=>{throw new BrowserFailure('navigation','page_probe_unconfirmed');};
   if(!value || typeof value!=='object')invalid();
-  if(action==='pdf')return {clues:boundedPdfClues(value.clues)};
+  if(action==='pdf')return {clues:boundedPdfClues(value.clues),toolbarPending:value.toolbarPending===true};
   if(action==='ebsco') {
-    const {ready,urls,doi}=value;
-    if(![ready,doi].every(item=>typeof item==='boolean') || !Array.isArray(urls) || urls.length>2
-      || urls.some(url=>!publicClueURL(url)))invalid();
-    return {ready,urls,doi};
+    const {ready,urls,doi,titled,exact}=value;
+    if(![ready,doi].every(item=>typeof item==='boolean') || ![urls,titled,exact].every(Array.isArray))invalid();
+    const valid=items=>items.filter(item=>publicClueURL(item));
+    return {ready,urls:valid(urls),doi,titled:valid(titled),exact:valid(exact)};
   }
   if(action==='extract') {
     let content,clues;
@@ -70,12 +70,14 @@ class DocumentRuntime {
       if(event.sender!==entry.contents
         || event.senderFrame?.processId!==entry.doc.processId || event.senderFrame?.frameToken!==entry.doc.frameToken)return;
       if(message.error)entry.reject(new BrowserFailure('navigation',message.error==='document_changed'?'document_changed':'document_operation_failed'));
-      else if(!entry.snapshot && (typeof message.documentId!=='string' || !/^[0-9-]{7,64}$/.test(message.documentId)
-        || message.url!==entry.doc.url || entry.doc.documentId && message.documentId!==entry.doc.documentId))
+      else if((!entry.snapshot || entry.action==='ebsco') && (typeof message.documentId!=='string' || !/^[0-9-]{7,64}$/.test(message.documentId)
+        || (entry.action==='ebsco'?!publicClueURL(message.url):message.url!==entry.doc.url
+          || entry.doc.documentId && message.documentId!==entry.doc.documentId)))
         entry.reject(new BrowserFailure('navigation','document_changed'));
       else {try {const result=boundedResult(entry.action,message.result);
         if(entry.action==='extract' && !entry.args.wantAbstract && result.metadata?.abstract!=null)throw new BrowserFailure('navigation','page_probe_unconfirmed');
-        entry.resolve(entry.snapshot?result:{...result,documentId:message.documentId});}catch(error){entry.reject(error);}}
+        entry.resolve(entry.action==='ebsco'?{...result,documentId:message.documentId,url:message.url}
+          :entry.snapshot?result:{...result,documentId:message.documentId});}catch(error){entry.reject(error);}}
     };
     ipcMain.on('document:result',this.listener);
   }
@@ -85,15 +87,15 @@ class DocumentRuntime {
       ? Object.keys(args).length!==1 || typeof args.wantAbstract!=='boolean'
       :action==='pdf'?Object.keys(args).length!==1 || ![null,'sciencedirect','ieee','optica','lww','oce'].includes(args.readerKind)
       :action==='ebsco'? !['profile','results','record'].includes(args.mode)
-        || Object.keys(args).length!==({profile:1,results:2,record:3})[args.mode]
-        || args.mode!=='profile' && (typeof args.title!=='string' || !args.title.trim() || args.title.length>4096)
-        || args.mode==='record' && !validDOI(args.doi)
+        || Object.keys(args).length!==({profile:1,results:3,record:4})[args.mode]
+        || args.mode!=='profile' && (typeof args.title!=='string' || !validDOI(args.doi))
+        || args.mode==='record' && typeof args.confirmed!=='boolean'
       :Object.keys(args).length!==0))
       throw new BrowserFailure('navigation','document_operation_failed');
     const frame=this.browser.documentFrame(doc);
     if(!frame)throw new BrowserFailure('navigation','document_changed');
     const id=randomBytes(16).toString('hex'),contents=this.browser.tabs.get(doc.pageId).view.webContents;
-    const snapshot=action==='extract'||action==='pdf';
+    const snapshot=action==='extract'||action==='pdf'||action==='ebsco';
     let reject;
     const response=new Promise((resolve,no)=>{reject=no;this.pending.set(id,{doc,action,args,contents,snapshot,resolve,reject:no});});
     const changed=()=>{if(!snapshot&&!this.browser.documentCurrent(doc))reject(new BrowserFailure('navigation','document_changed'));};
@@ -102,7 +104,7 @@ class DocumentRuntime {
     try {
       const result=await waitFor(()=>{frame.send('document:operation',{id,action,args,
         ...(snapshot?{doiCasefold,targetDoi:validDOI(doc.identity?.doi)}:{expectedDocumentId:doc.documentId,expectedURL:doc.url})});return response;},
-        options.signal,Math.min(options.deadline ?? Infinity,Date.now()+15000),'navigation','document_operation');
+        options.signal,options.deadline ?? Date.now()+15000,'navigation','document_operation');
       if(!snapshot&&!this.browser.documentCurrent(doc))throw new BrowserFailure('navigation','document_changed');
       return result;
     }finally {

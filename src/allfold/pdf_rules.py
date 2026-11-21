@@ -44,7 +44,6 @@ class PdfTarget:
             raise ValueError('Paper binding is required')
         for value, limit, name in ((self.paper_id, 128, 'Paper binding'), (self.doi, 512, 'DOI'),
                                    (self.platform, 64, 'platform'), (self.content_host, 253, 'host'),
-                                   (self.article_url, 8192, 'article URL'),
                                    (self.content_type, 64, 'content type')):
             _bounded(value, limit, name)
         if self.article_url is not None:
@@ -80,16 +79,16 @@ class PdfCandidate:
     access: object = dataclass_field(default=None, repr=False, compare=False)
     recover_access: bool = dataclass_field(default=False, repr=False, compare=False)
     referer_observed: bool = dataclass_field(default=False, repr=False, compare=False)
+    article_verified: bool = dataclass_field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, PdfTarget) or self.stage not in {'P1', 'P2', 'P3', 'P4', 'P5'}:
             raise ValueError('invalid candidate target/stage')
         for value, name in ((self.rule_id, 'rule'), (self.platform, 'platform')):
             _bounded(value, 64, name, required=True)
-        _bounded(self.url, 8192, 'candidate URL', required=True)
-        normalize_public_http_url(self.url)
+        if not isinstance(self.url, str) or not normalize_public_http_url(self.url):
+            raise ValueError('invalid candidate URL')
         if self.referer is not None:
-            _bounded(self.referer, 8192, 'Referer')
             normalize_public_http_url(self.referer)
 
 
@@ -277,15 +276,14 @@ class KnownPdfUrl:
     reader_kind: str | None = None
 
     def __post_init__(self) -> None:
-        _bounded(self.url, 8192, 'known PDF URL', required=True)
-        normalize_public_http_url(self.url)
+        if not isinstance(self.url, str) or not normalize_public_http_url(self.url):
+            raise ValueError('invalid known PDF URL')
         item = RULE_CATALOG.get(self.rule_id) or API_CATALOG.get(self.rule_id)
         if not item or item.status in {'historical', 'extension', 'non-pdf', 'reference'} or self.rule_id == 'API01':
             raise ValueError('explicit PDF source rule and field are required')
         _bounded(self.field, 128, 'PDF source field', required=True)
         _bounded(self.reader_kind, 64, 'reader kind')
         if self.referer:
-            _bounded(self.referer, 8192, 'Referer')
             normalize_public_http_url(self.referer)
 
 

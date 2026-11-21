@@ -135,6 +135,10 @@ def _validate_paths(workspace: Path) -> Path:
     for candidate in (path, *(path.with_name(path.name + suffix) for suffix in ("-journal", "-wal", "-shm"))):
         try:
             info = candidate.lstat()
+            # macOS can return the old inode after a concurrent SQLite commit
+            # unlinks its journal. Check what is at the optional path now.
+            if candidate != path and stat.S_ISREG(info.st_mode) and info.st_nlink == 0:
+                info = candidate.lstat()
         except FileNotFoundError:
             continue
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:

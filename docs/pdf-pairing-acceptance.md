@@ -3,6 +3,23 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
+## Targeted follow-up
+
+The follow-up on PR #141 uses the same success and timing criteria adopted on
+20 November. The field route can read an already-published Paper during
+collection. An isolated regression reproduced a 409 when the read observed an
+unlinked SQLite journal during a normal commit. This documents the controlled
+interleaving. The earlier field fixture did not retain the failed response.
+
+Cross-origin recovery, verification POST ownership, partitioned cookies,
+EBSCO record selection and fallback, and the removed response limits have
+isolated regression coverage. Live comparisons and Workspace cleanup are
+tracked as a separate increment in the [results](pdf-pairing-formal-results.json).
+The historical SIAM F19 large-PDF cache gap remains open. The old Oxford
+navigation refusal has no confirmed trigger or attribution.
+
+## Historical acceptance through `d237ee7`
+
 **Acceptance uses the criteria revised on 20 November 2026
 (Asia/Shanghai).** 30 of the 31 frozen Papers were started. The subscription
 requirement excluded one Project Euclid Paper under the agreed publisher-OA
@@ -806,7 +823,8 @@ fixture. The local field read lacked a `revision` before its response status
 was checked. Twelve isolated local repetitions passed, and the runner did not
 retain the failed HTTP response. The fixture now explicitly waits for the
 captured Paper collection to settle before its separate local read/edit phase
-and asserts the HTTP status. Production code and test coverage are unchanged.
+and asserts the HTTP status. Production code was unchanged. That fixture no
+longer covered field reads during an active collection.
 [Failed PR run](https://github.com/dylaaan-booob/allfold/actions/runs/44211591848)
 
 **Measurement load:** the original external observer requested full JSON for the
@@ -1435,7 +1453,7 @@ debug settings were restored. Annual Reviews had no eligible Paper; Optica/R059/
 LWW/OCE and unobserved Reader/stableP4 mechanisms remain uncovered. No Reset has
 run because formal measurements and required retests are outstanding.
 
-## Diagnosed changes and remaining work
+## Historical implementation checkpoints
 
 `1f28dc0840640605c271be8c2e2861c6fe6659a6` retains current Document route host/IDs
 and tries newly applicable P1/P2 templates after P3/P4. It does not replay missing
@@ -2199,10 +2217,11 @@ transfer was the largest measured phase on this Paper. Cache use and Zotero's
 internal transfer time were not observed. This pair verifies the different
 journal and new-record path and leaves a +17.999 to +18.684 s wait gap.
 
-## Acceptance disposition and cleanup
+## Historical acceptance disposition and Workspace Reset
 
 The two original slots where Zotero saved a PDF and Allfold did not were F01-1
-and F26-2. Subsequent prepared-access F01 controls and the repaired F26 control
+and F26-2. F01-1 returned `no-pdf-candidates` in approximately three seconds.
+The approximately 600-second expiry belonged to pilot P04. Subsequent prepared-access F01 controls and the repaired F26 control
 produced verified publisher PDFs in Allfold. The original attempts remain in
 the results, along with version substitutions, preparation, and assisted saves.
 F25 lacks a verified direct publisher PDF in either product.

@@ -2,13 +2,12 @@
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {publicClueURL}=require('./pdf-clues.cjs');
 const {validDOI}=require('./article-identity.cjs');
-const {checkCanceled,pause,waitFor,waitForLoad,PAGE_LOAD_MS}=require('./browser-task.cjs');
+const {checkCanceled,pause,waitFor}=require('./browser-task.cjs');
 
 const SEARCH_HOSTS=new Set(['research.ebsco.com','discovery.ebsco.com']);
 const HUB_HOST='search.ebscohost.com';
 const COMMUNITY_PATH=/^\/(?:webauth\/)?community\.aspx$/i;
 const PROFILE=/^\/c\/[A-Za-z0-9_.~-]+(?=\/|$)/;
-const JSON_BUDGET=1024*1024;
 function refusal(step) {
   const error=new BrowserFailure('navigation','document_operation_failed');
   error.diagnostic.step=step;
@@ -27,21 +26,17 @@ function profile(value) {
   return match?{origin:url.origin,path:match[0]}:null;
 }
 
+function ebscoEntry(value) {
+  const url=httpsURL(value);
+  return url && (profile(value) || url.hostname===HUB_HOST && COMMUNITY_PATH.test(url.pathname))?url:null;
+}
+
 function matchRecord(value,scope) {
   const url=httpsURL(value);
   const prefix=scope.path+'/search/details/';
   if(url?.origin!==scope.origin || !url.pathname.startsWith(prefix))return null;
   const record=url.pathname.slice(prefix.length);
   return /^[A-Za-z0-9_.~-]+$/.test(record)?{url,record}:null;
-}
-
-function deliveryURL(value) {
-  const file=httpsURL(value);
-  return file?.origin==='https://content.ebscohost.com' && file.pathname==='/cds/retrieve'?file:null;
-}
-
-function isPdfRequest(details) {
-  return details.method==='GET' && deliveryURL(details.url)!==null;
 }
 
 async function readRecordJSON(browser,url,document,{signal,deadline,verify}) {
@@ -51,52 +46,42 @@ async function readRecordJSON(browser,url,document,{signal,deadline,verify}) {
     headers:{Accept:'application/json',Referer:document.url},
   },{owner,attemptId:owner.association.request_id,document,signal,deadline,validate:verify});
   const carrier=requests.at(-1)?.responses.at(-1);
-  const media=response.headers.get('content-type')?.split(';',1)[0];
-  if(carrier?.url!==url.href || carrier.statusCode!==response.status
-    || !response.ok || !media?.toLowerCase().includes('json') || !response.body) {
+  if(carrier?.url!==url.href || carrier.statusCode!==response.status || !response.ok || !response.body) {
     await response.body?.cancel();
     return null;
   }
-  const chunks=[];
-  let bytes=0;
-  for await(const chunk of response.body) {
-    bytes+=chunk.byteLength;
-    if(bytes>JSON_BUDGET)return null;
-    chunks.push(chunk);
-  }
+  const result=await response.json();
   verify();
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  return result;
 }
 
 async function resolveDirectPdf(browser,scope,record,document,options) {
   const {verify,signal,deadline}=options;
-  const verifyRecord=()=>{
-    verify();
-    if(!browser.documentCurrent(document))throw refusal('contentReady');
-  };
-  const readOptions={signal,deadline:Math.min(deadline,Date.now()+PAGE_LOAD_MS),verify:verifyRecord};
   const details=new URL('/api/viewer/v6/details/'+record.record,scope.origin);
   details.searchParams.set('opid',scope.path.slice(3));
   details.searchParams.set('includeHbrRestrictedLinks','true');
   try {
-    const rows=await readRecordJSON(browser,details,document,readOptions);
-    const links=Array.isArray(rows) && rows.length===1?rows[0]?.result?.links:null;
-    const pdfLinks=values=>Array.isArray(values)?[...new Set(values.flatMap(link=>
-      link?.type==='pdf' && typeof link.url==='string'?[link.url]:[]))]:[];
-    const preferred=pdfLinks(links?.['v2-downloadLinks']);
-    const choices=preferred.length?preferred:pdfLinks(links?.downloadLinks);
-    if(choices.length!==1 || !URL.canParse(choices[0],details))return null;
-    const link=httpsURL(new URL(choices[0],details).href);
-    if(deliveryURL(link?.href))return link;
-    if(link?.origin!==scope.origin || !link.pathname.startsWith('/api/'))return null;
-    const entry=await readRecordJSON(browser,link,document,readOptions);
-    return typeof entry?.url==='string' && URL.canParse(entry.url,link)?deliveryURL(new URL(entry.url,link).href):null;
+    const value=await readRecordJSON(browser,details,document,options);
+    const rows=(Array.isArray(value)?value:[value]).flatMap(row=>row?.result?.links?[row.result]:[]);
+    const identified=rows.filter(row=>row.recordId===record.record);
+    const applicable=identified.length?identified:rows.filter(row=>row.recordId===undefined);
+    const pdfLinks=values=>Array.isArray(values)?values.flatMap(link=>{
+      if(link?.type!=='pdf' || typeof link.url!=='string' || !URL.canParse(link.url,details))return [];
+      const url=httpsURL(new URL(link.url,details).href);
+      return url?[url.href]:[];
+    }):[];
+    const choices=applicable.map(row=>[...new Set([
+      ...pdfLinks(row.links['v2-downloadLinks']),...pdfLinks(row.links.downloadLinks),
+    ])]);
+    if(!identified.length && new Set(choices.map(urls=>JSON.stringify([...urls].sort()))).size>1)
+      throw refusal('result');
+    return [...new Set(choices.flat())];
   } catch(error) {
     checkCanceled(signal);
-    verifyRecord();
-    if(Date.now()>=deadline)throw error;
+    verify();
+    if(Date.now()>=deadline || error instanceof BrowserFailure && error.diagnostic.step==='result')throw error;
     // An unavailable optional direct entry leaves the regular Viewer usable.
-    return null;
+    return [];
   }
 }
 
@@ -107,15 +92,16 @@ function clickProfilePostback(documentId,source,deadline) {
     const form=link.closest('form');
     const action=new URL(form.action);
     const baseTarget=document.querySelector('base[target]')?.target || '';
-    return /^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(link.textContent.trim())
-      && /^javascript:\s*WebForm_DoPostBackWithOptions\(/.test(link.getAttribute('href'))
+    return /^javascript:\s*WebForm_DoPostBackWithOptions\(/.test(link.getAttribute('href'))
       && action.origin===location.origin && /^\/(?:webauth\/)?community\.aspx$/i.test(action.pathname)
       && ['', '_self'].includes((form.target || baseTarget).toLowerCase())
       && ['', '_self'].includes((link.target || baseTarget).toLowerCase())
       && !link.hasAttribute('download') && link.checkVisibility({checkVisibilityCSS:true});
   });
-  if(links.length!==1)return false;
-  links[0].click();
+  const preferred=links.length===1?links:links.filter(link=>
+    /^(?:EBSCO\s*一站式检索|EBSCOhost Research Databases)$/i.test(link.textContent.trim()));
+  if(preferred.length!==1)return false;
+  preferred[0].click();
   return true;
 }
 
@@ -125,18 +111,17 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
   if(source?.hostname!==HUB_HOST || !COMMUNITY_PATH.test(source.pathname))throw refusal('resource_ready');
   const validate=()=>{
     verify();
-    if(!browser.documentCurrent(hub))throw refusal('resource_ready');
+    if(!browser.ownsPage(owner,tab.id))throw refusal('resource_ready');
   };
   await browser.waitForCooldown(hub.url,{signal,deadline,validate,pageId:tab.id,step:'page_load',
     authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'navigation'}):undefined});
   validate();
-  const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
   let submitted=null,scope=null;
   const requestGuard=browser.sessionEvents.subscribe('beforeRequest',details=>{
     if(details.webContentsId!==tab.id)return;
     if(details.resourceType==='subFrame' && details.method!=='GET')return {cancel:true};
     if(details.resourceType!=='mainFrame')return;
-    if(signal?.aborted || Date.now()>=limit || !browser.ownsPage(owner,tab.id))return {cancel:true};
+    if(signal?.aborted || Date.now()>=deadline || !browser.ownsPage(owner,tab.id))return {cancel:true};
     verify();
     const target=httpsURL(details.url);
     if(submitted===null && details.method==='POST' && target?.origin===source.origin && COMMUNITY_PATH.test(target.pathname)) {
@@ -148,75 +133,66 @@ async function openProfilePostback(browser,tab,hub,{signal,deadline,verify,onWai
   const releaseGuard=()=>{requestGuard.dispose();contents.removeListener('destroyed',releaseGuard);};
   contents.once('destroyed',releaseGuard);
   try {
-    browser.beginPageLoad(tab,signal,limit,{fresh:true});
-    const args=[hub.documentId,hub.url,limit];
+    browser.beginPageLoad(tab,signal,deadline,{fresh:true});
+    const args=[hub.documentId,hub.url,deadline];
     let clicked;
     try {
       clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
         code:'('+clickProfilePostback.toString()+')(...'+JSON.stringify(args)+')',
-      }]),signal,limit);
+      }]),signal,deadline);
     } catch(error) {
       checkCanceled(signal);
-      if(submitted===null || browser.documentCurrent(hub))throw error;
+      if(submitted===null)throw error;
       // The qualified POST can replace the world before the click replies.
       clicked=true;
     }
-    if(clicked!==true)throw refusal('resource_ready');
-    const doc=await browser.waitForPage(tab,{signal,deadline:limit,documentOnly:true,onWaiting});
+    if(clicked!==true && submitted===null)return null;
+    const doc=await browser.waitForPage(tab,{signal,deadline,documentOnly:true,onWaiting});
     verify();
     scope=submitted===null?null:profile(doc.url);
     return scope;
   } finally {
     browser.finishPageLoad(tab);
-    if(scope)releaseGuard();
+    releaseGuard();
   }
 }
 
-function clickRecordLink(documentId,source,destination,title,deadline) {
+function clickRecordLink(documentId,source,destination,deadline) {
   if(globalThis[Symbol.for('allfold.ebsco.document')]!==documentId
     || location.href!==source || Date.now()>=deadline)return false;
-  const titleKey=value=>value.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
-  const links=[...document.querySelectorAll('a[href]')].filter(link=>
-    link.href===destination && titleKey(link.textContent || '')===titleKey(title)
-    && link.closest('h2,.result-item-title,[class*="result-item-title"]')
+  const link=[...document.querySelectorAll('a[href]')].find(link=>
+    link.href===destination && link.closest('h2,.result-item-title,[class*="result-item-title"]')
     && link.checkVisibility({checkVisibilityCSS:true}) && !link.hasAttribute('download')
     && ['', '_self'].includes((link.target || document.querySelector('base[target]')?.target || '').toLowerCase()));
-  if(links.length!==1)return false;
-  links[0].click();
+  if(!link)return false;
+  link.click();
   return true;
 }
 
-async function openRecord(browser,tab,searchDocument,scope,record,title,{signal,deadline,verify,onWaiting}) {
+async function openRecord(browser,tab,searchDocument,scope,record,{signal,deadline,verify,onWaiting}) {
   const contents=tab.view.webContents,owner=browser.operation;
-  const validate=()=>{
-    verify();
-    if(!browser.documentCurrent(searchDocument))throw refusal('search');
-  };
-  await browser.waitForCooldown(record.url.href,{signal,deadline,validate,pageId:tab.id,step:'page_load',
+  await browser.waitForCooldown(record.url.href,{signal,deadline,validate:verify,pageId:tab.id,step:'page_load',
     authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'navigation'}):undefined});
-  validate();
-  const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
+  verify();
   const landed=url=>matchRecord(url,scope)?.record===record.record;
   const inPage=(event,url,main)=>{
     if((event.isMainFrame ?? main) && landed(event.url ?? url))browser.finishPageLoad(tab);
   };
   contents.on('did-navigate-in-page',inPage);
+  browser.beginPageLoad(tab,signal,deadline,{fresh:true});
   try {
-    browser.beginPageLoad(tab,signal,limit,{fresh:true});
-    const args=[searchDocument.documentId,searchDocument.url,record.url.href,title,limit];
+    const args=[searchDocument.documentId,searchDocument.url,record.url.href,deadline];
     try {
-      // Follow the site's actual link so its in-page search context can open
-      // the record. A static link still performs a normal Browser navigation.
+      // A real click retains the site's client-side search and record state.
       const clicked=await waitFor(()=>contents.executeJavaScriptInIsolatedWorld(999,[{
         code:'('+clickRecordLink.toString()+')(...'+JSON.stringify(args)+')',
-      }]),signal,limit);
-      if(!clicked)throw refusal('result');
+      }]),signal,deadline);
+      if(!clicked)return null;
     } catch(error) {
       checkCanceled(signal);
-      // A new Document can retire the click's execution world before replying.
-      if(!landed(contents.getURL()) && !landed(tab.navigation.current?.url))throw error;
+      if(!landed(contents.getURL()) && !landed(tab.navigation.current?.url))return null;
     }
-    const doc=await browser.waitForPage(tab,{signal,deadline:limit,documentOnly:true,onWaiting});
+    const doc=await browser.waitForPage(tab,{signal,deadline,documentOnly:true,onWaiting});
     if(!landed(doc.url))throw refusal('contentReady');
     verify();
     return doc;
@@ -226,170 +202,208 @@ async function openRecord(browser,tab,searchDocument,scope,record,title,{signal,
   }
 }
 
-async function readReady(browser,tab,args,{signal,deadline,verify,retryDocumentRead=false},settled=()=>true) {
-  const limit=Math.min(deadline,Date.now()+PAGE_LOAD_MS);
+async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>true) {
   for(;;) {
     verify();
     try {
-      const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline:limit});
+      const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline});
       verify();
       if(clue.ready && settled(clue))return clue;
     } catch(error) {
-      if(!retryDocumentRead || error.diagnostic?.code!=='document_changed')throw error;
-      verify();
+      if(error.diagnostic?.code!=='document_changed')throw error;
     }
-    await waitFor(()=>pause(signal),signal,limit);
+    await waitFor(()=>pause(signal),signal,deadline);
   }
 }
 
-function watchPdf(browser,tab,entry,{signal,deadline,verify}) {
+function viewerLinks(values,scope,record) {
+  return values.map(httpsURL).filter(url=>url?.origin===scope.origin
+    && url.pathname===scope.path+'/viewer/pdf/'+record.record);
+}
+
+function findRecord(found,scope) {
+  const scoped=values=>new Map(values.flatMap(value=>{
+    const record=matchRecord(value,scope);
+    return record?[[record.record,record]]:[];
+  }));
+  const records=scoped(found.urls),confirmed=scoped(found.exact),titles=scoped(found.titled);
+  const choices=confirmed.size?confirmed:titles.size?titles:records;
+  if(choices.size!==1)throw refusal('result');
+  return {record:choices.values().next().value,confirmed:confirmed.size===1};
+}
+
+function watchPdf(browser,tab,viewer,{signal,deadline,verify}) {
   const owner=browser.operation,contents=tab.view.webContents;
-  let resolve,first;
-  const pending=new Promise(done=>{resolve=done;});
-  const subscription=browser.sessionEvents.subscribe('beforeSendHeaders',details=>{
-    if(details.webContentsId!==tab.id || !isPdfRequest(details) || !['xhr','subFrame','other'].includes(details.resourceType)
-      || !browser.ownsPage(owner,tab.id)
-      || signal?.aborted || Date.now()>=deadline)return;
-    const top=httpsURL(contents.getURL());
-    if(top?.origin!==entry.origin || top.pathname!==entry.pathname)return;
-    const root=details.frame?.top;
-    if(!root || !URL.canParse(details.frame.url) || new URL(details.frame.url).origin!==entry.origin
+  let resolve;
+  const pending=new Promise(done=>{resolve=done;}),requests=new Map();
+  const headers=browser.sessionEvents.subscribe('beforeSendHeaders',details=>{
+    if(details.webContentsId!==tab.id || details.method!=='GET'
+      || !['xhr','subFrame','other','mainFrame'].includes(details.resourceType) || !httpsURL(details.url)
+      || !browser.ownsPage(owner,tab.id) || signal?.aborted || Date.now()>=deadline)return;
+    const top=httpsURL(contents.getURL()),root=details.frame?.top;
+    if(top?.origin!==viewer.origin || top.pathname!==viewer.pathname || !root
       || root.frameToken!==contents.mainFrame.frameToken || root.processId!==contents.mainFrame.processId)return;
     verify();
     const referer=Object.entries(details.requestHeaders || {}).find(([name])=>name.toLowerCase()==='referer')?.[1];
-    const candidate={stage:'P4',rule_id:'R073',url:details.url,referer:httpsURL(referer)?.origin===entry.origin?referer:null};
-    if(first?.generation===tab.documentGeneration && first.page===top.href) {
-      first.ambiguous ||= first.candidate.url!==candidate.url || first.candidate.referer!==candidate.referer;
-    } else {
-      first={generation:tab.documentGeneration,page:top.href,frameToken:root.frameToken,processId:root.processId,
-        candidate,ambiguous:false};
-    }
-    resolve();
+    requests.set(details.id,{stage:'P4',rule_id:'R073',url:details.url,referer:httpsURL(referer)?.href ?? null});
   },{signal});
-  return {pending,dispose:subscription.dispose,matching(doc) {
-    if(!first || first.ambiguous || first.page!==doc.url || first.generation!==doc.navigationGeneration
-      || first.frameToken!==doc.frameToken || first.processId!==doc.processId || !browser.documentCurrent(doc))return null;
+  const response=browser.sessionEvents.subscribe('headersReceived',details=>{
+    const request=requests.get(details.id);
+    requests.delete(details.id);
+    if(details.webContentsId!==tab.id || request?.url!==details.url || details.statusCode<200
+      || details.statusCode>=300 || !browser.ownsPage(owner,tab.id) || signal?.aborted || Date.now()>=deadline)return;
     verify();
-    return first.candidate;
-  }};
+    const fields=Object.entries(details.responseHeaders || {});
+    const header=name=>fields.find(([key])=>key.toLowerCase()===name)?.[1]?.[0] ?? '';
+    const mime=header('content-type').split(';',1)[0].trim().toLowerCase();
+    const attached=/^attachment[; ]/i.test(header('content-disposition'));
+    if(mime!=='application/pdf' && !(attached && mime==='application/octet-stream'))return;
+    resolve(request);
+    return {cancel:true};
+  },{signal});
+  const terminal=['completed','errorOccurred'].map(event=>browser.sessionEvents.subscribe(event,
+    details=>{requests.delete(details.id);},{signal}));
+  return {pending,dispose:()=>{for(const listener of [headers,response,...terminal])listener.dispose();}};
 }
 
-async function readEbscoSource(browser,data,preparedURL,{signal,deadline,onWaiting,verify}) {
+async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,verify}) {
   const doi=validDOI(data.identity?.doi),title=data.target_title;
   const viewerOnly=data.prepared_source==='ebsco-viewer';
-  const entry=httpsURL(preparedURL);
-  let scope=profile(preparedURL);
-  if(!doi || typeof title!=='string' || !title.trim() || title.length>4096 || !entry
-    || !scope && entry.hostname!==HUB_HOST)throw refusal('prepared');
+  const entry=context.ebscoEntry;
+  if(!doi || typeof title!=='string' || !entry)throw refusal('prepared');
   checkCanceled(signal);
   const tab=await browser.newTaskPage({signal,deadline,managed:true});
-  browser.bindTaskPage(tab,signal);
   browser.associatePage(tab,{role:'pdf-reader'});
-  // Block automatic previews and unattributed GETs in this task page until
-  // Chromium actually destroys it. Only the verified Viewer can supply a URL.
-  const pdfGuard=browser.sessionEvents.subscribe('beforeSendHeaders',details=>{
-    if(details.webContentsId===tab.id && isPdfRequest(details))return {cancel:true};
-  });
-  tab.view.webContents.once('destroyed',pdfGuard.dispose);
   const onAccessWaiting=(waiting,diagnostic,current)=>{
     if(!waiting)return;
-    // An expired institutional login cannot consume the parent's budget.
-    // The user can re-prepare this Service through the normal Login path.
     if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
     onWaiting?.(diagnostic);
   };
-  const options={signal,deadline,verify};
-  const visit=async (url,{documentOnly=false}={})=>{
+  const options={signal,deadline,verify,onWaiting:onAccessWaiting};
+  const visit=async (url,{referer}={})=>{
     verify();
-    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly,
+    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly:true,
+      httpReferrer:referer?{url:referer,policy:'strict-origin-when-cross-origin'}:undefined,
       onWaiting:(diagnostic,current)=>onAccessWaiting(true,diagnostic,current)});
     browser.finishPageLoad(tab);
     verify();
     return doc;
   };
-
   const guard=browser.sessionEvents.subscribe('beforeRequest',details=>{
     if(details.webContentsId!==tab.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
     verify();
     if(signal?.aborted || Date.now()>=deadline || !httpsURL(details.url))return {cancel:true};
-  },{signal});
-  try {
-    if(!scope) {
-      const hubURL=(await visit(entry)).url;
-      scope=profile(hubURL);
-      if(!scope) {
-        if(httpsURL(hubURL)?.hostname!==HUB_HOST)throw refusal('resource_ready');
-        const hub=await readReady(browser,tab,{mode:'profile'},options);
-        const links=hub.urls.map(httpsURL).filter(url=>url && (profile(url.href) || url.hostname===HUB_HOST));
-        if(links.length>1)throw refusal('resource_ready');
-        scope=links.length ? profile((await visit(links[0])).url)
-          : await openProfilePostback(browser,tab,hub,{...options,onWaiting:onAccessWaiting});
-        if(!scope)throw refusal('resource_ready');
-      }
+  });
+  tab.view.webContents.once('destroyed',guard.dispose);
+  let scope=profile(context.tab.view.webContents.getURL()) || context.ebscoProfile || profile(entry.href);
+  async function enterProfile() {
+    const hubURL=(await visit(entry)).url;
+    const landed=profile(hubURL);
+    if(landed)return landed;
+    if(httpsURL(hubURL)?.hostname!==HUB_HOST)throw refusal('resource_ready');
+    for(;;) {
+      const hub=await readReady(browser,tab,{mode:'profile'},options);
+      const links=[...new Set(hub.urls.filter(url=>profile(url)))];
+      if(links.length>1)throw refusal('resource_ready');
+      if(links.length)return profile((await visit(new URL(links[0]))).url);
+      const chosen=await openProfilePostback(browser,tab,hub,options);
+      if(chosen)return chosen;
+      const current=tab.view.webContents.getURL();
+      if(current===hub.url && tab.documentGeneration===hub.navigationGeneration)throw refusal('resource_ready');
     }
-    const expectedRecord=viewerOnly?matchRecord(data.prepared_record,scope):null;
-    if(viewerOnly && !expectedRecord)throw refusal('prepared');
-    const search=new URL(scope.path+'/search/results',scope.origin);
-    search.searchParams.set('q',doi);
-    // Once the authenticated results Document is readable, unrelated assets
-    // need not finish before looking for the qualified record link.
-    const searchDocument=await visit(search,{documentOnly:true});
-    const contents=tab.view.webContents;
-    const navigation=tab.navigation.current;
-    const frame={pageId:searchDocument.pageId,processId:searchDocument.processId,frameToken:searchDocument.frameToken};
-    const verifySearch=()=>{
-      verify();
-      const landing=httpsURL(contents.getURL());
-      // The same document may add search filters to its query string.
-      if(landing?.origin!==scope.origin || landing.pathname!==search.pathname
-        || tab.navigation.current!==navigation || !navigation.documentReady
-        || !browser.documentCurrent(frame))throw refusal('search');
-    };
-    const found=await readReady(browser,tab,{mode:'results',title},{...options,verify:verifySearch,retryDocumentRead:true},
-      clue=>clue.urls.length>0 || !contents.isLoadingMainFrame());
-    if(found.documentId!==searchDocument.documentId)throw refusal('search');
-    const records=found.urls.map(url=>matchRecord(url,scope)).filter(Boolean);
-    if(records.length!==1)throw refusal('result');
-    if(contents.isLoadingMainFrame()) {
-      contents.stop();
-      await waitForLoad(tab,signal,deadline,verifySearch);
+  }
+  const remembered=!!scope;
+  if(!scope)scope=await enterProfile();
+  if(!scope)throw refusal('resource_ready');
+  let record=viewerOnly?matchRecord(data.prepared_record,scope):null,doc,matched,confirmed=false;
+  if(viewerOnly && !record)throw refusal('prepared');
+  const readRecord=async (confirmed)=>{
+    const clue=await readReady(browser,tab,{mode:'record',title,doi,confirmed},options);
+    if(!clue.doi || matchRecord(clue.url,scope)?.record!==record.record)throw refusal('contentReady');
+    return clue;
+  };
+
+  if(viewerOnly) {
+    const viewer=viewerLinks([data.prepared_viewer],scope,record)[0];
+    if(viewer) {
+      browser.reportPage('info','ebsco_viewer_reused',tab);
+      return await fromViewer(viewer,record.url.href);
     }
-    verifySearch();
-    const record=records[0];
-    if(expectedRecord && record.record!==expectedRecord.record)throw refusal('result');
-    const doc=await openRecord(browser,tab,found,scope,record,title,{...options,onWaiting:onAccessWaiting});
-    const recordArgs={mode:'record',title,doi};
-    const matchViewer=clue=>!clue.doi || clue.urls.length>0;
-    let matched=await readReady(browser,tab,recordArgs,options,viewerOnly?matchViewer:undefined);
-    if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
-    const retrieved=candidate=>({outcome:'retrieved',pdf_clues:{status:'complete',landing_url:doc.url,
-      observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',
-      identifiers:[],candidates:[candidate],diagnostics:[]}});
-    if(!viewerOnly) {
-      const direct=await resolveDirectPdf(browser,scope,record,doc,options);
-      if(direct) {
-        browser.reportPage('info','ebsco_direct_pdf_entry',tab);
-        return retrieved({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url:direct.href,referer:doc.url});
-      }
-      if(!matched.urls.length)matched=await readReady(browser,tab,recordArgs,options,matchViewer);
-      if(!matched.doi || !browser.documentCurrent(doc))throw refusal('contentReady');
-    }
-    const links=matched.urls.map(httpsURL).filter(url=>url?.origin===scope.origin
-      && url.pathname===scope.path+'/viewer/pdf/'+record.record);
-    if(links.length!==1)throw refusal('contentReady');
-    const reader=watchPdf(browser,tab,links[0],options);
+    // A verified DOI/record can supply its current Viewer without searching.
+    // An in-app route can require the original results navigation.
     try {
-      // The Viewer provides its body request once its main Document is ready.
-      // Unrelated assets can still be loading when that request is observed.
-      const viewer=await visit(links[0],{documentOnly:true});
-      await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
-      const candidate=reader.matching(viewer);
-      if(!candidate)throw refusal('download');
-      return retrieved(candidate);
+      doc=await visit(record.url);
+      matched=await readRecord(true);
+    } catch(error) {
+      checkCanceled(signal);
+      verify();
+      if(Date.now()>=deadline || error.diagnostic?.code!=='http_error'
+        || ![404,410].includes(error.diagnostic.status))throw error;
+    }
+  }
+
+  if(!matched) {
+    const expected=record?.record;
+    const search=()=>{const url=new URL(scope.path+'/search/results',scope.origin);url.searchParams.set('q',doi);return url;};
+    let searchURL=search();
+    browser.reportPage('info',remembered?'ebsco_profile_reused':'ebsco_profile_ready',tab);
+    try {await visit(searchURL);}
+    catch(error) {
+      checkCanceled(signal);
+      verify();
+      if(!remembered || !['content_access_blocked','http_error'].includes(error.diagnostic?.code)
+        || profile(entry.href))throw error;
+      context.ebscoProfile=null;
+      scope=await enterProfile();
+      if(!scope)throw refusal('resource_ready');
+      browser.reportPage('info','ebsco_profile_ready',tab);
+      searchURL=search();await visit(searchURL);
+    }
+    const args={mode:'results',title,doi};
+    for(;;) {
+      const found=await readReady(browser,tab,args,options);
+      const location=httpsURL(found.url);
+      if(location?.origin!==scope.origin || location.pathname!==searchURL.pathname
+        || location.searchParams.get('q')!==doi)throw refusal('search');
+      ({record,confirmed}=findRecord(found,scope));
+      if(expected && record.record!==expected)throw refusal('result');
+      doc=await openRecord(browser,tab,found,scope,record,options);
+      if(doc)break;
+      await waitFor(()=>pause(signal),signal,deadline);
+    }
+    matched=await readRecord(confirmed || viewerOnly);
+  }
+  context.ebscoProfile=scope;
+  browser.reportPage('info','ebsco_record_ready',tab);
+  const recordURL=matched.url;
+  const viewer=viewerLinks(matched.urls,scope,record)[0];
+  if(!viewerOnly) {
+    const direct=await resolveDirectPdf(browser,scope,record,{...doc,url:recordURL},options);
+    if(direct.length) {
+      browser.reportPage('info','ebsco_direct_pdf_entry',tab);
+      return retrieved(recordURL,direct.map(url=>({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url,referer:recordURL})),viewer);
+    }
+  }
+  const currentViewer=viewer || viewerLinks((await readReady(browser,tab,{mode:'record',title,doi,confirmed:true},options,
+    clue=>!clue.doi || clue.urls.length>0)).urls,scope,record)[0];
+  if(!currentViewer)throw refusal('contentReady');
+  return await fromViewer(currentViewer,recordURL);
+
+  async function fromViewer(viewer,recordURL) {
+    const reader=watchPdf(browser,tab,viewer,options);
+    try {
+      const landed=await visit(viewer,{referer:recordURL});
+      const url=httpsURL(landed.url);
+      if(url?.origin!==viewer.origin || url.pathname!==viewer.pathname)throw refusal('contentReady');
+      const candidate=await waitFor(()=>reader.pending,signal,deadline);
+      return retrieved(recordURL,[candidate]);
     } finally {reader.dispose();}
-  } finally {
-    guard.dispose();
   }
 }
 
-module.exports={readEbscoSource};
+function retrieved(landing,candidates,viewer) {
+  return {outcome:'retrieved',...(viewer && {ebsco_viewer_url:viewer.href}),pdf_clues:{status:'complete',landing_url:landing,
+    observed_at:new Date().toISOString(),platform:'ebsco',content_type:'journal-article',identifiers:[],candidates,diagnostics:[]}};
+}
+
+module.exports={readEbscoSource,ebscoEntry};
