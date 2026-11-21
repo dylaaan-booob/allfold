@@ -37,6 +37,32 @@ follow-up selects an observed eligible link or native control first and uses
 the journal-search label to disambiguate those opaque controls. An isolated
 regression exercises that observed page shape.
 
+### Targeted F24 on `8441641`
+
+Allfold and Zotero saved byte-identical 39-page INFORMS Just Accepted
+attachments with the target DOI and title. Allfold's click-to-association
+wait was 42.026–42.391 seconds against Zotero's 17.740–18.075 seconds
+(+23.951 to +24.651 seconds, 2.3251–2.3896×). Allfold first used the direct
+publisher path and continued with the independently prepared EBSCO Service.
+Native evidence measures 9.255 seconds through the Community/profile handoff,
+11.107 seconds to locate the record, 0.613 seconds to read its link, a
+0.597-second link response and 9.178 seconds for the successful stream.
+These phases are part of the total wait. Chrome automatically loaded its
+inline PDF before the Connector click. The result records an observed wait
+gap with that preparation and limited cache evidence.
+
+### Targeted new EBSCO record on `8441641`
+
+Allfold saved the verified 62-page PDF for `10.1287/moor.2024.0818` in
+42.574–42.926 seconds. The same Service reused the profile in 0.002 seconds,
+with no Community visit. The record search took 15.447 seconds, the link
+lookup 0.742 seconds, and its indirection 0.573 seconds. The successful
+21.882-second stream was the largest measured phase. In Chrome the independently
+authenticated record detail displayed an unavailable inline PDF. Connector
+created the matching parent in the acceptance collection. The observed
+parent had no attachment about 118 seconds after the click, and there was no
+terminal error message to attribute. This attempt supplies no timing comparison.
+
 ## Historical acceptance through `d237ee7`
 
 **Acceptance uses the criteria revised on 20 November 2026

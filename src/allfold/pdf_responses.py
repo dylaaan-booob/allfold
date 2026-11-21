@@ -418,17 +418,12 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
             add(attrs.get('action'), action='refresh_form')
     # Only one unambiguous main-article PDF entrance. Other article/issue and
     # supplement links are excluded before deciding ambiguity.
-    generic = []
+    generic = {}
     for node in nodes:
         if node['tag'] != 'a' or not _body_entry(node, response.url, wanted):
             continue
         scopes = tuple(p for p in _ancestors(node['parent']) if p['tag'] in {'article', 'main'})
         if not scopes:
-            continue
-        # A complete article region still supports generic links when a
-        # transport failure cuts off unrelated markup after that region.
-        if (response.partial or parser.partial) and not any(p['closed'] and (
-                p['tag'] == 'main' or wanted and valid_doi(p['attrs'].get('data-doi')) == wanted) for p in scopes):
             continue
         attrs = node['attrs']
         label = (_node_text(node) + ' ' + attrs.get('title', '')).strip()
@@ -438,8 +433,10 @@ def parse_current_response(candidate, response, *, report=lambda code: None):
             continue
         if re.fullmatch(r'(?:download\s+)?(?:(?:full[ -]?text|article)\s+)?pdf(?:\s+download)?', label, re.I) or attrs.get('type') == 'application/pdf':
             item = _safe_next(candidate, response.url, attrs.get('href'))
-            if item and item.url not in generic:
-                generic.append(item.url)
+            if item:
+                generic[item.url] = generic.get(item.url, False) or any(p['closed'] for p in scopes)
     if len(generic) == 1:
-        add(generic[0])
+        url, closed = next(iter(generic.items()))
+        if closed or not (response.partial or parser.partial):
+            add(url)
     return tuple(values)

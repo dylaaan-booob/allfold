@@ -1372,16 +1372,20 @@ def test_fixed_reader_data_retains_download_with_large_unrelated_tail(host, path
     assert [item.url for item in parsed] == ['https://cdn.example.org/body.pdf']
 
 
-def test_verified_article_generic_entry_survives_partial_tail_without_repeated_doi():
+@pytest.mark.parametrize('scope', [b'main', b'article'])
+def test_verified_article_generic_entry_survives_partial_tail_without_repeated_doi(scope):
     from allfold.pdf_rules import PdfCandidate
     from allfold.pdf_responses import parse_current_response
     article = 'https://example.org/papers/an-article'
     paper = target('example.org', article_url=article)
     candidate = PdfCandidate(paper, 'P3', 'GENERIC', 'generic', article)
     link = b'<a href="/body">Download PDF</a>'
-    response = CurrentResponse(article, 'text/html', b'<main>' + link + b'</main><aside', partial=True)
+    section = b'<' + scope + b'>' + link + b'</' + scope + b'>'
+    response = CurrentResponse(article, 'text/html', section + b'<aside', partial=True)
     assert [item.url for item in parse_current_response(candidate, response)] == ['https://example.org/body']
-    assert not parse_current_response(candidate, replace(response, body=b'<main>' + link + b'<a href='))
+    assert not parse_current_response(candidate, replace(response, body=b'<' + scope + b'>' + link + b'<a href='))
+    another = b'<article><a href="/other-body">Download PDF</a>'
+    assert not parse_current_response(candidate, replace(response, body=section + another))
     conflict = b'<head><meta name="citation_doi" content="10.9999/someone-else"></head>'
     assert not parse_current_response(candidate, replace(response, body=conflict + response.body))
 

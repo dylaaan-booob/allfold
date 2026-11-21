@@ -4,6 +4,7 @@
     "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
     "starting_pr_head_sha": "733a23d75430a9d6ef8bccef87ffdb3648e8df51",
     "status": "targeted_live_pairs_in_progress",
+    "runtime_versions": {"electron": "45.0.0", "chrome": "157.0.8103.80", "zotero": "10.0.9", "zotero_connector": "5.0.217"},
     "pairs": [
       {
         "pair_id": "F23-followup-1",
@@ -38,6 +39,69 @@
         },
         "timing_eligible_for_parity": false,
         "followup": "Community control selection repaired after inspecting this attempt. Original Paper restored after archiving the alternative PDF."
+      },
+      {
+        "pair_id": "F24-followup-1",
+        "sample_id": "F24",
+        "doi": "10.1287/opre.2025.1741",
+        "order": ["zotero", "allfold"],
+        "production_code_sha": "8441641547fecc41c68887d4b386dc3c17e1bb78",
+        "allfold": {
+          "click_utc": ["2026-11-21T16:41:48.679Z", "2026-11-21T16:41:48.784Z"],
+          "terminal_observation_utc": ["2026-11-21T16:42:30.810Z", "2026-11-21T16:42:31.070Z"],
+          "result": "completed",
+          "source": "P4/R073 EBSCO licensed record",
+          "elapsed_seconds": [42.026, 42.391],
+          "community_profile_ms": 9255,
+          "search_record_ms": 11107,
+          "record_links_ms": 613,
+          "link_indirection_ms": 597,
+          "successful_native_transfer_ms": 9178,
+          "native_first_byte_ms": 1322,
+          "pre_click": "Original Paper in Candidates. Independent CARSI and EBSCO Prepare completed in this run. No Allfold PDF preview or saved body."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-21T16:39:45.821Z", "2026-11-21T16:39:45.852Z"],
+          "terminal_observation_utc": ["2026-11-21T16:40:03.592Z", "2026-11-21T16:40:03.896Z"],
+          "result": "imported_licensed_pdf",
+          "elapsed_seconds": [17.740, 18.075],
+          "pre_click": "Independently authenticated EBSCO record detail. Its inline PDF loaded automatically. Native phases within Connector were unobserved."
+        },
+        "edition": {"version": "INFORMS Just Accepted", "pages": 39, "bytes": 1762961, "same_sha256": true, "doi_and_title_verified": true},
+        "observed_allfold_minus_zotero_seconds": [23.951, 24.651],
+        "observed_allfold_to_zotero_ratio": [2.3251, 2.3896],
+        "timing_context": "Same file and normal distinct access. The browser's automatic inline PDF and unobserved caches limit attribution and exclude a cold-cache comparison."
+      },
+      {
+        "pair_id": "EBSCO-new-followup-1",
+        "sample_id": "EBSCO follow-up",
+        "doi": "10.1287/moor.2024.0818",
+        "order": ["allfold", "zotero"],
+        "production_code_sha": "8441641547fecc41c68887d4b386dc3c17e1bb78",
+        "allfold": {
+          "click_utc": ["2026-11-21T16:43:20.099Z", "2026-11-21T16:43:20.194Z"],
+          "terminal_observation_utc": ["2026-11-21T16:44:02.768Z", "2026-11-21T16:44:03.025Z"],
+          "result": "completed",
+          "source": "P4/R073 EBSCO licensed record",
+          "elapsed_seconds": [42.574, 42.926],
+          "ebsco_profile_reused": true,
+          "profile_handoff_ms": 2,
+          "search_record_ms": 15447,
+          "record_links_ms": 742,
+          "link_indirection_ms": 573,
+          "successful_native_transfer_ms": 21882,
+          "native_first_byte_ms": 782,
+          "edition": {"pages": 62, "bytes": 2370232, "doi_and_title_verified": true},
+          "pre_click": "Original Paper in Candidates. Reused the EBSCO Service from F24 in the same Allfold Session, without another Login or a target-PDF preview."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-21T16:44:40.454Z", "2026-11-21T16:44:40.480Z"],
+          "result": "parent_only_observed",
+          "search_to_record_observation_seconds": 9.743,
+          "last_checked_without_attachment_utc": "2026-11-21T16:46:38.758Z",
+          "pre_click": "Same independently authenticated Chrome EBSCO profile and exact DOI detail. Its automatic inline PDF showed page unavailable. The Connector popup later closed, with no terminal failure message observed."
+        },
+        "timing_eligible_for_parity": false
       }
     ],
     "workspace_reset": null

@@ -92,11 +92,15 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       [recordPath]:ebscoMode==='expired'
         ? signIn
         : '<main><h1>Licensed content title</h1>'+(ebscoMode==='delayed'||ebscoMode==='preview'?''
-          :ebscoMode==='html-only'?'<h3>DOI</h3><p>'+ebscoDOI+'</p><a href="'+viewerPath.replace('/pdf/','/html/')+'">HTML full text</a>'
+          :ebscoMode==='html-only'||ebscoMode==='late-viewer'?'<h3>DOI</h3><p>'+ebscoDOI+'</p>'
+            +(ebscoMode==='html-only'?'<section data-testid="full-text-actions" aria-busy="false"><a href="'
+              +viewerPath.replace('/pdf/','/html/')+'">HTML full text</a></section>':'')
             :recordMetadata)+'</main>'
           +(ebscoMode==='preview'?'<script>Promise.allSettled('+JSON.stringify(previews)
             +'.map(url=>fetch(url))).then(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'));</script>':ebscoMode==='delayed'
-            ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>':''),
+            ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>'
+            :ebscoMode==='late-viewer'?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'
+              +JSON.stringify('<a href="'+viewerPath+viewerQuery+'">PDF Full Text</a>')+'),900);</script>':''),
       [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?requestPDF:'')
         +(ebscoMode==='record-in-app'?pendingImage:''),
     };
@@ -502,6 +506,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const htmlOnly=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(htmlOnly.outcome,'retrieved');
     assert.deepEqual(htmlOnly.pdf_clues.candidates,[],'a ready HTML-only record releases this source for fallback');
+    ebscoMode='late-viewer';
+    const lateViewer=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(lateViewer.pdf_clues?.candidates[0]?.url,ebscoPdf,'DOI readiness alone cannot report a missing Viewer');
     ebscoMode='preview';
     const preview=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(preview.outcome,'retrieved',JSON.stringify({preview,requests}));

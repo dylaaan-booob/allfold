@@ -209,13 +209,13 @@ async function openRecord(browser,tab,searchDocument,scope,record,{signal,deadli
   }
 }
 
-async function readReady(browser,tab,args,{signal,deadline,verify}) {
+async function readReady(browser,tab,args,{signal,deadline,verify},settled=()=>true) {
   for(;;) {
     verify();
     try {
       const clue=await browser.readDocument(tab,'ebsco',{args,signal,deadline});
       verify();
-      if(clue.ready)return clue;
+      if(clue.ready && settled(clue))return clue;
     } catch(error) {
       if(error.diagnostic?.code!=='document_changed')throw error;
     }
@@ -332,8 +332,8 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
   if(!scope)throw refusal('resource_ready');
   let record=viewerOnly?matchRecord(data.prepared_record,scope):null,doc,matched,confirmed=false;
   if(viewerOnly && !record)throw refusal('prepared');
-  const readRecord=async (confirmed)=>{
-    const clue=await readReady(browser,tab,{mode:'record',title,doi,confirmed},options);
+  const readRecord=async (confirmed,settled)=>{
+    const clue=await readReady(browser,tab,{mode:'record',title,doi,confirmed},options,settled);
     if(!clue.doi || matchRecord(clue.url,scope)?.record!==record.record)throw refusal('contentReady');
     return clue;
   };
@@ -399,7 +399,8 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
       return retrieved(recordURL,direct.map(url=>({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url,referer:recordURL})),viewer);
     }
   }
-  const currentViewer=viewer || viewerLinks((await readRecord(true)).urls,scope,record)[0];
+  const accessSettled=clue=>!clue.doi || clue.urls.length>0 || clue.accessEmpty;
+  const currentViewer=viewer || viewerLinks((await readRecord(true,accessSettled)).urls,scope,record)[0];
   if(!currentViewer)return retrieved(recordURL,[]);
   return await fromViewer(currentViewer,recordURL);
 

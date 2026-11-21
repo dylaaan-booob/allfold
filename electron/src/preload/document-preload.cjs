@@ -8,7 +8,7 @@ const operations={
     const titleKey=value=>value.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
     const sameTitle=node=>titleKey(node.textContent || '')===titleKey(args.title || '');
     const links=[...document.querySelectorAll('a[href]')].filter(node=>node.checkVisibility({checkVisibilityCSS:true}));
-    const empty={ready:true,urls:[],titled:[],exact:[],doi:false};
+    const empty={ready:true,urls:[],titled:[],exact:[],doi:false,accessEmpty:false};
     if(args.mode==='profile') {
       const urls=links.map(node=>node.href).filter(url=>URL.canParse(url)
         && /^\/c\/[A-Za-z0-9_.~-]+(?:\/|$)/.test(new URL(url).pathname));
@@ -71,8 +71,12 @@ const operations={
     }))]:[];
     const confirmed=args.confirmed && !!main.querySelector('h1,[data-testid*="record-title" i]');
     const doi=ids.size===1?ids.has(wanted):!ids.size && confirmed;
-    const accessBusy=!!main.querySelector('[data-testid*="access" i][aria-busy="true"],[data-testid*="fulltext" i][aria-busy="true"]');
-    return {...empty,ready:!busy && !accessBusy && (ids.size>0 || confirmed),urls,doi};
+    const access=[...main.querySelectorAll('[data-testid*="access-options" i],[data-testid*="fulltext" i],[data-testid*="full-text" i]')]
+      .filter(node=>node.checkVisibility({checkVisibilityCSS:true}));
+    const accessBusy=access.some(node=>node.getAttribute('aria-busy')==='true');
+    const accessEmpty=!urls.length && !accessBusy && access.some(node=>node.getAttribute('aria-busy')==='false'
+      || /(?:no[-_]?full[-_]?text|full[-_]?text[-_]unavailable)/i.test(node.getAttribute('data-testid')));
+    return {...empty,ready:!busy && (ids.size>0 || confirmed),urls,doi,accessEmpty};
   },
   access() {
     const title=document.title;
