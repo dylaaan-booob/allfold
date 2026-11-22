@@ -56,7 +56,7 @@ async function readRecordJSON(browser,url,document,{signal,deadline,verify}) {
 }
 
 async function resolveDirectPdf(browser,scope,record,document,options) {
-  const {verify,signal,deadline}=options;
+  const {verify,signal,deadline,confirmDOI}=options;
   const details=new URL('/api/viewer/v6/details/'+record.record,scope.origin);
   details.searchParams.set('opid',scope.path.slice(3));
   details.searchParams.set('includeHbrRestrictedLinks','true');
@@ -65,6 +65,7 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
     const rows=(Array.isArray(value)?value:[value]).flatMap(row=>row?.result?.links?[row.result]:[]);
     const identified=rows.filter(row=>row.recordId===record.record);
     const applicable=identified.length?identified:rows.filter(row=>row.recordId===undefined);
+    if(confirmDOI && applicable.some(row=>validDOI(row.doi)!==confirmDOI))return [];
     const pdfLinks=values=>Array.isArray(values)?values.flatMap(link=>{
       if(link?.type!=='pdf' || typeof link.url!=='string' || !URL.canParse(link.url,details))return [];
       const url=httpsURL(new URL(link.url,details).href);
@@ -73,8 +74,10 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
     const choices=applicable.map(row=>[...new Set([
       ...pdfLinks(row.links['v2-downloadLinks']),...pdfLinks(row.links.downloadLinks),
     ])]);
-    if(!identified.length && new Set(choices.map(urls=>JSON.stringify([...urls].sort()))).size>1)
+    if(!identified.length && new Set(choices.map(urls=>JSON.stringify([...urls].sort()))).size>1) {
+      if(confirmDOI)return [];
       throw refusal('result');
+    }
     return [...new Set(choices.flat())];
   } catch(error) {
     checkCanceled(signal);
@@ -330,8 +333,12 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
   const remembered=!!scope;
   if(!scope)scope=await enterProfile();
   if(!scope)throw refusal('resource_ready');
-  let record=viewerOnly?matchRecord(data.prepared_record,scope):null,doc,matched,confirmed=false;
+  let record=viewerOnly?matchRecord(data.prepared_record,scope):null;
   if(viewerOnly && !record)throw refusal('prepared');
+  const directResult=(recordURL,referer,links,viewer)=>{
+    browser.reportPage('info','ebsco_direct_pdf_entry',tab);
+    return retrieved(recordURL,links.map(url=>({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url,referer})),viewer);
+  };
   const readRecord=async (confirmed,settled)=>{
     const clue=await readReady(browser,tab,{mode:'record',title,doi,confirmed},options,settled);
     if(!clue.doi || matchRecord(clue.url,scope)?.record!==record.record)throw refusal('contentReady');
@@ -344,60 +351,57 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
       browser.reportPage('info','ebsco_viewer_reused',tab);
       return await fromViewer(viewer,record.url.href);
     }
-    // A verified DOI/record can supply its current Viewer without searching.
-    // An in-app route can require the original results navigation.
-    try {
-      doc=await visit(record.url);
-      matched=await readRecord(true);
-    } catch(error) {
-      checkCanceled(signal);
-      verify();
-      if(Date.now()>=deadline || error.diagnostic?.code!=='http_error'
-        || ![404,410].includes(error.diagnostic.status))throw error;
-    }
+    // A Viewer that was not observed may require the site's results navigation.
   }
 
-  if(!matched) {
-    const expected=record?.record;
-    const search=()=>{const url=new URL(scope.path+'/search/results',scope.origin);url.searchParams.set('q',doi);return url;};
-    let searchURL=search();
-    browser.reportPage('info',remembered?'ebsco_profile_reused':'ebsco_profile_ready',tab);
-    try {await visit(searchURL);}
-    catch(error) {
-      checkCanceled(signal);
-      verify();
-      if(!remembered || !['content_access_blocked','http_error'].includes(error.diagnostic?.code)
-        || profile(entry.href))throw error;
-      context.ebscoProfile=null;
-      scope=await enterProfile();
-      if(!scope)throw refusal('resource_ready');
-      browser.reportPage('info','ebsco_profile_ready',tab);
-      searchURL=search();await visit(searchURL);
-    }
-    const args={mode:'results',title,doi};
-    for(;;) {
-      const found=await readReady(browser,tab,args,options);
-      const location=httpsURL(found.url);
-      if(location?.origin!==scope.origin || location.pathname!==searchURL.pathname
-        || location.searchParams.get('q')!==doi)throw refusal('search');
-      ({record,confirmed}=findRecord(found,scope));
-      if(expected && record.record!==expected)throw refusal('result');
-      doc=await openRecord(browser,tab,found,scope,record,options);
-      if(doc)break;
-      await waitFor(()=>pause(signal),signal,deadline);
-    }
-    matched=await readRecord(confirmed || viewerOnly);
+  const expected=record?.record;
+  const search=()=>{const url=new URL(scope.path+'/search/results',scope.origin);url.searchParams.set('q',doi);return url;};
+  let searchURL=search();
+  browser.reportPage('info',remembered?'ebsco_profile_reused':'ebsco_profile_ready',tab);
+  try {await visit(searchURL);}
+  catch(error) {
+    checkCanceled(signal);
+    verify();
+    if(!remembered || !['content_access_blocked','http_error'].includes(error.diagnostic?.code)
+      || profile(entry.href))throw error;
+    context.ebscoProfile=null;
+    scope=await enterProfile();
+    if(!scope)throw refusal('resource_ready');
+    browser.reportPage('info','ebsco_profile_ready',tab);
+    searchURL=search();await visit(searchURL);
   }
+  const args={mode:'results',title,doi};
+  let doc,confirmed;
+  for(;;) {
+    const found=await readReady(browser,tab,args,options);
+    const location=httpsURL(found.url);
+    if(location?.origin!==scope.origin || location.pathname!==searchURL.pathname
+      || location.searchParams.get('q')!==doi)throw refusal('search');
+    const lookupFromSearch=!record;
+    ({record,confirmed}=findRecord(found,scope));
+    if(expected && record.record!==expected)throw refusal('result');
+    if(lookupFromSearch) {
+      // The selected record's licensed details can confirm the Paper directly
+      // from the search page. A missing match or link leaves page access usable.
+      const direct=await resolveDirectPdf(browser,scope,record,found,{...options,confirmDOI:doi});
+      if(direct.length) {
+        context.ebscoProfile=scope;
+        browser.reportPage('info','ebsco_record_ready',tab);
+        return directResult(record.url.href,found.url,direct);
+      }
+    }
+    doc=await openRecord(browser,tab,found,scope,record,options);
+    if(doc)break;
+    await waitFor(()=>pause(signal),signal,deadline);
+  }
+  const matched=await readRecord(confirmed || viewerOnly);
   context.ebscoProfile=scope;
   browser.reportPage('info','ebsco_record_ready',tab);
   const recordURL=matched.url;
   const viewer=viewerLinks(matched.urls,scope,record)[0];
   if(!viewerOnly) {
     const direct=await resolveDirectPdf(browser,scope,record,{...doc,url:recordURL},options);
-    if(direct.length) {
-      browser.reportPage('info','ebsco_direct_pdf_entry',tab);
-      return retrieved(recordURL,direct.map(url=>({stage:'P4',rule_id:'R073',field:'ebsco_download_link',url,referer:recordURL})),viewer);
-    }
+    if(direct.length)return directResult(recordURL,recordURL,direct,viewer);
   }
   const accessSettled=clue=>!clue.doi || clue.urls.length>0 || clue.accessEmpty;
   const currentViewer=viewer || viewerLinks((await readRecord(true,accessSettled)).urls,scope,record)[0];

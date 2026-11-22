@@ -293,6 +293,7 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
     denied = article + '/article.pdf'
     preprint = 'https://repository.example.org/preprint.pdf'
     record = 'https://research.ebsco.com/c/test-profile/search/details/record'
+    search = 'https://research.ebsco.com/c/test-profile/search/results?q=10.5555%2Fbody'
     licensed_pdf = 'https://content.ebscohost.com/cds/retrieve?token=temporary'
     referer = record if institutional_referer == 'record' else institutional_referer
     blocked_direct = direct in {'authorization', 'challenge'}
@@ -329,7 +330,7 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
                 observed_at='2026-11-19T08:00:00.000Z', landing_url=record if institutional else article,
                 platform='ebsco' if institutional else 'generic', content_type='journal-article',
                 identifiers=[], diagnostics=[], candidates=[dict(stage='P4', rule_id='R073',
-                    url=licensed_pdf, referer=record if link else referer,
+                    url=licensed_pdf, referer=search if link else referer,
                     field='ebsco_download_link' if link else None)] if institutional else [])))
         elif data['url'] == denied:
             result.set_result(dict(kind='response', outcome='response', response=dict(url=denied,
@@ -338,11 +339,11 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
             assert action == 'stream_paper_body'
             if data['url'] == licensed_pdf:
                 assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
-                if blocked_direct and data['referer'] == record:
+                if blocked_direct and data['referer'] == search:
                     result.set_result(dict(kind='response', outcome='response', response=dict(url=licensed_pdf,
                         status=403, content_type='text/html', body='Use the Reader', access=direct)))
                     return result
-                assert data['referer'] == (record if direct == 'available' else referer)
+                assert data['referer'] == (search if direct == 'available' else referer)
                 body = b'%PDF-licensed'
             else:
                 assert data['url'] == preprint and 'service_id' not in data

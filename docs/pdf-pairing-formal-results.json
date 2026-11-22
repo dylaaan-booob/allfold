@@ -17,7 +17,14 @@
           "terminal_observation_utc": ["2026-11-21T16:29:25.335Z", "2026-11-21T16:29:25.591Z"],
           "result": "alternative",
           "persisted_association": true,
-          "version": "P5 file with arXiv marker and no matching title or DOI on first two pages",
+          "version": "Verified related arXiv preprint 2205.09823v2",
+          "content_version_verification": {
+            "arxiv_id": "2205.09823v2",
+            "preprint_title": "Public Signals in Network Congestion Games",
+            "all_authors_match": true,
+            "exact_arxiv_record_id_saved_as_preprint_relation": true,
+            "historical_version_match": "Archived PDF's versioned arXiv marker, title and four authors match the historical Paper-relation verification."
+          },
           "pages": 34,
           "bytes": 9493072,
           "elapsed_seconds": [25.811, 26.169],

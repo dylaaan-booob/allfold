@@ -117,15 +117,18 @@ submit its visible native form once. DOI search resolves records within the
 current profile. Repeated links for one record count once. The main record DOI
 or a previously confirmed record establishes identity. Titles help distinguish
 results when stronger evidence is absent. A real identity conflict or different
-plausible records remain explicit failures. Read results and details as fixed
-observations, then locate the current record link for the native click.
+plausible records remain explicit failures. The existing authorized details
+lookup can supply PDF links from the search page when it confirms the selected
+record's DOI. Otherwise follow the current result link and read the record page.
 
 Try the verified record's PDF links in order. A returned JSON URL or an
-observed HTTP redirect can continue through the same Session stream. If direct
-entries fail, reuse the confirmed record and Viewer when available. The Viewer
-can supply a PDF response observed on its owned GET. The stream preserves the
-actual Referer policy and checks the final transfer. Profile and link details
-stay operation-local. The task releases its temporary pages at settlement.
+observed HTTP redirect can continue through the same Session stream. A link
+discovered from results uses that page as its referrer and retains the selected
+record for fallback. If direct entries fail, use the observed Viewer or open
+the same record through the current profile's results. The Viewer can supply
+a PDF response observed on its owned GET. The stream preserves the actual
+Referer policy and checks the final transfer. Record and link details stay
+operation-local. The task releases its temporary pages at settlement.
 
 The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is

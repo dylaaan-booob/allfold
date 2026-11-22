@@ -21,11 +21,13 @@ navigation refusal has no confirmed trigger or attribution.
 ### First targeted F23 attempt
 
 On production code `c8529aff8f6d3b3f38bed0597b04fa450712bd71`,
-ordinary Allfold Download took 25.811–26.169 seconds and saved a 34-page P5
-alternative with an arXiv marker. The saved file did not match the target DOI
-or title on the inspected pages. Zotero took 46.396–46.701 seconds and
-imported the 29-page licensed INFORMS PDF. The EBSCO detail page loaded its
-inline PDF before the Connector click. The different files make this an
+ordinary Allfold Download took 25.811–26.169 seconds and saved the related
+34-page, 9,493,072-byte preprint `arXiv:2205.09823v2` through P5. The
+archived file's versioned identifier, title and four authors match the
+historical verification of the original Paper's saved arXiv relation. The
+earlier verification establishes the same preprint version. Zotero took
+46.396–46.701 seconds and imported the 29-page licensed INFORMS PDF. The
+EBSCO detail page loaded its inline PDF before the Connector click. The different files make this an
 ineligible timing pair. The alternative file and both verification records
 were preserved outside Workspace before clearing the trial body through the
 product and restoring its original Paper for a repeat.
@@ -2003,6 +2005,31 @@ was 38.924 s initially, 24.533 s following renewed access, and 20.108 s on the
 warm repeat. The existing timings and network counters locate the slowdown in
 body transfer on these observations. The reason for the first-transfer
 variation remains open.
+
+### Temporary disk-backed Session prototype
+
+The follow-up checked storage behavior on the locked runtime with synthetic
+Cookies and localStorage in disposable profiles. Inside the isolated
+`sessionData` root, `session.fromPath()` created HTTP cache files, a Cookie
+database and localStorage files during the run. A second launch using the same
+path restored the expiring Cookie and localStorage. A fresh path and a new
+process using the same in-memory partition name both started without that
+state. The Cache directory stayed under the Session's path with
+`--disk-cache-dir` supplied. The prototype checked storage separately from the
+prior large-PDF cache hits.
+
+Electron 45 has no public HTTP-cache-only capacity or directory setting for
+an off-the-record Session. A new disk path per launch could preserve fresh
+startup and keep the Browser Session scoped to Allfold. It would write
+website state and private cached responses during the run. An implementation
+would need a private, per-launch directory under `sessionData`, removal
+after native shutdown, and a startup cleanup rule for abandoned directories.
+That choice requires approval for the new retention behavior, including
+abnormal exits. The current product keeps its existing memory Session and
+Workspace Reset has its existing scope.
+[Electron NetworkContext setup](https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L74-L112)
+· [Electron network sandbox root](https://github.com/electron/electron/blob/v45.0.0/shell/browser/electron_browser_client.cc#L1243-L1249)
+· [Chromium WebView-only quota setter](https://github.com/chromium/chromium/blob/156.0.8078.48/services/network/public/mojom/network_context.mojom#L1220-L1245)
 
 ## Request-priority investigation
 

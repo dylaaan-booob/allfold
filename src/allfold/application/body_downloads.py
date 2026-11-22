@@ -368,8 +368,8 @@ class _BodyDiscoveryIO:
             raise PdfSourceReadError('No licensed EBSCO PDF entry', diagnostic='no-pdf-entry',
                 service_id=authority.service_id)
         if mode == 'ebsco':
-            self.ebsco_record = next((item.referer for item in parsed.current_candidates
-                if item.field == 'ebsco_download_link'), None)
+            self.ebsco_record = (parsed.current_landing_url
+                if any(item.field == 'ebsco_download_link' for item in parsed.current_candidates) else None)
             self.ebsco_viewer_url = parsed.ebsco_viewer_url
         return tuple(PdfCandidate(target, 'P4', 'R073', 'ebsco', item.url,
                 referer=item.referer, field=item.field if mode == 'ebsco' else None, access=authority, referer_observed=True)

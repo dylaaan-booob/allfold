@@ -72,6 +72,14 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       response.writeHead(303,{location:ebscoProfile+'/search'});response.end();return;
     }
     if(current.pathname===recordPath && ebscoMode==='record-in-app')return;
+    if(current.pathname===recordDetails && ebscoMode.startsWith('search-direct')
+      && URL.parse(request.headers.referer)?.pathname===resultsPath) {
+      response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      const doi=ebscoMode==='search-direct'?'10.5555/fixture':'10.5555/other';
+      response.end(JSON.stringify([{result:{doi,links:{'v2-downloadLinks':[
+        {type:'pdf',url:downloadLink},
+      ]}}}]));return;
+    }
     if(ebscoMode==='direct-link' && current.pathname===recordDetails) {
       response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});
       const row={result:{metadata:'x'.repeat(1100000),recordId:'record',links:{'v2-downloadLinks':[
@@ -454,6 +462,24 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(sameRecord.pdf_clues?.candidates[0]?.url,ebscoPdf);
     assert.ok(!requests.some(request=>request.url==='/Community.aspx' || request.url.startsWith(resultsPath)
       || request.url===recordPath),'fallback uses the captured Viewer without repeating preparation or search');
+    ebscoMode='search-direct';
+    const fromResults=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(fromResults.pdf_clues?.landing_url,'https://research.ebsco.com'+recordPath);
+    const [link]=fromResults.pdf_clues?.candidates || [];
+    assert.equal(link?.url,'https://research.ebsco.com'+downloadLink,'matching details from the authorized search provide the PDF entry');
+    assert.equal(new URL(link.referer).pathname,resultsPath);
+    assert.ok(!requests.some(request=>request.url===recordPath || request.url.startsWith(viewerPath)
+      || request.url.startsWith('/files/licensed')),'discovery needs neither the record page nor a body request');
+    ebscoMode='search-direct-conflict';
+    const verifiedOnPage=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(verifiedOnPage.pdf_clues?.candidates[0]?.url,ebscoPdf,'unconfirmed early links leave record and Viewer available');
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    ebscoMode='record-in-app';
+    const openedViewer=await invoke('extract_paper_pdf_clues',{...licensed,prepared_source:'ebsco-viewer',
+      prepared_record:fromResults.pdf_clues.landing_url});
+    assert.equal(openedViewer.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(openedViewer));
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    assert.ok(!requests.some(request=>request.url===recordPath),'unobserved Viewer uses the known record through the site search');
     ebscoMode='pending-asset';
     const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));
@@ -494,7 +520,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       });
     });
     const replacedSearch=await invoke('extract_paper_pdf_clues',licensed);
-    assert.equal(replacedSearch.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(replacedSearch));
+    assert.equal(replacedSearch.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({replacedSearch,requests}));
     assert.ok(replacementStarted,'a full replacement triggers a fresh observation of the same search');
     ebscoMode='expired-search';await freshProfile();
     const expiredSearch=await invoke('extract_paper_pdf_clues',licensed);
