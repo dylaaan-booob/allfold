@@ -138,6 +138,8 @@ def content_host(target: PdfTarget) -> str | None:
 
 def content_platform(target: PdfTarget) -> str | None:
     host = content_host(target)
+    if _elsevier_linking_pii(target.article_url):
+        return 'sciencedirect'
     return HOST_PLATFORMS.get(host) or ('atypon' if host in ATYPON_HOSTS else None)
 
 
@@ -299,7 +301,19 @@ def _valid_id(inputs: PdfRuleInputs | None, kinds: tuple[str, ...], pattern: re.
     return None
 
 
+def _elsevier_linking_pii(article_url: str | None) -> str | None:
+    if not article_url:
+        return None
+    url = urlsplit(article_url)
+    if url.scheme != 'https' or url.hostname != 'linkinghub.elsevier.com' or url.port not in {None, 443}:
+        return None
+    match = re.fullmatch(r'/retrieve/pii/([^/]+)/?', url.path)
+    return match[1] if match and _PII.fullmatch(match[1]) else None
+
+
 def _pii(target: PdfTarget, inputs: PdfRuleInputs | None) -> str | None:
+    if pii := _elsevier_linking_pii(target.article_url):
+        return pii
     if value := _valid_id(inputs, ('pii',), _PII):
         return value
     if inputs:
@@ -459,10 +473,19 @@ def iter_p2_candidates(target: PdfTarget, inputs: PdfRuleInputs | None = None) -
                                known.url, known.reader_kind, known.referer, known.field)
     if platform == 'sciencedirect' and (pii := _pii(target, inputs)):
         article = urlsplit(target.article_url or '')
-        origin = urlunsplit((article.scheme, article.netloc, '', '', '')) if article.hostname == host else 'https://' + host
+        from_linkinghub = _elsevier_linking_pii(target.article_url) is not None
+        if from_linkinghub:
+            origin = 'https://www.sciencedirect.com'
+        else:
+            origin = urlunsplit((article.scheme, article.netloc, '', '', '')) if article.hostname == host else 'https://' + host
         url = origin + '/science/article/pii/' + pii + '/pdfft'
-        yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true', referer=target.article_url)
-        yield PdfCandidate(target, 'P2', 'R024', platform, url, referer=target.article_url)
+        # DOI registration supplies the PII even if Linking Hub cannot redirect.
+        # Send the Referer only when the route supplies an article page.
+        referer = None if from_linkinghub else target.article_url
+        yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true',
+            referer=referer, referer_observed=from_linkinghub)
+        yield PdfCandidate(target, 'P2', 'R024', platform, url,
+            referer=referer, referer_observed=from_linkinghub)
     elif platform == 'cell' and (pii := _cell_pii(target, inputs)):
         yield PdfCandidate(target, 'P2', 'R023', platform, 'https://' + host + '/action/showPdf?pii=' + _component(pii))
     elif platform == 'ieee' and (number := _ieee_number(target, inputs)):

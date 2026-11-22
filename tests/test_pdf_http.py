@@ -19,6 +19,27 @@ def target(host='www.sciencedirect.com', **values):
     return PdfTarget('paper-1', doi='10.1234/AbC', content_type='journal-article', content_host=host, **values)
 
 
+def test_doi_registration_at_elsevier_linking_hub_qualifies_sciencedirect_entry():
+    paper = target(None)
+    pii = 'S014067362400123X'
+    lookup = []
+    def serve(request):
+        lookup.append(request.url.host)
+        return httpx.Response(200, json={'values': [{'type': 'URL', 'data': {
+            'value': 'https://linkinghub.elsevier.com/retrieve/pii/' + pii}}]})
+
+    seen = []
+    with client(serve) as http:
+        app = PdfDiscovery(paper, io=PdfDiscoveryIO(http))
+        result = app.run(lambda candidate: seen.append(candidate) or CandidateResult.pdf(transfer_complete=True))
+    assert lookup == ['doi.org']
+    assert result.status == 'transferred' and result.pdf_source == 'P2'
+    entry, = seen
+    assert entry.target is paper and entry.rule_id == 'R024'
+    assert entry.url == f'https://www.sciencedirect.com/science/article/pii/{pii}/pdfft?download=true'
+    assert entry.referer is None
+
+
 @pytest.mark.parametrize('tail', [b'x' * 300000, b'<div></div>' * 5000,
     b'<div>' * 70, b'<span data-unused="' + b'x' * 9000 + b'"></span>',
     b'<script type="application/ld+json">' + b'x' * 140000 + b'</script>'],

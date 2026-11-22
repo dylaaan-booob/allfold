@@ -599,10 +599,13 @@ class PdfDiscovery:
                 following = parse_current_response(candidate, response,
                     report=lambda code: self._note(original.stage, original.rule_id, code))
                 reader = reader_context(candidate, response.url)
-                article = urlsplit(self._route.article_url or '')
-                article_backlink = (reader and reader['platform'] == 'sciencedirect' and article.netloc and following
-                        and all((urlsplit(item.url).scheme, urlsplit(item.url).netloc, urlsplit(item.url).path)
-                            == (article.scheme, article.netloc, article.path) for item in following))
+                article_backlink = False
+                if reader and reader['platform'] == 'sciencedirect' and following:
+                    entry = urlsplit(reader['url'])
+                    pii = reader['identifier']
+                    article_paths = {f'/science/article/pii/{pii}', f'/science/article/abs/pii/{pii}'}
+                    article_backlink = all((current := urlsplit(item.url)).scheme == entry.scheme
+                        and current.netloc == entry.netloc and current.path in article_paths for item in following)
                 if article_backlink:
                     following = ()
                 if (not following and not ebsco_direct and self.io is not None

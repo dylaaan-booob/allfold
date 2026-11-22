@@ -268,6 +268,8 @@ https://www.sciencedirect.com/science/article/pii/{PII}/pdfft?download=true
 
 已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。生成入口时优先使用 `?download=true`，无法继续时回退到普通 `/pdfft`。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
 
+同一 DOI 的可信登记落点若是 Elsevier Linking Hub 的 `/retrieve/pii/{pii}`，用其中合格的 PII 生成现有 ScienceDirect R024 入口。仅在已取得文章页上下文时附带文章 Referer；后续 Session、Reader 和保存仍按正常权限与任务范围处理。
+
 Cell Press 的 [R023](#r023) 使用 `https://www.cell.com/action/showPdf?pii={pii}`，输入可来自 `fulltext`、`pdfExtended` 或 `showPdf` URL。保留其有标点 PII/端点条件，不把 ScienceDirect 的规范化与 Host 直接套到 Cell。
 
 #### F5.4 IEEE Xplore

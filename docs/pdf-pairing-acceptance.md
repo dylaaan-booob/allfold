@@ -82,6 +82,13 @@ operation returned in 1.745 seconds and no stream started. This is an
 asymmetric result with different preparation, and the initial failure remains
 in the increment.
 
+An ordinary DOI navigation in the same Allfold Session independently reached
+Elsevier Linking Hub and failed with Chromium code `-100`. A read through the
+existing provider client found the same registered PII in the DOI response and
+the exact Crossref record. That supplied a qualified ScienceDirect R024 route
+even without a completed redirect from Linking Hub. The follow-up retains the
+registration evidence and adds an isolated discovery regression.
+
 ## Historical acceptance through `d237ee7`
 
 **Acceptance uses the criteria revised on 20 November 2026

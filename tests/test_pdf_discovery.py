@@ -855,7 +855,7 @@ def test_pdf_refresh_uses_observed_content_host_and_ids_before_openalex():
     from allfold.application.document_metadata import DocumentPdfResult
     from allfold.pdf_facts import PdfIdentifier, crossref_discovery_facts
     paper = PdfTarget('paper-1', doi='10.1016/j.example.2026.123456',
-        article_url='https://linkinghub.elsevier.com/retrieve/pii/S014067362400123X',
+        article_url='https://resolver.example.org/article/123',
         content_type='journal-article')
     facts = crossref_discovery_facts({'DOI': paper.doi,
         'alternative-id': ['S014067362400123X'],
@@ -910,19 +910,23 @@ def test_pdf_refresh_does_not_transform_an_explicit_other_doi(landing):
     assert result.pdf_source == 'P5'
 
 
-def test_refreshed_article_backlink_enters_reader_before_another_article_get():
+@pytest.mark.parametrize('linkinghub', [False, True])
+def test_refreshed_article_backlink_enters_reader_before_another_article_get(linkinghub):
     from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
     article = 'https://www.sciencedirect.com/science/article/pii/S014067362400123X'
-    entry, final = article + '/pdfft', 'https://pdf.sciencedirectassets.com/current.pdf?md5=Keep'
+    entry = article + '/pdfft' + ('?download=true' if linkinghub else '')
+    final = 'https://pdf.sciencedirectassets.com/current.pdf?md5=Keep'
+    landing = ('https://linkinghub.elsevier.com/retrieve/pii/S014067362400123X' if linkinghub
+        else 'https://resolver.example.org/article/123')
     paper = PdfTarget('paper-1', doi='10.1016/j.example.2026.123456',
-        article_url='https://linkinghub.elsevier.com/retrieve/pii/S014067362400123X',
-        content_type='journal-article')
+        article_url=landing, content_type='journal-article')
     snapshot = PdfDiscoveryFacts(source='document', capability='document-pdf', status='complete',
         observed_at=datetime.now(timezone.utc), target_doi=paper.identity_doi,
         landing_url=article, platform='sciencedirect')
     calls = []
     class IO:
         def document(self, _):
+            assert not linkinghub, 'The DOI registration already supplies the qualified PII'
             return DocumentPdfResult(snapshot, (CurrentPdfClue('P4', 'R024', entry, referer=article),))
         def reader(self, candidate, response):
             calls.append('reader')
@@ -936,7 +940,7 @@ def test_refreshed_article_backlink_enters_reader_before_another_article_get():
         return CandidateResult.pdf(transfer_complete=True)
     result = PdfDiscovery(paper, io=IO()).run(consume)
     assert calls == [entry, 'reader', final]
-    assert (result.pdf_source, result.fallback_used) == ('P4', False)
+    assert (result.pdf_source, result.fallback_used) == ('P2' if linkinghub else 'P4', False)
 
 
 @pytest.mark.parametrize('host,doi', [
