@@ -11,7 +11,8 @@ credentials have their own lifetime.
 The existing shutdown drains owned work, pages and native items. Electron
 owns the remaining native Session lifetime. After the next startup has
 claimed the UI port, it reclaims managed directories from exited processes
-in the background. A still-running process keeps its directory even after
+in the background using an opened directory and directory-relative removal.
+A still-running process keeps its directory even after
 its UI port is released. Cleanup failures are logged and retried on later
 launches. Workspace Reset leaves Session storage to this lifecycle.
 

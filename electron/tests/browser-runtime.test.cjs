@@ -758,6 +758,27 @@ test('Article pages are reused only within their active operation and close on c
   assert.equal(browser.tabs.size,0);assert.equal(browser.paperPages.size,0);
 });
 
+test('an explicit PDF snapshot failure ends toolbar polling without erasing an earlier read',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const url='https://www.sciencedirect.com/science/article/pii/S1234567812345678';
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',
+    identity:{confirmed_article_url:url}};
+  const read=browser.readDocument.bind(browser),signal=new AbortController().signal;
+  for(const earlier of [false,true]) {
+    let keepEarlier=earlier;
+    browser.readDocument=(tab,action,options)=>{
+      if(action!=='pdf')return read(tab,action,options);
+      const status=keepEarlier?'complete':'failed';
+      keepEarlier=false;
+      return {clues:{status,landing_url:url,candidates:[]},toolbarPending:true};
+    };
+    const result=await browser.runTask(signal,{...data,request_id:'toolbar'},()=>
+      browser.extractPaperPdfClues(data,{signal,deadline:Date.now()+1500}));
+    assert.equal(result.pdf_clues.status,earlier?'complete':'failed');
+  }
+});
+
 test('Login opens one managed CARSI Portal and prepares independent Service pages without resubmitting credentials',{timeout:5000},async t=>{
   const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t);

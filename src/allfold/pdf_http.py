@@ -62,6 +62,11 @@ _API_SCOPES = {
 
 
 class _FiniteReader(ProviderReadClient):
+    def _check_response_deadline(self, operation, status):
+        # The owned response stream invokes this for each arriving chunk.
+        self.check_authority()
+        super()._check_response_deadline(operation, status)
+
     def _decode(self, response, decode):
         if response.status_code != 200:
             raise ProviderHTTPError(self.provider, response.status_code)

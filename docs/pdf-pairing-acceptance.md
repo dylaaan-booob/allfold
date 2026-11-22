@@ -91,6 +91,15 @@ the next startup removed it. In isolation, a second active process retained
 its Session path, fresh pages received no prior cookies or localStorage, and
 retired directory cleanup preserved an unrelated directory and symlink target.
 
+Independent review reproduced deletion through a replacement Session root.
+Reclamation now uses the opened managed directory and verifies candidate
+identity before directory-relative removal. Isolated replacement tests preserve
+the unrelated contents. Additional isolated checks verify that cancellation
+stops a continuing discovery response and explicit PDF extraction failure ends
+an optional ScienceDirect toolbar wait. Same-origin redirect cookies still
+depend on the partition Cookie snapshot taken for the initial URL. This round
+has no comparable F23 evidence attributing the wait to that case.
+
 The temporary Discover fields and Browser page limit were restored. The
 configuration bytes match preflight. F23 remains a Candidate and the verified
 F19 and F18 bodies remain Downloaded, with zero Trash entries. Workspace

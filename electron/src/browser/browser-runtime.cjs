@@ -907,12 +907,12 @@ class BrowserRuntime {
       let pdf=result.clues;
       // Only a missing, delayed toolbar needs another snapshot. An optional
       // observation cannot erase content already captured by the original read.
-      let toolbarPending=result.toolbarPending;
+      let toolbarPending=result.toolbarPending && pdf.status!=='failed';
       while(!metadata && !readerKind && !pdf.candidates.length && toolbarPending) {
         try {
           await waitFor(()=>pause(signal,200),signal,deadline,'navigation','document_operation');
           const next=await this.readDocument(tab,'pdf',{signal,deadline,identity:data.identity,args:{readerKind:null}});
-          toolbarPending=next.toolbarPending;
+          toolbarPending=next.toolbarPending && next.clues.status!=='failed';
           if(next.clues.candidates.length || next.clues.status!=='failed')pdf=next.clues;
         }catch(error){checkCanceled(signal);if(error.diagnostic?.code!=='document_changed')throw error;}
       }

@@ -294,6 +294,36 @@ def test_current_response_read_failure_cannot_hide_terminal_task_state(stop):
     assert stream.closed and seen == ['https://pubs.acs.org/broken']
 
 
+def test_current_response_stops_reading_remaining_chunks_after_cancel():
+    from allfold.providers.provider_http import Cancelled
+
+    cancel = Event()
+
+    class OngoingResponse(httpx.SyncByteStream):
+        closed = False
+        read_after_cancel = False
+
+        def __iter__(self):
+            yield b'<head>'
+            cancel.set()
+            yield b'</head>'
+            self.read_after_cancel = True
+            yield b'<body>More metadata</body>'
+
+        def close(self):
+            self.closed = True
+
+    stream = OngoingResponse()
+    paper = target('pubs.acs.org')
+    candidate = PdfCandidate(paper, 'P2', 'API02', 'acs', 'https://pubs.acs.org/current')
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, headers={'Content-Type': 'text/html'}, stream=stream))
+    with PdfHttpClient(guard=lambda: None, cancel_event=cancel, deadline=time.monotonic() + 20,
+            resolver=lambda *_: ('8.8.8.8',), transport=transport) as http:
+        with pytest.raises(Cancelled):
+            http.consume(candidate)
+    assert stream.closed and not stream.read_after_cancel
+
+
 def test_every_redirect_boundary_checks_dns_and_scopes_secrets_but_keeps_referer():
     seen = []
     def handle(request):
