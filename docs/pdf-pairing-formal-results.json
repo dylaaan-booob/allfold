@@ -1,5 +1,222 @@
 {
-  "status": "targeted_followup_pending",
+  "status": "final_stage_complete_with_documented_limits",
+  "final_stage": {
+    "status": "complete_with_documented_limits",
+    "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+    "starting_pr_head_sha": "c9430f26894ef97ebcce8ea1d0a26db69a785c1b",
+    "production_code_sha": "027c17573648bc7395d3e7442e6a86e23919dafa",
+    "versions": {
+      "electron": "45.0.0",
+      "chromium": "156.0.8078.48",
+      "chrome": "157.0.8103.80",
+      "connector": "5.0.217",
+      "zotero_desktop": "10.0.9"
+    },
+    "siam": {
+      "F19": {
+        "first_download": {
+          "elapsed_seconds": [
+            14.207,
+            14.47
+          ],
+          "pages": 59,
+          "bytes": 11471852,
+          "local_pdf_and_association_verified": true
+        },
+        "same_session_repeat": {
+          "elapsed_seconds": [
+            14.182,
+            14.443
+          ],
+          "pages": 59,
+          "bytes": 11471852,
+          "local_pdf_and_association_verified": true
+        },
+        "same_request_and_network_isolation_key": true,
+        "body_observations": [
+          {
+            "network_body": true,
+            "cache_body": false,
+            "delivered_bytes": 11471852,
+            "first_body_ms": 675,
+            "last_body_ms": 14261
+          },
+          {
+            "network_body": true,
+            "cache_body": false,
+            "delivered_bytes": 11471852,
+            "first_body_ms": 309,
+            "last_body_ms": 14071
+          }
+        ],
+        "current_connector": {
+          "translator": "Atypon Journals",
+          "parent_verified_by_title_and_publisher_url": true,
+          "parent_doi_present": false,
+          "parent_http_status": 201,
+          "imported_attachment_present_after_two_minutes": false,
+          "pdf_get_or_attachment_upload_observed": false
+        },
+        "historical_verified_zotero_attachment_preserved": true,
+        "current_pair_eligible_for_timing": false
+      },
+      "F18": {
+        "first_download": {
+          "elapsed_seconds": [
+            5.154,
+            5.417
+          ],
+          "pages": 28,
+          "bytes": 3814922,
+          "local_pdf_and_association_verified": true
+        },
+        "same_session_repeat": {
+          "elapsed_seconds": [
+            0,
+            0.109
+          ],
+          "pages": 28,
+          "bytes": 3814922,
+          "local_pdf_and_association_verified": true
+        },
+        "same_request_and_network_isolation_key": true,
+        "body_observations": [
+          {
+            "network_body": true,
+            "cache_body": false,
+            "delivered_bytes": 3814922,
+            "first_body_ms": 458,
+            "last_body_ms": 5162
+          },
+          {
+            "network_body": false,
+            "cache_body": true,
+            "delivered_bytes": 3814922,
+            "first_body_ms": 0,
+            "last_body_ms": 1
+          }
+        ],
+        "current_connector": {
+          "translator": "Atypon Journals",
+          "parent_verified_by_title_and_publisher_url": true,
+          "parent_doi_present": false,
+          "parent_http_status": 201,
+          "imported_attachment_present_after_two_minutes": false,
+          "pdf_get_or_attachment_upload_observed": false
+        },
+        "historical_verified_zotero_attachment_preserved": true,
+        "current_pair_eligible_for_timing": false
+      }
+    },
+    "cache_disposition": {
+      "retained_session": "in_memory",
+      "larger_eligible_cache_prototype": "disk_backed_temporary_session",
+      "prototype_wrote_cookie_database_and_local_storage": true,
+      "separate_supported_memory_capacity_or_cache_path": false
+    },
+    "ebsco_F23": {
+      "baseline_production_sha": "954516d2d7b8da17264131384d9da9645344365f",
+      "baseline_allfold_elapsed_seconds": [
+        40.464,
+        40.727
+      ],
+      "baseline_search_record_and_link_ms": 20117,
+      "baseline_record_open_to_route_transition_ms": 12061,
+      "final_allfold": {
+        "elapsed_seconds": [
+          45.786,
+          46.047
+        ],
+        "pages": 29,
+        "bytes": 2996661,
+        "local_pdf_and_association_verified": true
+      },
+      "final_community_profile_ms": 10434,
+      "final_search_and_verified_link_ms": 6364,
+      "final_record_page_navigation_observed": false,
+      "final_allfold_network_body_bytes": 2996661,
+      "final_allfold_first_to_last_body_ms": 23131,
+      "zotero": {
+        "elapsed_seconds": [
+          11.274,
+          11.621
+        ],
+        "pages": 29,
+        "bytes": 2996661,
+        "local_pdf_and_association_verified": true
+      },
+      "zotero_preload_and_save_each_received_full_network_body": true,
+      "zotero_preload_and_save_full_urls_and_isolation_keys_differed": true,
+      "zotero_connector_first_to_last_body_ms": 7149,
+      "zotero_attachment_upload_http_status": 201,
+      "byte_identical": true,
+      "preparation_and_click_times_differed": true,
+      "independent_observed_user_wait_gap_seconds": [
+        34.165,
+        34.773
+      ],
+      "priority_or_connection_effect_established": false
+    },
+    "science_direct_F26": {
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "allfold": {
+        "elapsed_seconds": [
+          10.975,
+          11.239
+        ],
+        "pages": 12,
+        "bytes": 4834608,
+        "local_pdf_and_association_verified": true
+      },
+      "allfold_arrived_via_manual_carsi_article_preparation": true,
+      "zotero": {
+        "elapsed_seconds": [
+          11.89,
+          12.189
+        ],
+        "pages": 12,
+        "bytes": 4835031,
+        "local_pdf_and_association_verified": true
+      },
+      "chrome_human_verification_completed_before_save": true,
+      "interrupted_between_clicks": true,
+      "matching_normalized_text_pages": 12,
+      "byte_identical": false,
+      "timing_eligible_for_parity": false
+    },
+    "workspace_reset": {
+      "product_confirmation_utc": [
+        "2026-11-22T16:43:11.314Z",
+        "2026-11-22T16:43:11.320Z"
+      ],
+      "target_scope_confirmed": true,
+      "before": {
+        "candidates": 2,
+        "downloaded": 8,
+        "trash": 0
+      },
+      "after": {
+        "candidates": 0,
+        "downloaded": 0,
+        "trash": 0
+      },
+      "verified_pdfs_archived_outside_workspace": 8,
+      "target_directory_and_database_absent": true,
+      "configuration_journals_services_covers_credentials_logs_and_zotero_preserved": true,
+      "zotero_acceptance_parent_count": 117
+    },
+    "production_checks": {
+      "javascript_files": 65,
+      "python_tests_passed": 1699,
+      "electron_tests_passed": 256,
+      "standards_and_spec_findings_resolved": true,
+      "native_review": "No confirmed bug. Independent Electron invocation hit SIGABRT; normal local fixture and full suite passed.",
+      "production_pr_safety": "https://github.com/dylaaan-booob/allfold/actions/runs/45018103405/job/137194705902"
+    }
+  },
   "targeted_followup": {
     "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
     "starting_pr_head_sha": "733a23d75430a9d6ef8bccef87ffdb3648e8df51",

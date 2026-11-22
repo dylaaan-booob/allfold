@@ -5,6 +5,9 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 ## Targeted follow-up
 
+This section records the earlier targeted checkpoint. The final-stage
+measurements and Workspace Reset are below.
+
 The follow-up on PR #141 uses the same success and timing criteria adopted on
 20 November. The field route can read an already-published Paper during
 collection. An isolated regression reproduced a 409 when the read observed an
@@ -171,9 +174,9 @@ opportunity did not occur during the timed ScienceDirect Downloads above.
 
 Another F26 comparison with exchanged order reached a Chrome Cloudflare
 verification prompt after the normal ScienceDirect CARSI Visit. The prompt
-appeared during preparation. The current record retains the earlier Zotero
-attachment and the verified Allfold retest. The exchanged-order timing awaits
-verification at the independent Chrome entry.
+appeared during preparation. This checkpoint retains the earlier Zotero
+attachment and the verified Allfold retest. The exchanged-order Save was
+still pending at the independent Chrome entry.
 
 ### Oxford F08 control on `954516d`
 
@@ -194,10 +197,148 @@ products. Native observations confirm reuse of the active profile and show
 that search and transfer remain the main Allfold waits. The measured EBSCO
 gaps remain outside the existing comparable-wait criterion. F27 and F08
 were inside it for the observed preparation. F26 saved the correct edition
-after the registered-PII repair and awaits its additional paired timing.
-The configured acceptance Workspace still contains two Candidates and six
-Downloaded Papers while that verification is pending. The four temporary
-Run settings match the original saved configuration bytes.
+after the registered-PII repair. Its additional paired timing was pending
+at this checkpoint. The configured acceptance Workspace held two Candidates
+and six Downloaded Papers. The four temporary Run settings matched the
+original saved configuration bytes.
+
+## Final-stage targeted evidence
+
+### EBSCO discovery and Connector transfer
+
+A diagnostic run using the still-running `954516d` production build measured
+ordinary F23 Download at 40.464–40.727 seconds through file and Paper
+association. The profile was already available. The managed record search
+through verification took 19.307 seconds and the direct-link lookup took
+0.810 seconds. The visible search results were acted on promptly. The page
+trace recorded a 12.061-second interval from Allfold's record-open event to
+the site's in-page route transition, with site requests during that interval. The
+15.472-second body operation reached first byte in 1.869 seconds.
+
+A separate, non-scoring probe dispatched the existing EBSCO details GET from
+the authorized results page. Its 200 response after 1.440 seconds carried the
+matching primary DOI and an available PDF link. The original site's navigation
+continued during this probe. The final implementation uses those details to
+skip the record-page navigation when the matching DOI and link are both
+available. It preserves the search referrer and the verified record identity
+for Viewer fallback. Both optional details reads use the existing page-load
+budget under the Download deadline. The original result link remains available
+when the early lookup cannot qualify a link.
+
+Installed Chrome 157.0.8103.80, Connector 5.0.217 and Desktop 10.0.9
+completed a regular F23 Save in 11.274–11.621 seconds. The new parent in the
+acceptance collection had the byte-identical 29-page, 2,996,661-byte INFORMS
+attachment. The popup briefly displayed saved-item wording that did not
+identify the new attachment. The file and its parent relation established
+the terminal endpoint.
+
+Chrome's automatically opened inline Viewer and the installed Connector's
+service worker each issued an HTTP 200 GET and received 2,996,661 decoded
+bytes. The trace saw network body reads and zero cache body reads for both.
+They used the same delivery host and path, with different full URLs and
+network isolation contexts. The Viewer received its body over about 23.236
+seconds after its first byte, some of it overlapping the Save. The Connector
+received its full body over 7.149 seconds after first byte, then posted it to
+the local Desktop `saveAttachment` endpoint, which returned 201. This
+identifies the browser-to-local-upload path in the installed versions. The
+Save received a fresh network body. Priority and connection effects remain
+unresolved.
+
+On final production code `027c17573648bc7395d3e7442e6a86e23919dafa`,
+ordinary Allfold Download on the restored original F23 Paper saved the same
+licensed PDF in 45.786–46.047 seconds. Its freshly started Session needed
+10.434 seconds for the Community/profile entry. Search through the verified
+link took 6.364 seconds, including the 0.801-second details response and body.
+The page trace ended on the results route with no record-page navigation.
+Both record-ready and direct-link events follow the verified details response
+in this path, so the old separate link interval is part of the 6.364 seconds.
+Chromium made one delivery GET with HTTP 200 and network body reads. It
+delivered the full 2,996,661 decoded bytes and recorded zero cache body reads.
+First body arrived after 1.894 seconds, followed by 23.131 seconds to the last
+body event. Earlier and later access preparation and transfer times varied.
+The removed navigation is a confirmed discovery improvement. The full user
+wait still exceeded the separate Connector observation by 34.165–34.773
+seconds, with different access preparation and nonadjacent clicks.
+
+### SIAM ordinary Downloads
+
+F19 and F18 were collected through normal OpenAlex Discover after the previous
+Workspace Reset and selected by DOI. Each repeat followed external archiving
+of the first body, removal in Trash and Restore through the product controls.
+Both Downloads used the same current Paper and Allfold Session. The Session
+ran the rebuilt UI and production `027c175`. Both sides established SIAM
+access independently before the trial.
+
+| Paper | Allfold first Download | Same-Session repeat | Actual body evidence |
+| --- | --- | --- | --- |
+| F19 | 14.207–14.470 s | 14.182–14.443 s | Two HTTP 200 network bodies, 11,471,852 bytes each and zero cache body reads |
+| F18 | 5.154–5.417 s | 0–0.109 s | One HTTP 200 network body, followed by 3,814,922 bytes from cache without network body reads |
+
+Both first responses reported `private, max-age=3600, must-revalidate`.
+F19 received the first byte at 0.675 and 0.309 seconds from its respective
+request starts, with another 13.586 and 13.762 seconds receiving the bodies.
+F18's warm response delivered the body in about one millisecond by NetLog,
+below the coarser file-association sampling interval. Both repeats produced
+byte-identical versions to their own first Downloads, with the original Paper
+and new attempt association verified. The full request URL and network
+isolation key stayed the same within each sample. The final runtime
+reproduces the large-object and smaller-object behavior from the controlled
+cache probe.
+
+Both ordinary Chrome Saves used the installed Atypon Journals translator.
+They created new parents in the acceptance collection. The saved titles and
+article URLs identify F18 and F19 even though the parents lacked a DOI field.
+The scoped trace saw the Desktop parent requests return 201 and observed no
+SIAM PDF GET or attachment upload. Both parents had no imported attachment
+after more than two minutes. Earlier verified Zotero files for both papers
+remain in the collection. The latest Chrome outcomes provide no Save-to-PDF
+timing or complete-body throughput comparison. The cause of the missing
+attachment in these Saves remains unresolved.
+
+### ScienceDirect F26 exchanged order
+
+The planned Allfold → Zotero order completed on the same target DOI. On
+`027c175`, ordinary Allfold Download associated the publisher PDF with the
+original Paper in 10.975–11.239 seconds. Allfold's batch ScienceDirect
+preparation target had closed. A manual visit from its own CARSI resource
+then reached the exact article with institutional full-text access before
+the Download. NetLog recorded one small preliminary PDF response of 4,098
+bytes and one complete delivery of 4,834,608 bytes, with network body reads.
+The complete delivery reached first byte in 0.745 seconds and finished about
+0.671 seconds later.
+
+After an operator interruption, Chrome requested fresh verification.
+The operator cleared it and the exact article showed Xiamen University and
+Full text access before the normal ScienceDirect Connector Save. Zotero
+imported and associated the 4,835,031-byte PDF in 11.890–12.189 seconds.
+The target DOI and title match on both sides. All 12 pages have equal
+normalized text and the file hashes differ. Neither operator opened a PDF
+preview before these clicks. The interrupted sequence confirms order,
+edition and association across the two independent sessions. The timings
+are separate observations with different preparation dates.
+
+### Final checks and Workspace Reset
+
+The rebuilt UI and actual production `027c175` passed JavaScript syntax
+checks for 65 files, all 1,699 Python tests and all 256 Electron tests. The
+fixed-base Standards and Spec reviews and the affected follow-ups cleared
+the EBSCO findings. Independent Codex Review reported no confirmed new
+defect. Its own Electron invocation ended at startup with SIGABRT, while
+the focused fixture and full local Electron suite passed outside that
+invocation. The production checkpoint's PR-associated full Safety job
+passed. [Production Safety check](https://github.com/dylaaan-booob/allfold/actions/runs/45018103405/job/137194705902)
+
+On 23 November at 00:43 Asia/Shanghai, the configured acceptance Workspace
+had two Candidates, eight Downloaded Papers and no Trash. All eight PDFs
+were verified and archived externally before confirming the exact Workspace
+in Settings → Data → Reset. The product removed its directory and database.
+The library projection was uninitialized and all three lists were empty.
+Configuration bytes, the four temporary Run settings, Journals, Services,
+covers, credential files, prior log files and all 117 Zotero acceptance
+parents were verified. The reference Zotero PDFs and their parent relations
+were preserved. The acceptance Allfold instance exited normally after the
+checks. The operator closed the F26 trial tab. Chrome's extension connection
+ended afterward, limiting an independent tab-list recheck.
 
 ## Historical acceptance through `d237ee7`
 
