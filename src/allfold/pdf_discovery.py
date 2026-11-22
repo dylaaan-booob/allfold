@@ -28,9 +28,10 @@ SUPPORTED_PDF_TARGET_TYPES = ARTICLE_TYPES | {'unknown'}
 
 def _request_key(candidate):
     # The same endpoint can receive a qualified request in a different access
-    # context, including a Reader's observed Referer or its absence.
+    # context. A native form action has no request Referer supplied by discovery.
+    referer = None if candidate.action else candidate.referer
     return (sha256(urldefrag(candidate.url)[0].encode()).digest(),
-            sha256((candidate.referer or '').encode()).digest(), candidate.action, candidate.credential,
+            sha256((referer or '').encode()).digest(), candidate.action, candidate.credential,
             getattr(candidate.access, 'service_scope', None))
 
 
@@ -523,11 +524,23 @@ class PdfDiscovery:
         # Explicit next-hop relationships, not an expected publisher hop count.
         # Keep fingerprints of the used requests and responses to detect
         # repeated edges without retaining their bodies or signed URLs.
-        pending = [(original, None, object())]
+        original_lineage = object()
+        pending = [(original, None, original_lineage)]
+        may_use_viewer = original.rule_id == 'R073' and original.field == 'ebsco_download_link'
         edges, responses = set(), set()
         attempts = {}
         request_context_key, reader_context_key = None, None
-        while pending:
+        while pending or may_use_viewer:
+            if not pending:
+                if not viewer_fallback():
+                    break
+                may_use_viewer = False
+                # A qualified Viewer can issue the same URL in a new context.
+                viewer_entry = object()
+                pending.extend((item, viewer_entry, original_lineage if index == 0 else object())
+                    for index, item in reversed(tuple(enumerate(self._ebsco_viewer(original)))))
+                if not pending:
+                    break
             candidate, evidence, lineage = pending.pop()
             self._current_candidate = candidate
             self.check()
@@ -577,6 +590,8 @@ class PdfDiscovery:
             observation = None
             fresh_reader = False
             ebsco_direct = candidate.rule_id == 'R073' and candidate.field == 'ebsco_download_link'
+            if result.diagnostic == 'service-invalidated':
+                may_use_viewer = False
             if result.kind == 'response' and result.response is not None:
                 response = result.response
                 publisher_blocked = False
@@ -597,6 +612,7 @@ class PdfDiscovery:
                 if observation in responses:
                     self._note(original.stage, original.rule_id, 'response-loop')
                     self._failed = True
+                    result = response = None
                     continue
                 responses.add(observation)
                 following = parse_current_response(candidate, response,
@@ -655,12 +671,6 @@ class PdfDiscovery:
                             self._note(original.stage, original.rule_id, error.diagnostic, service_id)
                 if access_limited(response):
                     self._note(original.stage, original.rule_id, result.diagnostic or 'access-blocked')
-            if not following and ebsco_direct and viewer_fallback() and result.diagnostic != 'service-invalidated':
-                following = self._ebsco_viewer(original)
-                if following:
-                    # The actual Viewer can issue the same URL in a new request context.
-                    fresh_reader = True
-                    observation = object()
             if not following:
                 self._note(original.stage, original.rule_id, result.diagnostic or 'no-pdf-entry')
                 self._failed = True

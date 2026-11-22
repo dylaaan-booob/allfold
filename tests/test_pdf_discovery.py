@@ -1443,6 +1443,64 @@ def test_reader_self_loop_failure_then_alternative_reports_actual_fallback():
     assert result.status=='transferred' and result.fallback_used and result.candidate.url==good
 
 
+@pytest.mark.parametrize('cycle', [False, True])
+def test_ebsco_repeated_direct_response_keeps_the_verified_viewer(cycle):
+    import json
+    from allfold.pdf_rules import PdfCandidate
+
+    paper = target('publisher.example.org')
+    direct = 'https://content.ebscohost.com/record-pdf'
+    redirect = direct + '?other=1'
+    entry = PdfCandidate(paper, 'P4', 'R073', 'ebsco', direct, field='ebsco_download_link')
+    viewed = []
+
+    class IO:
+        def ebsco_viewer(self, candidate):
+            assert candidate is entry and candidate.target is paper
+            return (replace(candidate, field=None),)
+
+    def consume(candidate):
+        if candidate.field is None:
+            viewed.append(candidate.url)
+            return CandidateResult.pdf(transfer_complete=True)
+        next_url = redirect if cycle and candidate.url == direct else direct
+        return CandidateResult.current(CurrentResponse(candidate.url, 'application/json',
+            json.dumps({'url': next_url}).encode()))
+
+    result = PdfDiscovery(paper, candidates=(entry,), io=IO()).run(consume)
+    assert (result.status, result.pdf_source, result.fallback_used) == ('transferred', 'P4', True)
+    assert viewed == [direct]
+
+
+def test_document_refresh_does_not_replay_the_same_native_form_with_a_different_referrer():
+    from allfold.application.document_metadata import CurrentPdfClue, DocumentPdfResult
+
+    origin = 'https://www.microbiologyresearch.org'
+    paper = target('www.microbiologyresearch.org', article_url=origin + '/content/journal/paper')
+    pdf_entry, form = origin + '/content/journal/pdf', origin + '/deliver'
+    facts = document(paper, [PdfCandidateFact(stage='P3', rule_id='R059', url=pdf_entry)],
+        status='partial').model_copy(update={'platform': 'microbiology'})
+
+    class IO:
+        def document(self, target):
+            return DocumentPdfResult(facts, (CurrentPdfClue('P4', 'R059', form, action='refresh_form'),))
+
+    forms = []
+
+    def consume(candidate):
+        if candidate.url == pdf_entry:
+            return CandidateResult.current(CurrentResponse(pdf_entry, 'text/html',
+                b'<head><meta name="citation_doi" content="10.1234/AbC"></head><main>'
+                b'<div class="download-pdf"><form class="ft-download-content__form--pdf" '
+                b'action="/deliver" method="post"></form></div></main>'))
+        forms.append(candidate.url)
+        return CandidateResult.failed('native-interrupted')
+
+    result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
+    assert result.status == 'exhausted'
+    assert forms == [form]
+
+
 def test_distinct_response_candidates_count_fallback_after_first_path_failure():
     paper = target('unknown.example.org')
     inputs = PdfRuleInputs(paper, known_pdf_urls=(KnownPdfUrl('https://unknown.example.org/download', 'API02', 'link'),))

@@ -137,8 +137,8 @@ The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditi
 are absent; no publisher-key settings product or generic header capability is
 added.
 
-Python may perform bounded API/JSON/HTML discovery reads, but the selected
-Chromium Session receives the first actual reusable PDF request. It does not
+Python may read API/JSON/HTML discovery responses within the parent operation's
+deadline. The selected Chromium Session receives the first actual reusable PDF request. It does not
 follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](browser-documents.md) and never recollects
 completed Date/Abstract. Known Reader entry/HTML parsers retain their platform
 qualification. Actual ordinary GET HTTP redirects use the common Session chain;

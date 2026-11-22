@@ -272,8 +272,9 @@ whole-issue and conflicting article-DOI exclusions as generic entrances. LWW AN
 is taken only from the current article outside peripheral regions and must be
 unique; an ambiguous stored AN set cannot select a reader.
 PDF candidate qualification uses the original Paper DOI when available, otherwise
-unambiguous scholarly Meta or a supported DOI path. These are candidate exclusions,
-not whole-page identity gates. Host-owned Unicode casefold data keeps Meta, control
+unambiguous scholarly Meta or a supported DOI path. For a given Paper DOI, a
+conflicting recognized head DOI fails the article's PDF clue read while valid
+Date and Abstract values can still be returned. Host-owned Unicode casefold data keeps Meta, control
 DOI and DOI-path comparisons consistent; public arguments cannot supply code or
 normalization data. PDF clues use the existing IPC byte capacity and local time budget. Oversized individual fields are skipped with a partial diagnostic while qualified earlier and later values survive; candidate/identifier counts are not separate whole-list gates. Article precollection reads candidates without fetching, probing, clicking
 or submitting them.

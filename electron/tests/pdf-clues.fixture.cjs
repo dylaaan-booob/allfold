@@ -71,6 +71,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       if(ebscoMode==='profile-postback-redirect-post' && !current.search) {
         response.writeHead(307,{location:'/webauth/Community.aspx?second=1'});response.end();return;
       }
+      if(ebscoMode==='profile-postback-return-selector' && requests.filter(item=>item.method==='POST').length===1) {
+        response.writeHead(200,{'content-type':'text/html','cache-control':'no-store'});
+        response.end('<main><h1>Choose a research interface</h1>'+ebPostback+'</main>');return;
+      }
       response.writeHead(303,{location:ebscoProfile+'/search'});response.end();return;
     }
     if(current.pathname===recordPath && ebscoMode.startsWith('record-in-app'))return;
@@ -454,6 +458,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const replayPost=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(replayPost.diagnostic && !replayPost.pdf_clues);
     assert.equal(requests.filter(request=>request.method==='POST').length,1,'a 307 does not replay the managed form');
+    ebscoMode='profile-postback-return-selector';await freshProfile();
+    const stillAtSelector=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(requests.filter(request=>request.method==='POST').length,1,'a replacement selector cannot replay the submitted form');
+    assert.ok(stillAtSelector.diagnostic && !stillAtSelector.pdf_clues);
     ebscoMode='direct-link';await freshProfile();
     const direct=await invoke('extract_paper_pdf_clues',licensed);
     assert.deepEqual(direct.pdf_clues?.candidates?.map(item=>item.url),

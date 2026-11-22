@@ -129,7 +129,7 @@ async function openCommunityEntry(browser,tab,hub,destination,{signal,deadline,v
   await browser.waitForCooldown(hub.url,{signal,deadline,validate,pageId:tab.id,step:'page_load',
     authorize:owner.validateRecovery?waited=>waited && owner.validateRecovery({signal,deadline,stage:'navigation'}):undefined});
   validate();
-  let submitted=null,scope=null;
+  let submitted=null;
   const requestGuard=browser.sessionEvents.subscribe('beforeRequest',details=>{
     if(details.webContentsId!==tab.id)return;
     if(details.resourceType==='subFrame' && details.method!=='GET')return {cancel:true};
@@ -164,7 +164,9 @@ async function openCommunityEntry(browser,tab,hub,destination,{signal,deadline,v
     if(clicked!==true && submitted===null)return null;
     const doc=await browser.waitForPage(tab,{signal,deadline,documentOnly:true,onWaiting});
     verify();
-    scope=submitted===null?null:profile(doc.url);
+    const scope=submitted===null?null:profile(doc.url);
+    // A replacement Community selector cannot renew an observed form POST.
+    if(!scope && !destination && submitted!==null)throw refusal('resource_ready');
     return scope;
   } finally {
     browser.finishPageLoad(tab);

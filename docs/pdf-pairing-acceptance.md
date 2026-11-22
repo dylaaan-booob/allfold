@@ -64,6 +64,14 @@ The results-page discovery path stays in place. There is no new comparable
 click-to-association time, body duration or verified pair for F23 on the disk
 Session build. The first-transfer gap and its cause remain open.
 
+Fixed-baseline review reproduced a second Community POST after the first POST
+returned another selector, and a missing Viewer fallback after repeated direct
+response URLs. The targeted repairs keep the first POST's outcome and try the
+qualified Viewer after eligible direct entries settle. The review also
+reproduced a second Microbiology form submission when a later Document read
+supplied the same action with a different Referer. The native action now
+deduplicates that case. These three regressions are isolated fixture results.
+
 The earlier traces had Cookie and Referer request headers on the Allfold and
 Connector delivery GETs, with no Range or Priority header on either. Both
 responses used gzip; the requested URLs and isolation keys differed. Allfold
