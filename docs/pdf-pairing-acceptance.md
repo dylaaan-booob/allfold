@@ -11,17 +11,83 @@ fresh managed Browser Session directory during each app run. Each launch
 starts with fresh website state. Saved institution credentials and Workspace
 Reset keep their existing scope.
 
-- [ ] Verify F19 and F18 through ordinary Download, body removal, Restore and
-  a second Download. Confirm the cache body and network byte counts and the
-  new attempt's association with the original Paper. Record both full waits.
+- [x] Verify F19 and F18 through ordinary Download, body removal, Restore and
+  a second Download. Both repeats saved the cached body to the original Paper
+  on a new attempt with zero network body reads.
 - [ ] Resolve the first full network transfer gap on F23. Verify independent
   access, the same licensed PDF in both products, actual network body bytes,
   and full click-to-association and transfer timings under comparable
   conditions. The existing criterion allows about five additional seconds
   for Allfold. Discovery stays in the full wait.
-- [ ] Preserve the new evidence outside Workspace. Verify Session lifecycle,
-  complete the product Workspace Reset after both live goals pass, restore
-  temporary settings and verify full Safety on the final PR version.
+- [x] Verify the Session lifecycle and restore temporary settings. Preserve
+  the completed SIAM evidence outside Workspace.
+- [ ] Complete the product Workspace Reset after both live goals pass. The
+  Workspace remains available for F23.
+
+### SIAM with the production disk Session
+
+The running build was `697765ffe688e683f9daea005fc5df6c6fd3666a` on Electron
+45.0.0 and Chromium 156.0.8078.48. It created HTTP cache, Cookie and local
+storage files in its managed Session directory. The exact three Papers were
+collected again through normal OpenAlex Discover after the previous Reset.
+An untimed Login retry used a temporarily larger existing page budget after
+the first batch evicted the EBSCO access target. Both SIAM and EBSCO then had
+independent Allfold preparation targets. The rest of the Login batch was
+canceled and drained before timing.
+
+| Paper | First click to association | Network body bytes | Repeat click to association | Repeat cache bytes | Repeat network body bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| F19 | 99.161–99.421 s | 11,471,856 | 0–0.118 s | 11,471,856 | 0 |
+| F18 | 21.696–21.957 s | 3,814,899 | 0–0.183 s | 3,814,899 | 0 |
+
+Both cold responses were HTTP 200 and `private, max-age=3600, must-revalidate`.
+From first to last body byte they took 98.292 s and 21.096 s, respectively.
+The verified originals were archived before Reject, body deletion and Restore
+through the product controls. Each repeat used the same full URL and network
+isolation key as its first request. NetLog recorded cache reads and zero
+network body reads on both repeats. The respective 59- and 28-page PDFs
+matched their DOI, title and first file's hash, and were associated on attempt
+2 of the same Paper. Both final bodies are preserved outside Workspace.
+These observations establish warm reuse and first-transfer duration in
+Allfold. A comparable first-transfer Zotero measurement for SIAM remains
+unavailable.
+
+### F23 first-transfer status
+
+Allfold's untimed Login produced a retained EBSCO target. Chrome independently
+reached the licensed search interface and returned one exact DOI result. The
+current Chrome capture covers search preparation. It recorded neither a full
+delivery body nor a Connector attachment upload for this trial.
+
+The native Computer Use connection timed out before a new paired measurement.
+The results-page discovery path stays in place. There is no new comparable
+click-to-association time, body duration or verified pair for F23 on the disk
+Session build. The first-transfer gap and its cause remain open.
+
+The earlier traces had Cookie and Referer request headers on the Allfold and
+Connector delivery GETs, with no Range or Priority header on either. Both
+responses used gzip; the requested URLs and isolation keys differed. Allfold
+used a Session fetch and the Connector used its extension worker. These
+observations do not isolate request context, connection or server effects.
+The earlier 45.786–46.047 s Allfold wait and 11.274–11.621 s Connector wait
+remain separate measurements with different preparations. The previous
+post-first-byte body intervals were 23.131 s and 7.149 s, respectively.
+
+### Runtime shutdown and retained Workspace
+
+On returning after the interruption, the measured production process had
+exited and left its Session path. The next ordinary launch reclaimed it and
+opened a fresh Session. A separate normal quit completed with exit status zero
+through the app shutdown path. Its Session directory remained after quit and
+the next startup removed it. In isolation, a second active process retained
+its Session path, fresh pages received no prior cookies or localStorage, and
+retired directory cleanup preserved an unrelated directory and symlink target.
+
+The temporary Discover fields and Browser page limit were restored. The
+configuration bytes match preflight. F23 remains a Candidate and the verified
+F19 and F18 bodies remain Downloaded, with zero Trash entries. Workspace
+Reset is pending the new F23 pair. The restarted application uses a fresh
+Session and requires independent access preparation for the next F23 trial.
 
 The following sections preserve the earlier measurements and Reset history.
 
@@ -40,7 +106,7 @@ Cross-origin recovery, verification POST ownership, partitioned cookies,
 EBSCO record selection and fallback, and the removed response limits have
 isolated regression coverage. Live comparisons and Workspace cleanup are
 tracked as a separate increment in the [results](pdf-pairing-formal-results.json).
-The historical SIAM F19 large-PDF cache gap remains open. The old Oxford
+The SIAM F19 large-PDF cache gap was still open at this checkpoint. The old Oxford
 navigation refusal has no confirmed trigger or attribution.
 
 ### First targeted F23 attempt

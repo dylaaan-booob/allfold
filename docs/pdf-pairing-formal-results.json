@@ -1,5 +1,50 @@
 {
-  "status": "final_stage_complete_with_documented_limits",
+  "status": "draft_f23_first_transfer_acceptance_open",
+  "disk_session_followup": {
+    "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+    "starting_pr_head_sha": "b45e95ae9312d99bbb60e9625c929f82f107a7f2",
+    "production_code_sha": "697765ffe688e683f9daea005fc5df6c6fd3666a",
+    "date_asia_shanghai": "2026-11-23",
+    "versions": {"electron": "45.0.0", "chromium": "156.0.8078.48"},
+    "siam": {
+      "F19": {
+        "pages": 59,
+        "first_wait_seconds": [99.161, 99.421],
+        "first_network_body_bytes": 11471856,
+        "first_body_reception_seconds": 98.292,
+        "repeat_wait_seconds": [0, 0.118],
+        "repeat_cache_body_bytes": 11471856,
+        "repeat_network_body_bytes": 0,
+        "same_url_isolation_context_and_pdf": true,
+        "original_paper_association_new_attempt": true
+      },
+      "F18": {
+        "pages": 28,
+        "first_wait_seconds": [21.696, 21.957],
+        "first_network_body_bytes": 3814899,
+        "first_body_reception_seconds": 21.096,
+        "repeat_wait_seconds": [0, 0.183],
+        "repeat_cache_body_bytes": 3814899,
+        "repeat_network_body_bytes": 0,
+        "same_url_isolation_context_and_pdf": true,
+        "original_paper_association_new_attempt": true
+      }
+    },
+    "F23": {
+      "status": "blocked_at_computer_use_connection",
+      "independent_access_preparation_observed": true,
+      "new_paired_pdf_associations": false,
+      "new_comparable_first_transfer_waits": null,
+      "transfer_fix_verified": false
+    },
+    "session_lifecycle": {
+      "reclaimed_interrupted_run_at_next_start": true,
+      "reclaimed_normal_quit_at_next_start": true,
+      "temporary_settings_restored_and_configuration_bytes_verified": true,
+      "workspace_reset": false,
+      "workspace_counts": {"candidates": 1, "downloaded": 2, "trash": 0}
+    }
+  },
   "final_stage": {
     "status": "complete_with_documented_limits",
     "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
