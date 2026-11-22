@@ -15,18 +15,27 @@ def test_reclaim_prunes_only_observed_managed_sessions(tmp_path, monkeypatch, re
     marker = other / retired / 'unrelated-data'
     marker.write_text('preserved')
     replacement = tmp_path / 'moved'
+    retired_file = owned / retired / 'old-cache'
+    retired_file.write_text('retired data')
 
     def owner_exits_during_reclamation(pid, signal):
         if replace_root:
             owned.rename(replacement)
             owned.symlink_to(other, target_is_directory=True)
-        else:
-            (owned / retired).rename(replacement)
-            (other / retired).rename(owned / retired)
         raise ProcessLookupError
 
-    monkeypatch.setattr(os, 'kill', owner_exits_during_reclamation)
     directory = os.open(owned, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    open_directory = os.open
+
+    def open_and_replace(name, flags, *args, **kwargs):
+        fd = open_directory(name, flags, *args, **kwargs)
+        if not replace_root and name == retired and kwargs.get('dir_fd') == directory:
+            (owned / retired).rename(replacement)
+            (other / retired).rename(owned / retired)
+        return fd
+
+    monkeypatch.setattr(os, 'kill', owner_exits_during_reclamation)
+    monkeypatch.setattr(os, 'open', open_and_replace)
     try:
         assert reclaim_retired_sessions(directory)
     finally:
@@ -36,4 +45,4 @@ def test_reclaim_prunes_only_observed_managed_sessions(tmp_path, monkeypatch, re
         assert not (replacement / retired).exists()
     else:
         assert (owned / retired / marker.name).read_text() == 'preserved'
-        assert replacement.is_dir()
+        assert list(replacement.iterdir()) == []

@@ -17,6 +17,26 @@ def _owner_exited(pid):
     return False
 
 
+def _remove_retired_directory(name, root_fd, observed):
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+    try:
+        if not os.path.samestat(observed, os.fstat(fd)):
+            return
+        # Keep removal inside the opened retired directory even if its name is
+        # replaced after opening. The final rmdir never recurses by pathname.
+        with os.scandir(fd) as contents:
+            for child in list(contents):
+                if child.is_dir(follow_symlinks=False):
+                    shutil.rmtree(child.name, dir_fd=fd)
+                else:
+                    os.unlink(child.name, dir_fd=fd)
+        current = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        if os.path.samestat(observed, current):
+            os.rmdir(name, dir_fd=root_fd)
+    finally:
+        os.close(fd)
+
+
 def reclaim_retired_sessions(directory_fd):
     if not shutil.rmtree.avoids_symlink_attacks:
         return False
@@ -35,9 +55,7 @@ def reclaim_retired_sessions(directory_fd):
                 observed = entry.stat(follow_symlinks=False)
                 if not _owner_exited(pid):
                     continue
-                current = os.stat(entry.name, dir_fd=directory_fd, follow_symlinks=False)
-                if os.path.samestat(observed, current):
-                    shutil.rmtree(entry.name, dir_fd=directory_fd)
+                _remove_retired_directory(entry.name, directory_fd, observed)
             except FileNotFoundError:
                 continue
             except OSError:
