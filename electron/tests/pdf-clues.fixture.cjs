@@ -154,6 +154,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
   vm.runInContext(main.slice(main.indexOf('const CONTROL_ACTIONS='),main.indexOf('async function startPython(')),native);
   const data={workspace_identity:'a'.repeat(64),paper_id:randomUUID(),identity:{confirmed_article_url:'http://www.nature.com:'+port+'/actual/Article'},wantAbstract:true};
+  const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32),preparation_key:'f'.repeat(64)};
   const invoke=async(action='extract_paper_metadata',extra={})=>{const id=randomUUID();requests=[];
     const payload={...data,...extra,deadline_ms:Date.now()+6000};if(action==='extract_paper_pdf_clues')delete payload.wantAbstract;
     await native.execute({id,action,data:payload});
@@ -161,8 +162,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.ok(result);assert.equal(browser.paperPages.size,0);assert.equal([...browser.tabs.values()].filter(tab=>tab.taskOwner).length,0);
     return result;};
   const article=(head='',body='')=>'<!doctype html><head>'+head+'</head><body><article><h1>Paper</h1><p>Published 2020-05-02</p><div class="abstract">A complete result.</div>'+body+'</article></body>';
-  try {
-    await browser.ready;
+  async function checkDocumentClues() {
     browser.partition.protocol.handle('https',request=>{const target=new URL(request.url);assert.ok(fixtureHosts.includes(target.hostname));return fetch('http://127.0.0.1:'+port+target.pathname+target.search,{method:request.method});});
     page=article('<meta name="fulltext_pdf_url" content="/Full.pdf"><meta name="citation_pdf_url" content="Case.PDF?sig=A%2FB&amp;k=2"><meta name="citation_pdf_url" content="Case.PDF?sig=A%2FB&amp;k=2">','<a data-track-action="download pdf" href="/platform.PDF">PDF</a>');
     const composite=await invoke('extract_paper_metadata',{});
@@ -367,7 +367,6 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.ok((await invoke('extract_paper_pdf_clues',{reader:{...reader,identifier:'wrong'}})).diagnostic);
     // OCE uses its own prepared retained target, including when preparation
     // originally entered through CARSI. Capability reads never navigate.
-    const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32),preparation_key:'f'.repeat(64)};
     const capability=await invoke('extract_paper_pdf_clues',{reader_access_only:true});
     assert.deepEqual(capability.reader_access,{oce:false});assert.deepEqual(requests,[]);
     let retained;page=article();
@@ -391,8 +390,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader:oceReader})).diagnostic,'retained non-OCE context is refused');
     await browser.closePage(retained);
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).diagnostic,'closed preparation cannot be renewed');
+  }
+  async function checkEbscoClues() {
     // Use real Session webRequest callbacks for the viewer subresource.
-    browser.partition.protocol.unhandle('https');
+    let retained;
     browser.partition.setCertificateVerifyProc((request,callback)=>callback(ebscoHosts.includes(request.hostname)
       && new X509Certificate(request.certificate.data).fingerprint256===fingerprint?0:-3));
     const prepareEbsco=async()=>{
@@ -528,6 +529,13 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.ok(unsafeEbsco.diagnostic && !unsafeEbsco.pdf_clues);
     assert.ok(!requests.some(request=>request.url==='/ebsco-forbidden'),'private redirect is refused before sending');
     await browser.closePage(retained);
-    console.log('PDF CLUES PASS');
+  }
+  try {
+    await browser.ready;
+    const mode=process.argv[4];
+    if(mode==='document')await checkDocumentClues();
+    else if(mode==='ebsco')await checkEbscoClues();
+    else throw Error('Unknown Document fixture mode');
+    console.log(mode+' PDF CLUES PASS');
   } finally {await browser.close();host.destroy();await Promise.all([server,secureServer].map(listener=>new Promise(resolve=>listener.close(resolve))));}
 })().then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});
