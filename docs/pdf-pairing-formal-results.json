@@ -3,7 +3,7 @@
   "targeted_followup": {
     "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
     "starting_pr_head_sha": "733a23d75430a9d6ef8bccef87ffdb3648e8df51",
-    "status": "targeted_live_pairs_in_progress",
+    "status": "waiting_for_f26_chrome_verification",
     "runtime_versions": {"electron": "45.0.0", "chrome": "157.0.8103.80", "zotero": "10.0.9", "zotero_connector": "5.0.217"},
     "pairs": [
       {
@@ -155,8 +155,201 @@
           "pre_click": "Same DOI in a new EBSCO institution record detail after CARSI access. The prior verified Zotero edition remains in the acceptance collection."
         },
         "timing_eligible_for_parity": false
+      },
+      {
+        "pair_id": "F26-followup-2",
+        "sample_id": "F26",
+        "doi": "10.1016/j.neunet.2026.109263",
+        "order": ["allfold"],
+        "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+        "allfold": {
+          "click_utc": ["2026-11-22T00:38:32.315Z", "2026-11-22T00:38:32.318Z"],
+          "terminal_observation_utc": ["2026-11-22T00:38:36.379Z", "2026-11-22T00:38:36.641Z"],
+          "elapsed_seconds": [4.061, 4.326],
+          "result": "completed",
+          "source": "P2/R024",
+          "initial_get_ms": 433,
+          "reader_ms": 1829,
+          "successful_native_transfer_ms": 1436,
+          "edition": {"pages": 12, "bytes": 4834690, "doi_and_title_verified": true},
+          "pre_click": "Original Paper without PDF. Restarted C6 Session and independent CARSI Prepare. ScienceDirect had recovered Cloudflare in Prepare and its retained target subsequently closed."
+        },
+        "zotero_edition_reference": {"pair_id": "F26-followup-1", "file_bytes_equal": false, "pages_with_matching_normalized_text": 12},
+        "timing_eligible_for_parity": false
+      },
+      {
+        "pair_id": "F27-followup-1",
+        "sample_id": "F27",
+        "doi": "10.1016/j.patcog.2026.114572",
+        "order": ["allfold", "zotero"],
+        "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+        "allfold": {
+          "click_utc": ["2026-11-22T00:39:01.990Z", "2026-11-22T00:39:01.993Z"],
+          "terminal_observation_utc": ["2026-11-22T00:39:07.082Z", "2026-11-22T00:39:07.340Z"],
+          "elapsed_seconds": [5.089, 5.350],
+          "result": "completed",
+          "source": "P2/R024",
+          "initial_get_ms": 469,
+          "reader_ms": 3248,
+          "successful_native_transfer_ms": 1396,
+          "bytes": 3156190,
+          "pre_click": "Original Paper without PDF. Shared Allfold Session after F26. ScienceDirect Prepare reached its target before the retained page was reclaimed. No target PDF preview."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-22T00:39:41.968Z", "2026-11-22T00:39:42.098Z"],
+          "terminal_observation_utc": ["2026-11-22T00:39:51.228Z", "2026-11-22T00:39:51.532Z"],
+          "elapsed_seconds": [9.130, 9.564],
+          "result": "imported_publisher_pdf",
+          "bytes": 3157375,
+          "pre_click": "Matching article in independent Chrome Session with institutional Full text access. No target PDF preview. Connector used the designated collection."
+        },
+        "edition": {"version": "ScienceDirect publisher", "pages": 12, "pages_with_matching_normalized_text": 12, "same_sha256": false, "doi_and_title_verified": true},
+        "observed_allfold_minus_zotero_seconds": [-4.475, -3.780],
+        "observed_allfold_to_zotero_ratio": [0.5321, 0.5860],
+        "timing_context": "Claim limited to this pair and its actual preparation. Product cache state was unobserved.",
+        "timing_eligible_for_parity": true
+      },
+      {
+        "pair_id": "F08-followup-1",
+        "sample_id": "F08",
+        "doi": "10.1093/biomet/asag050",
+        "order": ["zotero", "allfold"],
+        "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+        "allfold": {
+          "click_utc": ["2026-11-22T00:42:05.468Z", "2026-11-22T00:42:05.470Z"],
+          "terminal_observation_utc": ["2026-11-22T00:42:08.217Z", "2026-11-22T00:42:08.478Z"],
+          "elapsed_seconds": [2.747, 3.010],
+          "result": "completed",
+          "source": "P2",
+          "initial_response_ms": 631,
+          "successful_native_transfer_ms": 2126,
+          "pre_click": "Original Paper without PDF. Allfold Oxford Prepare Opened through its own CARSI session. No target PDF preview."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-22T00:41:35.562Z", "2026-11-22T00:41:35.692Z"],
+          "terminal_observation_utc": ["2026-11-22T00:41:39.338Z", "2026-11-22T00:41:39.604Z"],
+          "elapsed_seconds": [3.646, 4.042],
+          "result": "imported_publisher_pdf",
+          "pre_click": "Oxford Journals Visit from the independent Chrome CARSI session. Matching article showed Gift article access and the PDF entry. No target PDF preview."
+        },
+        "edition": {"version": "Oxford publisher", "pages": 19, "bytes": 762336, "pages_with_matching_normalized_text": 19, "same_sha256": false, "doi_and_title_verified": true},
+        "observed_allfold_minus_zotero_seconds": [-1.295, -0.636],
+        "observed_allfold_to_zotero_ratio": [0.6796, 0.8256],
+        "old_navigation_refusal_recurred": false,
+        "timing_eligible_for_parity": true
+      },
+      {
+        "pair_id": "EBSCO-new-followup-2",
+        "sample_id": "EBSCO follow-up",
+        "doi": "10.1287/moor.2024.0818",
+        "order": ["zotero", "allfold"],
+        "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+        "allfold": {
+          "click_utc": ["2026-11-22T05:21:48.807Z", "2026-11-22T05:21:48.811Z"],
+          "terminal_observation_utc": ["2026-11-22T05:22:35.517Z", "2026-11-22T05:22:35.775Z"],
+          "elapsed_seconds": [46.706, 46.968],
+          "result": "completed",
+          "source": "P4/R073 EBSCO licensed record",
+          "ebsco_profile_reused": false,
+          "community_profile_ms": 9459,
+          "search_record_ms": 12644,
+          "record_links_ms": 662,
+          "link_indirection_ms": 702,
+          "successful_native_transfer_ms": 18851,
+          "pre_click": "Earlier trial PDF archived outside Workspace. The original Paper was restored through the product and had no body or target PDF preview. First EBSCO profile use after a normal Login retry retained the target."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-22T05:16:18.804Z", "2026-11-22T05:16:18.831Z"],
+          "terminal_observation_utc": ["2026-11-22T05:16:41.730Z", "2026-11-22T05:16:41.999Z"],
+          "elapsed_seconds": [22.899, 23.195],
+          "result": "imported_licensed_pdf",
+          "persisted_association": true,
+          "pre_click": "Fresh EBSCO detail in Chrome after normal CARSI Visit. The independent institution profile and exact record matched. The detail loaded its inline PDF automatically."
+        },
+        "edition": {"pages": 62, "bytes": 2370232, "doi_and_title_verified": true, "same_sha256": true, "also_matches": "EBSCO-new-followup-1 Allfold"},
+        "observed_allfold_minus_zotero_seconds": [23.511, 24.069],
+        "observed_allfold_to_zotero_ratio": [2.0136, 2.0511],
+        "timing_context": "Allfold independent preparation occurred between the two clicks. The ordered click-to-association waits use different cache and preparation contexts and do not isolate a code speedup.",
+        "timing_eligible_for_parity": false
+      },
+      {
+        "pair_id": "F23-followup-3",
+        "sample_id": "F23",
+        "doi": "10.1287/moor.2024.0601",
+        "order": ["zotero", "allfold"],
+        "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+        "allfold": {
+          "click_utc": ["2026-11-22T05:25:12.997Z", "2026-11-22T05:25:13.000Z"],
+          "terminal_observation_utc": ["2026-11-22T05:26:00.025Z", "2026-11-22T05:26:00.283Z"],
+          "elapsed_seconds": [47.025, 47.286],
+          "result": "completed",
+          "source": "P4/R073 EBSCO licensed record",
+          "ebsco_profile_reused": true,
+          "profile_handoff_ms": 1,
+          "search_record_ms": 10566,
+          "record_links_ms": 760,
+          "link_indirection_ms": 643,
+          "successful_native_transfer_ms": 32846,
+          "native_first_byte_ms": 798,
+          "pre_click": "Earlier trial PDF archived outside Workspace. The original Paper was restored without a body. Same already verified EBSCO profile as the new-record repeat."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-22T05:24:41.640Z", "2026-11-22T05:24:41.658Z"],
+          "terminal_observation_utc": ["2026-11-22T05:24:49.979Z", "2026-11-22T05:24:50.361Z"],
+          "elapsed_seconds": [8.321, 8.721],
+          "result": "imported_licensed_pdf",
+          "pre_click": "Matching DOI and institution profile in a fresh EBSCO detail tab, where the inline body loaded automatically. The new parent and imported PDF were observed in the designated Zotero collection."
+        },
+        "edition": {"pages": 29, "bytes": 2996661, "doi_and_title_verified": true, "same_sha256": true},
+        "observed_allfold_minus_zotero_seconds": [38.304, 38.965],
+        "observed_allfold_to_zotero_ratio": [5.3922, 5.6827],
+        "timing_context": "A reused the profile and Z had the automatic inline viewer. Transfer dominated the observed Allfold total. Product cache use and the cause of the transfer difference were not measured."
+      },
+      {
+        "pair_id": "F24-followup-2",
+        "sample_id": "F24",
+        "doi": "10.1287/opre.2025.1741",
+        "order": ["allfold", "zotero"],
+        "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+        "allfold": {
+          "click_utc": ["2026-11-22T05:26:15.479Z", "2026-11-22T05:26:15.483Z"],
+          "terminal_observation_utc": ["2026-11-22T05:26:44.342Z", "2026-11-22T05:26:44.601Z"],
+          "elapsed_seconds": [28.859, 29.122],
+          "result": "completed",
+          "source": "P4/R073 EBSCO licensed record",
+          "publisher_outcome": "access-authorization",
+          "publisher_response_ms": 539,
+          "ebsco_profile_reused": true,
+          "profile_handoff_ms": 1,
+          "search_record_ms": 11048,
+          "record_links_ms": 795,
+          "link_indirection_ms": 634,
+          "successful_native_transfer_ms": 14531,
+          "pre_click": "Earlier trial PDF archived outside Workspace and the same Paper restored without a body. The EBSCO profile from the preceding trials remained ready."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-22T05:27:59.601Z", "2026-11-22T05:27:59.635Z"],
+          "terminal_observation_utc": ["2026-11-22T05:28:06.267Z", "2026-11-22T05:28:06.550Z"],
+          "elapsed_seconds": [6.632, 6.949],
+          "result": "imported_licensed_pdf",
+          "pre_click": "Independent institution record with matching DOI and automatic 39-page inline PDF. The acceptance collection held the new parent and actual PDF."
+        },
+        "edition": {"version": "INFORMS Just Accepted", "pages": 39, "bytes": 1762961, "doi_and_title_verified": true, "same_sha256": true},
+        "observed_allfold_minus_zotero_seconds": [21.910, 22.490],
+        "observed_allfold_to_zotero_ratio": [4.1530, 4.3911],
+        "timing_context": "Save latency after separately prepared entries. Product cache differences and native Connector phase timings could not be isolated."
       }
     ],
+    "service_preparation_after_restart": {
+      "production_code_sha": "954516d2d7b8da17264131384d9da9645344365f",
+      "service": "EBSCO",
+      "first_attempt": {"result": "load_failed", "duration_ms": 12423, "stage": "service-target navigation", "net_code": -100, "net_error": "ERR_CONNECTION_CLOSED", "page_refreshes": [2, 2], "resource_reentries": 1, "replacement_target": "One refreshed navigation loaded, followed by a later main-frame navigation with the same transport error."},
+      "intervening_observation": "The independently authenticated Allfold Browser's normal CARSI resource Visit reached the institution's EBSCO Community page.",
+      "normal_login_retry": {"result": "Opened", "duration_ms": 8077, "retained_target": true},
+      "attribution": "Auto recovery ran. The exact network endpoint that closed the connection and the independent effect of the later manual Visit remain unknown."
+    },
+    "pending_retest": {"sample_id": "F26", "planned_order": ["allfold", "zotero"], "stage": "Chrome ScienceDirect CARSI preparation", "result": "Cloudflare human verification requested before any Save; earlier completed files and timing bounds remain recorded."},
+    "workspace_before_cleanup": {"candidates": 2, "downloaded": 6, "trash": 0, "configuration_matches_preflight": true},
     "workspace_reset": null
   },
   "historical_status": "acceptance_complete_workspace_reset_verified",

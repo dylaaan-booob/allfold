@@ -8,8 +8,8 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 The follow-up on PR #141 uses the same success and timing criteria adopted on
 20 November. The field route can read an already-published Paper during
 collection. An isolated regression reproduced a 409 when the read observed an
-unlinked SQLite journal during a normal commit. This documents the controlled
-interleaving. The earlier field fixture did not retain the failed response.
+unlinked SQLite journal during a normal commit. The result establishes the
+controlled interleaving. A production 409 remains unverified.
 
 Cross-origin recovery, verification POST ownership, partitioned cookies,
 EBSCO record selection and fallback, and the removed response limits have
@@ -51,6 +51,15 @@ These phases are part of the total wait. Chrome automatically loaded its
 inline PDF before the Connector click. The result records an observed wait
 gap with that preparation and limited cache evidence.
 
+The exchanged order on `954516d` again saved the byte-identical Just Accepted
+copy. After the publisher denial, Allfold reused the already verified profile
+in 0.001 seconds and went to the record in 11.048 seconds. Its link lookup and
+intermediate response took 0.795 and 0.634 seconds, and the successful stream
+took 14.531 seconds. The full wait was 28.859–29.122 seconds against Zotero's
+6.632–6.949 seconds (+21.910 to +22.490 seconds, 4.1530–4.3911×). Chrome's
+independent detail had loaded the inline PDF. The two Allfold measurements
+show the Community step being reused and a remaining search and transfer wait.
+
 ### Targeted new EBSCO record on `8441641`
 
 Allfold saved the verified 62-page PDF for `10.1287/moor.2024.0818` in
@@ -61,7 +70,40 @@ lookup 0.742 seconds, and its indirection 0.573 seconds. The successful
 authenticated record detail displayed an unavailable inline PDF. Connector
 created the matching parent in the acceptance collection. The observed
 parent had no attachment about 118 seconds after the click, and there was no
-terminal error message to attribute. This attempt supplies no timing comparison.
+terminal error message to attribute.
+
+After a later restart, Chrome reached the same authorized record through
+CARSI. Its inline PDF loaded automatically. A fresh Connector save took
+22.899–23.195 seconds and imported a byte-identical 62-page attachment to the
+verified parent. Allfold's own CARSI preparation took place between the
+timed clicks. The repeat Download on `954516d` took 46.706–46.968 seconds,
+with 9.459 seconds through the Community/profile handoff, 12.644 seconds to
+the record, a 0.662-second link lookup, a 0.702-second link response, and
+an 18.851-second stream. It saved the same licensed file again on the original
+Paper. Allfold took +23.511 to +24.069 seconds (2.0136–2.0511×). This was the
+first use of the profile in the restarted Allfold Session. Its stream was
+again the largest single measured phase. The elapsed intervals begin at each
+product's click; Chrome's inline preview and Allfold's fresh preparation give
+the two products different cache and access context.
+
+### EBSCO Prepare after the restart
+
+Allfold's first Login after the restart reached the CARSI resource but EBSCO
+Prepare ended `load_failed` in 12.423 seconds with main-frame Chromium
+`ERR_CONNECTION_CLOSED (-100)` on the service target. The existing recovery
+from PR #76 refreshed the target twice and performed one fresh CARSI resource
+Visit. A refresh on the replacement target loaded one navigation, then a
+subsequent navigation in the same chain failed with `-100`. Browser recovery
+had used both refreshes for that chain and the resource reentry had been used.
+The trace records a transport failure. It supplies no evidence of a cooldown,
+Cloudflare challenge, or expired CARSI portal for this Prepare.
+
+An independent manual Visit inside Allfold subsequently reached the
+institution's EBSCO Community page. One normal Login retry in that Allfold
+Session prepared EBSCO in 8.077 seconds and retained its target. The retry
+followed both a successful manual visit and elapsed time. The trace does not
+identify the endpoint that closed the connection or isolate the effect of the
+manual visit from a temporary network recovery.
 
 ### F23 repeat and first F26 attempt on `3c7435b`
 
@@ -72,6 +114,16 @@ reach the profile after the restart, 14.876 seconds to select the record,
 0.764 seconds to read the link, a 0.665-second indirection and a 5.285-second
 stream. The repeat Connector click yielded no verified new parent or PDF, so
 the initial Zotero result serves as edition evidence for this repeat.
+
+A further Zotero → Allfold comparison on `954516d` saved the same licensed
+29-page file in both products. Allfold took 47.025–47.286 seconds and Zotero
+took 8.321–8.721 seconds, a gap of +38.304 to +38.965 seconds (5.3922–5.6827×).
+Allfold reused the active profile in 0.001 seconds and reached the record in
+10.566 seconds. The lookup and intermediate link response took 0.760 and
+0.643 seconds. The native stream took 32.846 seconds, with the first byte
+observed after 0.798 seconds. The earlier Allfold repeat streamed this same
+file in 5.285 seconds. This comparison captures the remaining variability
+after profile reuse. Chrome's detail had already loaded its inline PDF.
 
 F26 Zotero saved the 12-page publisher edition in 12.847–13.176 seconds. It
 had already reached the article with institutional Full text access when the
@@ -88,6 +140,54 @@ existing provider client found the same registered PII in the DOI response and
 the exact Crossref record. That supplied a qualified ScienceDirect R024 route
 even without a completed redirect from Linking Hub. The follow-up retains the
 registration evidence and adds an isolated discovery regression.
+
+### ScienceDirect retest on `954516d`
+
+F26's nominal Allfold Download saved the publisher PDF through R024 in
+4.061–4.326 seconds. The initial GET, Reader and successful stream took
+0.433, 1.829 and 1.436 seconds respectively. Both this body and the
+earlier Zotero body matched the DOI, title and normalized text on all
+12 pages. File size and SHA-256 differed. The earlier Zotero timing is
+from a different preparation and production checkpoint.
+
+F27 saved the 12-page publisher edition on both sides in the declared
+Allfold → Zotero order. The normalized text matched on every page, with
+different file sizes and hashes. Allfold took 5.089–5.350 seconds, including
+the 0.469-second initial response, 3.248-second Reader and 1.396-second
+stream. Zotero took 9.130–9.564 seconds. The observed difference was −4.475
+to −3.780 seconds, or 0.5321–0.5860×. These successful Downloads did not
+need an active verification interaction during timing. Other recovery
+branches retain their isolated evidence.
+
+Another F26 comparison with exchanged order reached a Chrome Cloudflare
+verification prompt after the normal ScienceDirect CARSI Visit. The prompt
+appeared during preparation. The current record retains the earlier Zotero
+attachment and the verified Allfold retest. The exchanged-order timing awaits
+verification at the independent Chrome entry.
+
+### Oxford F08 control on `954516d`
+
+Zotero and Allfold each saved the 19-page Oxford publisher edition in the
+declared Zotero → Allfold order. Both files contain the target DOI and title.
+Normalized text matched on all 19 pages, with equal file size and different
+hashes. Zotero took 3.646–4.042 seconds after the independently authenticated
+article showed access. Allfold took 2.747–3.010 seconds after Oxford Prepare,
+including a 0.631-second response and a 2.126-second successful stream. The
+observed difference was −1.295 to −0.636 seconds, or 0.6796–0.8256×. Neither
+trial previewed the PDF before the click. The old navigation refusal did not
+recur. The blocked request's method and origin remain unknown.
+
+### Follow-up disposition
+
+F23, F24 and the new EBSCO record have matched licensed attachments in both
+products. Native observations confirm reuse of the active profile and show
+that search and transfer remain the main Allfold waits. The measured EBSCO
+gaps remain outside the existing comparable-wait criterion. F27 and F08
+were inside it for the observed preparation. F26 saved the correct edition
+after the registered-PII repair and awaits its additional paired timing.
+The configured acceptance Workspace still contains two Candidates and six
+Downloaded Papers while that verification is pending. The four temporary
+Run settings match the original saved configuration bytes.
 
 ## Historical acceptance through `d237ee7`
 
