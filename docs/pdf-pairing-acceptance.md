@@ -159,6 +159,14 @@ to −3.780 seconds, or 0.5321–0.5860×. These successful Downloads did not
 need an active verification interaction during timing. Other recovery
 branches retain their isolated evidence.
 
+Native review of `954516d` found that a challenge at an R024 entry derived
+from Linking Hub could defer an available EBSCO source behind the publisher
+Reader. The qualified registered entry now supplies its publisher origin for
+the existing fallback decision. The regression passes through the EBSCO
+lookup first and continues the same Reader when the lookup has no candidate.
+That combination of a derived-entry challenge and a separate EBSCO
+opportunity did not occur during the timed ScienceDirect Downloads above.
+
 Another F26 comparison with exchanged order reached a Chrome Cloudflare
 verification prompt after the normal ScienceDirect CARSI Visit. The prompt
 appeared during preparation. The current record retains the earlier Zotero

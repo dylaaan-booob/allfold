@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urldefrag, urlsplit
 from allfold.pdf_facts import PdfDiscoveryFacts, crossref_pdf_refresh_required, discovery_target_matches
 from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 from allfold.pdf_rules import (ARTICLE_TYPES, ATYPON_HOSTS, PdfCandidate, PdfRuleInputs, PdfTarget, KnownPdfUrl,
-    content_platform, iter_p1_candidates, iter_p2_candidates, needs_p2_query)
+    content_platform, iter_p1_candidates, iter_p2_candidates, linkinghub_article_origin, needs_p2_query)
 from allfold.providers.provider_http import Cancelled, ProviderBudgetExceeded
 from allfold.providers.openalex import OpenAlexNotFoundError, OpenAlexRequestError
 from allfold.url_safety import normalize_public_http_url
@@ -580,8 +580,11 @@ class PdfDiscovery:
             if result.kind == 'response' and result.response is not None:
                 response = result.response
                 publisher_blocked = False
-                if response.access in {'authorization', 'challenge'} and self._route.article_url:
-                    publisher, entry = urlsplit(self._route.article_url), urlsplit(original.url)
+                publisher_url = self._route.article_url
+                if response.access in {'authorization', 'challenge'} and publisher_url:
+                    if original.rule_id == 'R024':
+                        publisher_url = linkinghub_article_origin(publisher_url) or publisher_url
+                    publisher, entry = urlsplit(publisher_url), urlsplit(original.url)
                     publisher_blocked = (publisher.scheme, publisher.netloc) == (entry.scheme, entry.netloc)
                     self._publisher_access_blocked |= publisher_blocked
                 # Entry and Reader can have different Cookie paths. Keep both

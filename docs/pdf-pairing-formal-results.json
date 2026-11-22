@@ -348,6 +348,11 @@
       "normal_login_retry": {"result": "Opened", "duration_ms": 8077, "retained_target": true},
       "attribution": "Auto recovery ran. The exact network endpoint that closed the connection and the independent effect of the later manual Visit remain unknown."
     },
+    "registered_entry_review_followup": {
+      "reviewed_production_sha": "954516d2d7b8da17264131384d9da9645344365f",
+      "fix": "Use the registered Elsevier entry's qualified ScienceDirect origin for the existing publisher access decision. A separate qualified EBSCO candidate can precede Reader recovery after a publisher challenge.",
+      "verification": "Isolated discovery regression verifies both a successful EBSCO handoff and continuation to the current Reader without an EBSCO candidate. This combined trigger was not observed in the timed ScienceDirect Downloads."
+    },
     "pending_retest": {"sample_id": "F26", "planned_order": ["allfold", "zotero"], "stage": "Chrome ScienceDirect CARSI preparation", "result": "Cloudflare human verification requested before any Save; earlier completed files and timing bounds remain recorded."},
     "workspace_before_cleanup": {"candidates": 2, "downloaded": 6, "trash": 0, "configuration_matches_preflight": true},
     "workspace_reset": null

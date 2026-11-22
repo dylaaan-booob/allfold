@@ -311,6 +311,11 @@ def _elsevier_linking_pii(article_url: str | None) -> str | None:
     return match[1] if match and _PII.fullmatch(match[1]) else None
 
 
+def linkinghub_article_origin(article_url: str | None) -> str | None:
+    """Return the publisher origin for a qualified Elsevier registered entry."""
+    return 'https://www.sciencedirect.com' if _elsevier_linking_pii(article_url) else None
+
+
 def _pii(target: PdfTarget, inputs: PdfRuleInputs | None) -> str | None:
     if pii := _elsevier_linking_pii(target.article_url):
         return pii
@@ -473,14 +478,13 @@ def iter_p2_candidates(target: PdfTarget, inputs: PdfRuleInputs | None = None) -
                                known.url, known.reader_kind, known.referer, known.field)
     if platform == 'sciencedirect' and (pii := _pii(target, inputs)):
         article = urlsplit(target.article_url or '')
-        from_linkinghub = _elsevier_linking_pii(target.article_url) is not None
-        if from_linkinghub:
-            origin = 'https://www.sciencedirect.com'
-        else:
-            origin = urlunsplit((article.scheme, article.netloc, '', '', '')) if article.hostname == host else 'https://' + host
+        registered_origin = linkinghub_article_origin(target.article_url)
+        origin = registered_origin or (urlunsplit((article.scheme, article.netloc, '', '', ''))
+            if article.hostname == host else 'https://' + host)
         url = origin + '/science/article/pii/' + pii + '/pdfft'
         # DOI registration supplies the PII even if Linking Hub cannot redirect.
         # Send the Referer only when the route supplies an article page.
+        from_linkinghub = registered_origin is not None
         referer = None if from_linkinghub else target.article_url
         yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true',
             referer=referer, referer_observed=from_linkinghub)

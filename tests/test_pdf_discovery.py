@@ -459,6 +459,40 @@ def test_prepared_ebsco_can_save_before_publisher_challenge_recovery(institution
     assert result.candidate.rule_id == ('R073' if institution_body == 'available' else 'GENERIC')
 
 
+@pytest.mark.parametrize('prepared', [False, True])
+def test_linkinghub_publisher_challenge_preserves_the_ebsco_turn(prepared):
+    from types import SimpleNamespace
+
+    from allfold.pdf_rules import PdfCandidate
+
+    pii = 'S014067362400123X'
+    paper = target(article_url='https://linkinghub.elsevier.com/retrieve/pii/' + pii)
+    entry = f'https://www.sciencedirect.com/science/article/pii/{pii}/pdfft?download=true'
+    licensed = 'https://content.ebscohost.com/cds/retrieve'
+    reader_pdf = 'https://pdf.sciencedirectassets.com/current.pdf'
+    calls = []
+
+    class IO:
+        def ebsco_candidates(self, target):
+            calls.append('EBSCO lookup')
+            return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),) if prepared else ()
+
+        def reader(self, candidate, response):
+            calls.append('Reader')
+            return SimpleNamespace(current_candidates=(replace(candidate, url=reader_pdf),))
+
+    def consume(candidate):
+        assert candidate.target is paper
+        calls.append(candidate.url)
+        if candidate.url == entry:
+            return CandidateResult.current(CurrentResponse(entry, 'text/html', status=403, access='challenge'))
+        return CandidateResult.pdf(transfer_complete=True)
+
+    result = PdfDiscovery(paper, io=IO()).run(consume)
+    assert calls == [entry, 'EBSCO lookup', *([licensed] if prepared else ['Reader', reader_pdf])]
+    assert (result.status, result.pdf_source) == ('transferred', 'P4' if prepared else 'P2')
+
+
 def test_unavailable_ebsco_preserves_the_current_publisher_recovery_turn():
     from types import SimpleNamespace
 
