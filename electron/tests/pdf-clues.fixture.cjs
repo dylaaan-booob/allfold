@@ -58,7 +58,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       +');},800);</script>';
     if(ebscoMode==='ambiguous')results='<main><h1>Search results</h1>'+resultLink
       +resultLink.replace(recordPath,recordPath+'-other')+'</main>';
-    if(ebscoMode==='record-in-app')results+='<script>document.querySelector("h2 a").addEventListener("click",event=>{'
+    if(ebscoMode==='record-in-app-duplicate')
+      results+=resultLink.replace(recordPath,recordPath+'-other');
+    if(ebscoMode.startsWith('record-in-app'))results+='<script>document.querySelector("h2 a").addEventListener("click",event=>{'
       +'event.preventDefault();history.pushState(null,"",event.currentTarget.href+"?db=licensed");'
       +'document.querySelector("main").innerHTML='+JSON.stringify('<h1>Licensed fixture</h1>'+recordMetadata)+';});</script>';
     if(ebscoMode==='replace-search' && !current.searchParams.has('replacement'))
@@ -71,9 +73,9 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       }
       response.writeHead(303,{location:ebscoProfile+'/search'});response.end();return;
     }
-    if(current.pathname===recordPath && ebscoMode==='record-in-app')return;
-    if(current.pathname===recordDetails && ebscoMode.startsWith('search-direct')
-      && URL.parse(request.headers.referer)?.pathname===resultsPath) {
+    if(current.pathname===recordPath && ebscoMode.startsWith('record-in-app'))return;
+    if(current.pathname===recordDetails && (ebscoMode==='search-direct-conflict'
+      || ebscoMode==='search-direct' && URL.parse(request.headers.referer)?.pathname===resultsPath)) {
       response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
       const doi=ebscoMode==='search-direct'?'10.5555/fixture':'10.5555/other';
       response.end(JSON.stringify([{result:{doi,links:{'v2-downloadLinks':[
@@ -474,12 +476,13 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const verifiedOnPage=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(verifiedOnPage.pdf_clues?.candidates[0]?.url,ebscoPdf,'unconfirmed early links leave record and Viewer available');
     assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
-    ebscoMode='record-in-app';
+    ebscoMode='record-in-app-duplicate';
     const openedViewer=await invoke('extract_paper_pdf_clues',{...licensed,prepared_source:'ebsco-viewer',
       prepared_record:fromResults.pdf_clues.landing_url});
     assert.equal(openedViewer.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(openedViewer));
     assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
-    assert.ok(!requests.some(request=>request.url===recordPath),'unobserved Viewer uses the known record through the site search');
+    assert.ok(!requests.some(request=>request.url.startsWith(recordPath)),
+      'Viewer follows the verified result through the current search even with a second plausible record');
     ebscoMode='pending-asset';
     const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));

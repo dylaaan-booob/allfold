@@ -2,7 +2,7 @@
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {publicClueURL}=require('./pdf-clues.cjs');
 const {validDOI}=require('./article-identity.cjs');
-const {checkCanceled,pause,waitFor}=require('./browser-task.cjs');
+const {checkCanceled,pause,waitFor,PAGE_LOAD_MS}=require('./browser-task.cjs');
 
 const SEARCH_HOSTS=new Set(['research.ebsco.com','discovery.ebsco.com']);
 const HUB_HOST='search.ebscohost.com';
@@ -56,16 +56,21 @@ async function readRecordJSON(browser,url,document,{signal,deadline,verify}) {
 }
 
 async function resolveDirectPdf(browser,scope,record,document,options) {
-  const {verify,signal,deadline,confirmDOI}=options;
+  const {verify,signal,deadline,doi,fromSearch}=options;
   const details=new URL('/api/viewer/v6/details/'+record.record,scope.origin);
   details.searchParams.set('opid',scope.path.slice(3));
   details.searchParams.set('includeHbrRestrictedLinks','true');
   try {
-    const value=await readRecordJSON(browser,details,document,options);
+    // An optional lookup must leave the normal page route a chance to run.
+    const lookup=fromSearch?{...options,deadline:Math.min(deadline,Date.now()+PAGE_LOAD_MS)}:options;
+    const value=await readRecordJSON(browser,details,document,lookup);
     const rows=(Array.isArray(value)?value:[value]).flatMap(row=>row?.result?.links?[row.result]:[]);
     const identified=rows.filter(row=>row.recordId===record.record);
     const applicable=identified.length?identified:rows.filter(row=>row.recordId===undefined);
-    if(confirmDOI && applicable.some(row=>validDOI(row.doi)!==confirmDOI))return [];
+    if(applicable.some(row=>{
+      const reported=validDOI(row.doi);
+      return (reported || fromSearch) && reported!==doi;
+    }))return [];
     const pdfLinks=values=>Array.isArray(values)?values.flatMap(link=>{
       if(link?.type!=='pdf' || typeof link.url!=='string' || !URL.canParse(link.url,details))return [];
       const url=httpsURL(new URL(link.url,details).href);
@@ -75,7 +80,7 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
       ...pdfLinks(row.links['v2-downloadLinks']),...pdfLinks(row.links.downloadLinks),
     ])]);
     if(!identified.length && new Set(choices.map(urls=>JSON.stringify([...urls].sort()))).size>1) {
-      if(confirmDOI)return [];
+      if(fromSearch)return [];
       throw refusal('result');
     }
     return [...new Set(choices.flat())];
@@ -231,7 +236,7 @@ function viewerLinks(values,scope,record) {
     && url.pathname.startsWith(scope.path+'/viewer/') && url.pathname.split('/').at(-1)===record.record);
 }
 
-function findRecord(found,scope) {
+function findRecord(found,scope,verifiedRecord) {
   const scoped=values=>{
     const records=new Map();
     for(const value of values) {
@@ -240,7 +245,13 @@ function findRecord(found,scope) {
     }
     return records;
   };
-  const records=scoped(found.urls),confirmed=scoped(found.exact),titles=scoped(found.titled);
+  const records=scoped(found.urls);
+  if(verifiedRecord) {
+    const record=records.get(verifiedRecord);
+    if(!record)throw refusal('result');
+    return {record,confirmed:true};
+  }
+  const confirmed=scoped(found.exact),titles=scoped(found.titled);
   const choices=confirmed.size?confirmed:titles.size?titles:records;
   if(choices.size!==1)throw refusal('result');
   return {record:choices.values().next().value,confirmed:confirmed.size===1};
@@ -294,7 +305,7 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
     if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
     onWaiting?.(diagnostic);
   };
-  const options={signal,deadline,verify,onWaiting:onAccessWaiting};
+  const options={signal,deadline,verify,onWaiting:onAccessWaiting,doi};
   const visit=async (url,{referer}={})=>{
     verify();
     const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly:true,
@@ -354,7 +365,7 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
     // A Viewer that was not observed may require the site's results navigation.
   }
 
-  const expected=record?.record;
+  const expected=record;
   const search=()=>{const url=new URL(scope.path+'/search/results',scope.origin);url.searchParams.set('q',doi);return url;};
   let searchURL=search();
   browser.reportPage('info',remembered?'ebsco_profile_reused':'ebsco_profile_ready',tab);
@@ -370,6 +381,7 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
     browser.reportPage('info','ebsco_profile_ready',tab);
     searchURL=search();await visit(searchURL);
   }
+  const verifiedRecord=expected && matchRecord(expected.url.href,scope);
   const args={mode:'results',title,doi};
   let doc,confirmed;
   for(;;) {
@@ -378,12 +390,12 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
     if(location?.origin!==scope.origin || location.pathname!==searchURL.pathname
       || location.searchParams.get('q')!==doi)throw refusal('search');
     const lookupFromSearch=!record;
-    ({record,confirmed}=findRecord(found,scope));
-    if(expected && record.record!==expected)throw refusal('result');
+    ({record,confirmed}=findRecord(found,scope,verifiedRecord?.record));
+    if(expected && record.record!==expected.record)throw refusal('result');
     if(lookupFromSearch) {
       // The selected record's licensed details can confirm the Paper directly
       // from the search page. A missing match or link leaves page access usable.
-      const direct=await resolveDirectPdf(browser,scope,record,found,{...options,confirmDOI:doi});
+      const direct=await resolveDirectPdf(browser,scope,record,found,{...options,fromSearch:true});
       if(direct.length) {
         context.ebscoProfile=scope;
         browser.reportPage('info','ebsco_record_ready',tab);
@@ -394,7 +406,7 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
     if(doc)break;
     await waitFor(()=>pause(signal),signal,deadline);
   }
-  const matched=await readRecord(confirmed || viewerOnly);
+  const matched=await readRecord(confirmed);
   context.ebscoProfile=scope;
   browser.reportPage('info','ebsco_record_ready',tab);
   const recordURL=matched.url;
