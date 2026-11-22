@@ -4,7 +4,7 @@ const {app,BrowserWindow,ipcMain}=require('electron'),http=require('node:http'),
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {installBrowserIPC}=require('../src/browser/browser-ipc.cjs');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-presentation-'));
-app.setPath('userData',temp);app.commandLine.appendSwitch('disable-background-networking');
+app.setPath('userData',temp);app.setPath('sessionData',temp);app.commandLine.appendSwitch('disable-background-networking');
 app.on('window-all-closed',()=>{}); // Cleanup owns the explicit success/failure exit code.
 const source=path.resolve(__dirname,'../../frontend/ui'),index=fs.readFileSync(path.join(source,'index.html'),'utf8');
 const pane=index.match(/  <section id="browser-pane"[\s\S]*?\n  <\/section>/)[0];

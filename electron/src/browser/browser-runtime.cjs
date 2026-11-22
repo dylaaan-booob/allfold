@@ -1,5 +1,5 @@
 'use strict';
-const {app, WebContentsView, session, webFrameMain, Menu, clipboard, ipcMain} = require('electron');
+const {app, WebContentsView, webFrameMain, Menu, clipboard, ipcMain} = require('electron');
 const {BrowserPresentation}=require('./browser-presentation.cjs');
 const {BrowserFailure}=require('./browser-errors.cjs');
 const {configureBrowserIdentity} = require('./browser-identity.cjs');
@@ -18,6 +18,7 @@ const {waitFor,pause,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./b
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
 const {reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
 const {sharedSessionEvents}=require('./session-events.cjs');
+const {sharedBrowserSession}=require('./browser-session.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 const {PageBudget}=require('./page-budget.cjs');
 const {PageChallenge}=require('./page-challenge.cjs');
@@ -47,7 +48,7 @@ class BrowserRuntime {
     this.recoveryTiming=recoveryTiming;
     this.pageBudget=new PageBudget(pageLimits);
     this.pageBudget.onBlocked=()=>{if(this.pageBudget.queue.length)this.reconsiderAdmission();};
-    this.partition = configureBrowserSession(session.fromPartition('allfold'));
+    this.partition = configureBrowserSession(sharedBrowserSession());
     this.sessionEvents=sharedSessionEvents(this.partition,{timing:recoveryTiming});
     this.cooldown=this.sessionEvents.cooldown;
     this.sessionEvents.subscribe('beforeRequest',details=>{

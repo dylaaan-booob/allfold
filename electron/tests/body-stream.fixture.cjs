@@ -20,12 +20,18 @@ const failFixture=error=>{console.error(error);app.exit(1);};
 process.once('uncaughtException',failFixture);
 (async()=>{
   const requests=[],cases=[],pairs=[],drains=[],publicCases=[],localCases=[],shellCalls=[],resolved=[],solves=[],payload=Buffer.alloc(2*1024*1024,71);let origin,slowProduced=0,canceledSolver=false;payload.write('%PDF-');
+  const cacheablePDF=Buffer.alloc(11*1024*1024,72);cacheablePDF.write('%PDF-');
   const ebscoHosts=['research.ebsco.com','content.ebscohost.com'];
   const ebscoPath='/c/test-profile',licensedPDF='https://content.ebscohost.com/cds/retrieve?Signature=A%2FB';
   const licensedBytes=Buffer.from('%PDF-licensed-ebsco');
   const serve=async(req,res)=>{
     requests.push({url:req.url,method:req.method,headers:req.headers});
     const input=new URL(req.url,origin);
+    if(req.url==='/public') {
+      res.writeHead(200,{'content-type':'application/pdf','content-length':cacheablePDF.length,
+        'cache-control':'private, max-age=3600, must-revalidate'});
+      res.end(cacheablePDF);return;
+    }
     if(req.headers.host==='doi.org') {
       if(decodeURIComponent(input.pathname)==='/10.5555/licensed')res.writeHead(302,{location:origin+'/fixture-publisher'});
       else res.writeHead(404);
@@ -335,8 +341,8 @@ process.once('uncaughtException',failFixture);
     assert.equal(publicCases.length,1);assert.equal(publicCases[0].status,'completed');
     assert.deepEqual(localCases,[{type:'fixture_local',status:'settled',retry_attempt:2}]);
     assert.deepEqual(shellCalls,['open','locate','open','open','open']);
-    assert.equal(requests.filter(r=>r.url==='/public').length,2,'local reads add no network; explicit deletion permits one new public attempt');
-    assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',publicCases[0].paper+'.pdf')),payload);
+    assert.equal(requests.filter(r=>r.url==='/public').length,1,'the new Download after Restore reuses the eligible large cached response');
+    assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',publicCases[0].paper+'.pdf')),cacheablePDF);
     assert.equal(requests.filter(r=>r.url==='/same').length,2);assert.equal(requests.filter(r=>r.url==='/leak').length,1);
     const cookieRequests=requests.filter(r=>r.url.startsWith('/cookie-progress'));
     assert.deepEqual(cookieRequests.map(r=>r.headers.cookie.split('; ').sort()),[

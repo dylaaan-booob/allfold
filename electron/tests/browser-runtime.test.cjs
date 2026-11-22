@@ -73,12 +73,13 @@ function fixture(t) {
     destroy(){this.destroyed=true;}
   }
   class View {constructor(options){if(failCreation){failCreation=false;throw Error('fixture creation failed');}this.options=options;this.webContents=options.webContents || new Contents();}setBounds(bounds){this.bounds=bounds;}setVisible(value){this.visible=value;}}
-  const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},session:{fromPartition:()=>partition},
+  const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},
     webFrameMain:{fromFrameToken:(_process,token)=>frames.get(token) || null},
     BrowserWindow:Window,WebContentsView:View,Menu:{buildFromTemplate:items=>({popup(){menus.push(items);}})},
     ipcMain:Object.assign(new EventEmitter(),{handle:(name,fn)=>handlers.set(name,fn),removeHandler:name=>handlers.delete(name)})};
   const context=vm.createContext({module:{exports:{}},__dirname:path.dirname(require.resolve('../src/browser/browser-runtime.cjs')),URL,Buffer,Date,AbortController,AbortSignal,setTimeout,clearTimeout,
-    require:name=>name==='electron'?electron:name==='./document-runtime.cjs'?{DocumentRuntime:class {
+    require:name=>name==='electron'?electron:name==='./browser-session.cjs'?{sharedBrowserSession:()=>partition}
+      :name==='./document-runtime.cjs'?{DocumentRuntime:class {
       constructor(browser){this.browser=browser;}
       async call(doc,action){
         const wc=this.browser.tabs.get(doc.pageId).view.webContents;

@@ -37,10 +37,12 @@ The local origin is `http://127.0.0.1:18767`. An occupied port is an error; clos
 
 Pass an absolute `--config` path. The example expands `$PWD` from the project root before npm runs the Electron package script from `electron/`; a relative configuration argument would otherwise resolve under that directory.
 
-Normal exit stops admission and waits for foreground Run, all Workspace branches,
-native operations to actually settle before closing owned
-connections and the shared factory/Session. Restart fails interrupted attempts
-without replaying the queue or opening pages.
+Normal exit stops admission and waits for foreground Run, Workspace branches
+and native operations to settle. Main then closes the Browser pages and drains
+the shared Session's work. Restart fails
+interrupted attempts without replaying the queue or opening pages. The new
+Browser Session starts with fresh site state and reclaims retired storage as
+described in [Shared Browser Session](browser-session.md).
 
 ### Isolated source-startup smoke
 

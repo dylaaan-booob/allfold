@@ -4,7 +4,7 @@ const {app,BrowserWindow,ipcMain}=require('electron'),http=require('node:http'),
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs'),{installBrowserIPC}=require('../src/browser/browser-ipc.cjs');
 const {fixtureDiagnostics}=require('./browser-dom-diagnostics.cjs');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-workspaces-'));
-app.setPath('userData',temp);app.commandLine.appendSwitch('disable-background-networking');app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
+app.setPath('userData',temp);app.setPath('sessionData',temp);app.commandLine.appendSwitch('disable-background-networking');app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
 app.on('window-all-closed',()=>{}); // Cleanup owns the explicit success/failure exit code.
 const ui=path.resolve(__dirname,'../../src/allfold/web/static/ui_next'),serviceId='svc_'+'a'.repeat(32),scope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
 const services=[{id:serviceId,name:'Synthetic Service A',access_method:'manual',access_url:''}];

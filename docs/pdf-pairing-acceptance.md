@@ -3,6 +3,28 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
+## Current acceptance · 23 November 2026
+
+PR #141 is Draft. This round started at `b45e95ae9312d99bbb60e9625c929f82f107a7f2`.
+The user authorized normal cookie, site storage and HTTP cache writes to a
+fresh managed Browser Session directory during each app run. Each launch
+starts with fresh website state. Saved institution credentials and Workspace
+Reset keep their existing scope.
+
+- [ ] Verify F19 and F18 through ordinary Download, body removal, Restore and
+  a second Download. Confirm the cache body and network byte counts and the
+  new attempt's association with the original Paper. Record both full waits.
+- [ ] Resolve the first full network transfer gap on F23. Verify independent
+  access, the same licensed PDF in both products, actual network body bytes,
+  and full click-to-association and transfer timings under comparable
+  conditions. The existing criterion allows about five additional seconds
+  for Allfold. Discovery stays in the full wait.
+- [ ] Preserve the new evidence outside Workspace. Verify Session lifecycle,
+  complete the product Workspace Reset after both live goals pass, restore
+  temporary settings and verify full Safety on the final PR version.
+
+The following sections preserve the earlier measurements and Reset history.
+
 ## Targeted follow-up
 
 This section records the earlier targeted checkpoint. The final-stage
@@ -2096,8 +2118,8 @@ Chrome counter invocation returned64 with no samples; that auxiliary failure was
 retained and a supported selection was made only after actual socket ownership
 was checked. It is not a product failure.
 
-The size pattern also has a versioned explanation worth retaining: current
-BrowserRuntime uses a cache-enabled in-memory Session. Electron45 leaves its HTTP
+At this checkpoint BrowserRuntime used a cache-enabled in-memory Session.
+Electron45 leaves its HTTP
 cache size unspecified; Chromium156 on this24GiB machine defaults to50MiB total
 with ordinary `MaxFileSize = max_size / 8`,6553600bytes. F17/F18 are below this
 ordinary-entry bound and F19's file/observed received body are above it. This is
@@ -2160,14 +2182,11 @@ state. The Cache directory stayed under the Session's path with
 prior large-PDF cache hits.
 
 Electron 45 has no public HTTP-cache-only capacity or directory setting for
-an off-the-record Session. A new disk path per launch could preserve fresh
-startup and keep the Browser Session scoped to Allfold. It would write
-website state and private cached responses during the run. An implementation
-would need a private, per-launch directory under `sessionData`, removal
-after native shutdown, and a startup cleanup rule for abandoned directories.
-That choice requires approval for the new retention behavior, including
-abnormal exits. The current product keeps its existing memory Session and
-Workspace Reset has its existing scope.
+an off-the-record Session. The prototype established that a fresh disk path
+under `sessionData` preserves fresh startup while allowing normal website
+and cache writes during the run. The 23 November authorization adopts that
+storage behavior and covers reclaiming abandoned Allfold Session directories.
+The prototype and the earlier live pairs used separate builds and profiles.
 [Electron NetworkContext setup](https://github.com/electron/electron/blob/v45.0.0/shell/browser/net/network_context_service.cc#L74-L112)
 · [Electron network sandbox root](https://github.com/electron/electron/blob/v45.0.0/shell/browser/electron_browser_client.cc#L1243-L1249)
 · [Chromium WebView-only quota setter](https://github.com/chromium/chromium/blob/156.0.8078.48/services/network/public/mojom/network_context.mojom#L1220-L1245)

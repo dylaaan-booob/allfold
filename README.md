@@ -107,6 +107,10 @@ Submit API key replacement or clearing explicitly from the corresponding Run Pro
 
 Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers . Legacy Markdown is a first-migration or explicit exchange source, not the live store.
 
+The shared Browser Session writes cookies, website storage and HTTP cache files
+during the application run. Each launch starts with fresh website state and
+reclaims retired Session directories independently of Settings Reset.
+
 Settings Reset selects one scope without requiring a typed word. **Workspace**
 permanently deletes the confirmed Workspace, including its latest Run snapshots;
 independent history and diagnostics survive and earlier history is marked as

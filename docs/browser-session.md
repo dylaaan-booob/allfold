@@ -1,7 +1,21 @@
 # Shared Browser Session
 
-The application keeps `session.fromPartition('allfold')`. One
-`SharedSessionEvents` lifetime installs the native request/header/redirect/error,
+BrowserRuntime uses one disk-backed Session per application run, opened with
+`session.fromPath()` in a fresh Allfold directory under Electron's
+`sessionData`. Browser pages, Prepare, Solver, Document and ordinary Download
+share this Session. Chromium uses its normal disk cache rules and writes
+cookies and website storage during the run. Each launch uses a new directory,
+so previous website state is unavailable to the new Session. Saved institution
+credentials have their own lifetime.
+
+The existing shutdown drains owned work, pages and native items. Electron
+owns the remaining native Session lifetime. After the next startup has
+claimed the UI port, it reclaims managed directories from exited processes
+in the background. A still-running process keeps its directory even after
+its UI port is released. Cleanup failures are logged and retried on later
+launches. Workspace Reset leaves Session storage to this lifecycle.
+
+One `SharedSessionEvents` lifetime installs the native request/header/redirect/error,
 completion and `will-download` listeners. BrowserRuntime and Browser identity
 subscribe to that entry; WoS registers an attempt before its export action.
 Finishing a task disposes its registrations, never the Session listeners.
