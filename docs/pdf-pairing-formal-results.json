@@ -102,6 +102,59 @@
           "pre_click": "Same independently authenticated Chrome EBSCO profile and exact DOI detail. Its automatic inline PDF showed page unavailable. The Connector popup later closed, with no terminal failure message observed."
         },
         "timing_eligible_for_parity": false
+      },
+      {
+        "pair_id": "F26-followup-1",
+        "sample_id": "F26",
+        "doi": "10.1016/j.neunet.2026.109263",
+        "order": ["zotero", "allfold"],
+        "production_code_sha": "3c7435b315e2f2dbb7a5d9eca3870dca5b693178",
+        "allfold": {
+          "click_utc": ["2026-11-22T00:21:11.797Z", "2026-11-22T00:21:11.799Z"],
+          "terminal_observation_utc": ["2026-11-22T00:21:14.821Z", "2026-11-22T00:21:15.083Z"],
+          "result": "failed",
+          "reason": "no-pdf-candidates",
+          "elapsed_seconds": [3.022, 3.286],
+          "document_ms": 1745,
+          "stream_started": false,
+          "pre_click": "Same DOI on the original base Paper after interruption. Restarted Electron Session; ScienceDirect Prepare had cleared a verification page, but its target then closed. Paper had no saved body."
+        },
+        "zotero": {
+          "click_utc": ["2026-11-21T16:52:52.581Z", "2026-11-21T16:52:52.612Z"],
+          "terminal_observation_utc": ["2026-11-21T16:53:05.459Z", "2026-11-21T16:53:05.757Z"],
+          "result": "imported_publisher_pdf",
+          "elapsed_seconds": [12.847, 13.176],
+          "edition": {"pages": 12, "bytes": 4835166, "doi_and_title_verified": true},
+          "pre_click": "Independently authenticated ScienceDirect article with institutional Full text access after an earlier verification page."
+        },
+        "timing_eligible_for_parity": false
+      },
+      {
+        "pair_id": "F23-followup-2",
+        "sample_id": "F23",
+        "doi": "10.1287/moor.2024.0601",
+        "order": ["zotero", "allfold"],
+        "production_code_sha": "3c7435b315e2f2dbb7a5d9eca3870dca5b693178",
+        "allfold": {
+          "click_utc": ["2026-11-22T00:23:45.252Z", "2026-11-22T00:23:45.254Z"],
+          "terminal_observation_utc": ["2026-11-22T00:24:21.258Z", "2026-11-22T00:24:21.518Z"],
+          "elapsed_seconds": [36.004, 36.266],
+          "result": "completed",
+          "source": "P4/R073 EBSCO licensed record",
+          "community_profile_ms": 11051,
+          "search_record_ms": 14876,
+          "record_links_ms": 764,
+          "link_indirection_ms": 665,
+          "successful_native_transfer_ms": 5285,
+          "edition": {"pages": 29, "bytes": 2996661, "doi_and_title_verified": true, "same_sha256_as_F23_followup_1_zotero": true},
+          "pre_click": "Restored the same Paper after preserving its P5 alternative. Independently prepared EBSCO in the resumed Allfold Session. First profile use in that Session."
+        },
+        "zotero": {
+          "click_observed_utc_to_second": "2026-11-22T00:21:59Z",
+          "result": "new_parent_or_attachment_unobserved",
+          "pre_click": "Same DOI in a new EBSCO institution record detail after CARSI access. The prior verified Zotero edition remains in the acceptance collection."
+        },
+        "timing_eligible_for_parity": false
       }
     ],
     "workspace_reset": null

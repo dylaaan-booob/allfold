@@ -60,6 +60,8 @@ test('public Download publishes Session PDFs and original form items through SQL
   const profile=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'allfold-public-native-')));
   t.after(()=>fs.rmSync(profile,{recursive:true,force:true}));
   const {stdout,stderr}=await runFixture(t,require('electron'),[path.join(__dirname,'body-native.fixture.cjs'),profile,'public'],
-    {timeout:60000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}});
+    {timeout:60000,maxBuffer:1024*1024,env:{...process.env,ELECTRON_RUN_AS_NODE:''}}).catch(error=>{
+      throw Error([error.message,error.stderr?.slice(-7000)].filter(Boolean).join('\n'));
+    });
   assert.match(stdout,/PUBLIC BODY NATIVE PASS/);assert.doesNotMatch(stderr,/Check failed/);
 });

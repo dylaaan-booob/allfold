@@ -124,7 +124,7 @@ app.whenReady().then(async()=>{
       }
       if(['cancel','drain','interrupted','replace'].includes(kind)) {
         res.write(payload.subarray(0,65536));
-        if(kind==='interrupted'){setTimeout(()=>res.destroy(),80);return;}
+        if(kind==='interrupted'){bodyResponses.set(kind,res);return;}
         let n=65536;
         const timer=setInterval(()=>{if(res.destroyed){clearInterval(timer);return;}res.write(payload.subarray(0,65536));n+=65536;if(n>=4*1024*1024){clearInterval(timer);res.end();}},20);
         return;
@@ -186,9 +186,22 @@ app.whenReady().then(async()=>{
   const noItemKinds=['sciencedirect-html-no-item','sciencedirect-xhtml-no-item'],noItemEvidence=new Map(noItemKinds.map(kind=>[kind,{items:0,requests:new Map()}]));
   const routeDownload=browser.sessionEvents.routeDownload;
   browser.sessionEvents.routeDownload=function(event,item,...args) {
-    const evidence=noItemEvidence.get(scienceCase(item.getURL()));
+    const kind=scienceCase(item.getURL());
+    const evidence=noItemEvidence.get(kind);
     if(evidence)evidence.items++;
-    return routeDownload.call(this,event,item,...args);
+    const result=routeDownload.call(this,event,item,...args);
+    if(kind==='interrupted') {
+      const response=bodyResponses.get(kind);
+      assert.ok(response);
+      const interruptAfterBytes=()=>{
+        if(item.getReceivedBytes()<=0)return;
+        item.removeListener('updated',interruptAfterBytes);
+        setImmediate(()=>response.destroy());
+      };
+      item.on('updated',interruptAfterBytes);
+      interruptAfterBytes();
+    }
+    return result;
   };
   const responseEvidence=browser.sessionEvents.subscribe('headersReceived',details=>{
     const evidence=noItemEvidence.get(scienceCase(details.url));

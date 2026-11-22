@@ -63,6 +63,25 @@ created the matching parent in the acceptance collection. The observed
 parent had no attachment about 118 seconds after the click, and there was no
 terminal error message to attribute. This attempt supplies no timing comparison.
 
+### F23 repeat and first F26 attempt on `3c7435b`
+
+The F23 repeat used the same Paper after restoring it through Workspace.
+Allfold saved the licensed 29-page P4 PDF in 36.004–36.266 seconds. It matched
+the initial Zotero file byte for byte. Native phases were 11.051 seconds to
+reach the profile after the restart, 14.876 seconds to select the record,
+0.764 seconds to read the link, a 0.665-second indirection and a 5.285-second
+stream. The repeat Connector click yielded no verified new parent or PDF, so
+the initial Zotero result serves as edition evidence for this repeat.
+
+F26 Zotero saved the 12-page publisher edition in 12.847–13.176 seconds. It
+had already reached the article with institutional Full text access when the
+click was timed. After the interruption and an independent Allfold Session
+restart, the Allfold attempt ended with `no-pdf-candidates` in 3.022–3.286
+seconds. The ScienceDirect Prepare target had already closed. The Document
+operation returned in 1.745 seconds and no stream started. This is an
+asymmetric result with different preparation, and the initial failure remains
+in the increment.
+
 ## Historical acceptance through `d237ee7`
 
 **Acceptance uses the criteria revised on 20 November 2026
