@@ -74,13 +74,18 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       response.writeHead(303,{location:ebscoProfile+'/search'});response.end();return;
     }
     if(current.pathname===recordPath && ebscoMode.startsWith('record-in-app'))return;
-    if(current.pathname===recordDetails && (ebscoMode==='search-direct-conflict'
+    if(current.pathname===recordDetails && (ebscoMode.startsWith('search-direct-conflict')
       || ebscoMode==='search-direct' && URL.parse(request.headers.referer)?.pathname===resultsPath)) {
       response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-      const doi=ebscoMode==='search-direct'?'10.5555/fixture':'10.5555/other';
-      response.end(JSON.stringify([{result:{doi,links:{'v2-downloadLinks':[
+      const doi=ebscoMode==='search-direct-conflict'?'10.5555/other':'10.5555/fixture';
+      const rows=[{result:{doi,links:{'v2-downloadLinks':[
         {type:'pdf',url:downloadLink},
-      ]}}}]));return;
+      ]}}}];
+      if(ebscoMode==='search-direct-conflict-metadata') {
+        rows[0].result.recordId='record';
+        rows.push({result:{recordId:'record',doi:'10.5555/other'}});
+      }
+      response.end(JSON.stringify(rows));return;
     }
     if(ebscoMode==='direct-link' && current.pathname===recordDetails) {
       response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});
@@ -472,10 +477,12 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(new URL(link.referer).pathname,resultsPath);
     assert.ok(!requests.some(request=>request.url===recordPath || request.url.startsWith(viewerPath)
       || request.url.startsWith('/files/licensed')),'discovery needs neither the record page nor a body request');
-    ebscoMode='search-direct-conflict';
-    const verifiedOnPage=await invoke('extract_paper_pdf_clues',licensed);
-    assert.equal(verifiedOnPage.pdf_clues?.candidates[0]?.url,ebscoPdf,'unconfirmed early links leave record and Viewer available');
-    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    for(const mode of ['search-direct-conflict','search-direct-conflict-metadata']) {
+      ebscoMode=mode;
+      const verifiedOnPage=await invoke('extract_paper_pdf_clues',licensed);
+      assert.equal(verifiedOnPage.pdf_clues?.candidates[0]?.url,ebscoPdf,'conflicting details leave record and Viewer available');
+      assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    }
     ebscoMode='record-in-app-duplicate';
     const openedViewer=await invoke('extract_paper_pdf_clues',{...licensed,prepared_source:'ebsco-viewer',
       prepared_record:fromResults.pdf_clues.landing_url});

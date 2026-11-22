@@ -62,21 +62,22 @@ async function resolveDirectPdf(browser,scope,record,document,options) {
   details.searchParams.set('includeHbrRestrictedLinks','true');
   try {
     // An optional lookup must leave the normal page route a chance to run.
-    const lookup=fromSearch?{...options,deadline:Math.min(deadline,Date.now()+PAGE_LOAD_MS)}:options;
+    const lookup={...options,deadline:Math.min(deadline,Date.now()+PAGE_LOAD_MS)};
     const value=await readRecordJSON(browser,details,document,lookup);
-    const rows=(Array.isArray(value)?value:[value]).flatMap(row=>row?.result?.links?[row.result]:[]);
+    const rows=(Array.isArray(value)?value:[value]).map(row=>row?.result)
+      .filter(result=>result && typeof result==='object');
     const identified=rows.filter(row=>row.recordId===record.record);
     const applicable=identified.length?identified:rows.filter(row=>row.recordId===undefined);
     if(applicable.some(row=>{
       const reported=validDOI(row.doi);
-      return (reported || fromSearch) && reported!==doi;
+      return reported ? reported!==doi : fromSearch && !!row.links;
     }))return [];
     const pdfLinks=values=>Array.isArray(values)?values.flatMap(link=>{
       if(link?.type!=='pdf' || typeof link.url!=='string' || !URL.canParse(link.url,details))return [];
       const url=httpsURL(new URL(link.url,details).href);
       return url?[url.href]:[];
     }):[];
-    const choices=applicable.map(row=>[...new Set([
+    const choices=applicable.filter(row=>row.links).map(row=>[...new Set([
       ...pdfLinks(row.links['v2-downloadLinks']),...pdfLinks(row.links.downloadLinks),
     ])]);
     if(!identified.length && new Set(choices.map(urls=>JSON.stringify([...urls].sort()))).size>1) {
