@@ -50,6 +50,20 @@ test('empty linked and symlinked destinations remain refused',t=>{
     assert.equal(fs.readFileSync(foreign,'utf8'),'');
   }
 });
+test('native progress can lose an owned leaf during Chromium cleanup without qualifying it at completion',t=>{
+  const {filename,output}=capability(t);
+  fs.writeFileSync(filename,'%PDF-fixture');
+  assert.deepEqual(output.capture({missing:true}).file,identity(filename));
+  const stat=fs.fstatSync;
+  const observed=t.mock.method(fs,'fstatSync',(...args)=>{
+    const info=stat(...args);
+    fs.unlinkSync(filename);
+    return info;
+  });
+  assert.equal(output.capture({missing:true}),null);
+  observed.mock.restore();
+  assert.throws(()=>output.capture({sniff:true}),error=>error.bodyLocal===true);
+});
 test('a replacement cannot borrow a captured native output inode',t=>{
   const {root,filename,output}=capability(t);fs.writeFileSync(filename,'original');
   const captured=output.capture();assert.deepEqual(captured,{file:identity(filename),size:8});

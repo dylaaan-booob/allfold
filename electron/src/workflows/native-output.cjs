@@ -38,8 +38,7 @@ class NativeOutput {
   capture({missing=false,sniff=false}={}) {
     try {
     this.check();
-    let info;
-    try {info=fs.lstatSync(this.filename);}catch(error){if(error.code==='ENOENT'&&missing)return null;throw failure();}
+    const info=fs.lstatSync(this.filename);
     // lstat can overlap Chromium unlinking its empty destination reservation.
     // That unowned object is not output yet; final and owned captures still
     // require the regular, singly linked inode below.
@@ -62,7 +61,12 @@ class NativeOutput {
       if(sniff){const prefix=Buffer.alloc(5);pdf=fs.readSync(fd,prefix,0,5,0)===5&&prefix.equals(Buffer.from('%PDF-'));}
       return {file:this.file,size:actual.size,...(sniff?{pdf}:{} )};
     }finally {fs.closeSync(fd);}
-    }catch(error){error.bodyLocal=true;throw error;}
+    }catch(error){
+      // Chromium can unlink the partial file during an interrupted update,
+      // including between opening the inode and rechecking its name.
+      if(missing&&error.code==='ENOENT'&&error.path===this.filename){this.check();return null;}
+      error.bodyLocal=true;throw error;
+    }
   }
 }
 module.exports={NativeOutput};

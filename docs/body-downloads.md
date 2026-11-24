@@ -325,8 +325,10 @@ Native output reserves an exclusive `0700` directory at
 Main observes its actual regular-file inode and Python independently checks it
 before publication. Before any inode is adopted, a progress observation may see
 Chromium's empty destination reservation already unlinked (`nlink=0`); it remains
-pending and supplies no output proof. Final output and every observation after
-adoption still require the same regular, singly linked inode. Each attempt has a
+pending and supplies no output proof. Progress can also find that Chromium has
+removed the partial file during interruption. With the owned directories intact,
+that observation supplies no output proof. Every accepted observation after
+adoption and final completion still require the same regular, singly linked inode. Each attempt has a
 distinct path for each physical native candidate, so a cancelled item cannot later unlink a fallback candidate's output. Existing recorded temporary capabilities remain eligible only for exact owned cleanup. Directory/file replacement,
 symlinks, unrelated links and unknown objects still cause application refusal;
 final body publication remains no-clobber. Application cleanup never deliberately

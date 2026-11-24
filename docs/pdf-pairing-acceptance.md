@@ -100,6 +100,14 @@ an optional ScienceDirect toolbar wait. Same-origin redirect cookies still
 depend on the partition Cookie snapshot taken for the initial URL. This round
 has no comparable F23 evidence attributing the wait to that case.
 
+The production startup at `7f83866b89f28c057ed6d8f7e2c91a0fa8422e10` also
+reclaimed a normally closed Session using the updated cleanup worker. The
+PR Safety check for that revision exposed an interrupted DownloadItem
+removing its private partial file during the output progress check. The
+focused regression reproduces removal between descriptor verification and
+pathname recheck. Progress may now observe an absent partial file with the
+owned directories intact. Final publication still requires a verified file.
+
 The temporary Discover fields and Browser page limit were restored. The
 configuration bytes match preflight. F23 remains a Candidate and the verified
 F19 and F18 bodies remain Downloaded, with zero Trash entries. Workspace
