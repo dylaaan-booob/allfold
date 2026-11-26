@@ -38,7 +38,8 @@
         "observed_seconds_after_click": 113,
         "new_matching_parent_observed": false,
         "pdf_attachment_observed": false,
-        "network_capture_ended_before_click": true
+        "last_netlog_event_preceded_click": true,
+        "network_transfer_verified": false
       }
     },
     "paired_network_transfer_verified": false,

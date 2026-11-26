@@ -71,8 +71,8 @@ reached the licensed search interface and opened the exact DOI record.
   webpage entry without a DOI or PDF attachment. The record renderer then
   showed a crash. A normal reload recovered the exact record. One explicit
   EBSCO Discovery Layer Save produced no new Zotero parent or attachment
-  during the next 113 seconds. Chrome NetLog had stopped automatically
-  before the retry click, leaving its network behavior unverified.
+  during the next 113 seconds. The last event in Chrome NetLog preceded the
+  retry click. The retry's network behavior remains unverified.
 
 The inline preview and Allfold body timings describe observed network
 reception. F23 still needs a verified Connector PDF, its actual first
