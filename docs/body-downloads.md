@@ -83,7 +83,8 @@ HTTPS downgrade projection. Reader/response continuations retain their supplied
 context, including an intentional absent Referer.
 
 `PdfDiscovery` owns source order, de-duplication, reader/redirect chains and the
-remaining parent budget. P1 templates run first. Among already qualified P2,
+remaining parent budget. After the prepared EBSCO opportunity below, P1
+templates lead the existing source order. Among already qualified P2,
 saved P3 Meta and stable saved P4 entries, direct PDF candidates precede Reader
 or form work and optional missing-input API queries. Equal kinds keep their
 source order; this preference applies to every platform. Existing P4 URLs need no article reload for
@@ -106,10 +107,12 @@ It retains the current Document's observed content URL and identifiers. After
 its current P3/P4 clues, these may qualify previously unavailable templates before
 P5, still bound to the original Paper.
 
-An assigned Service can supply EBSCO when its retained target has reached an
-EBSCO Community or search profile. Download tries qualified direct publisher
-entries first. A deferred publisher challenge gives the prepared EBSCO source a
-turn before opening another publisher page. Independent sources remain eligible.
+For a journal article with a DOI and one assigned Service with an opened EBSCO
+target, ordinary Download starts with the EBSCO DOI search. A source-local failure
+or missing eligible body returns to the existing order within the same attempt.
+Without that opened target, Download starts in the existing order. A deferred
+publisher challenge can give a Service that has since opened a turn before
+opening another publisher page. Independent sources keep their own authority.
 
 A verified profile can be reused by the same Service in its current Session.
 When the retained entry is still needed, follow its actual Community link or

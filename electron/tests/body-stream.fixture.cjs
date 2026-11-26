@@ -354,10 +354,8 @@ process.once('uncaughtException',failFixture);
     assert.deepEqual(drains,[{type:'fixture_drain',status:'settled'}]);
     assert.equal(ebscoCase?.status,'completed');
     assert.deepEqual(fs.readFileSync(path.join(profile,'workspace/Documents',ebscoCase.paper+'.pdf')),licensedBytes);
-    const deniedPublisher=requests.filter(r=>r.url==='/fixture-publisher-pdf');
-    assert.equal(deniedPublisher.length,1);
-    assert.equal(deniedPublisher[0].headers.referer,origin+'/fixture-publisher');
-    assert.equal(requests.filter(r=>r.url==='/fixture-publisher').length,0,'a licensed body ends discovery before refreshing the refused publisher');
+    assert.equal(requests.filter(r=>r.url==='/fixture-publisher-pdf' || r.url==='/fixture-publisher').length,0,
+      'the prepared EBSCO body completes before publisher discovery');
     assert.equal(requests.filter(r=>r.url==='/fixture-preprint').length,0);
     const licensedRequests=requests.filter(r=>r.headers.host==='content.ebscohost.com' && r.url==='/cds/retrieve?Signature=A%2FB');
     assert.deepEqual(licensedRequests.map(r=>r.headers.accept==='application/pdf'),[false,true],

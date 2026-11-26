@@ -375,7 +375,7 @@ def test_newly_qualified_query_entries_prefer_direct_over_existing_reader():
 
 
 @pytest.mark.parametrize('access', ['authorization', 'challenge'])
-def test_queried_publisher_access_failure_tries_prepared_ebsco_before_document_refresh(access):
+def test_queried_publisher_access_failure_tries_later_prepared_ebsco_before_document_refresh(access):
     from allfold.pdf_discovery import P2Resolution
     from allfold.pdf_rules import PdfCandidate
 
@@ -388,6 +388,8 @@ def test_queried_publisher_access_failure_tries_prepared_ebsco_before_document_r
             yield P2Resolution(replace(inputs, known_pdf_urls=(KnownPdfUrl(denied, 'API06', 'link'),)))
 
         def ebsco_candidates(self, target):
+            if denied not in seen:
+                return None
             return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),)
 
         def document(self, target):
@@ -410,7 +412,6 @@ def test_queried_publisher_access_failure_tries_prepared_ebsco_before_document_r
 def test_prepared_ebsco_can_save_before_publisher_challenge_recovery(institution_body):
     from types import SimpleNamespace
 
-    from allfold.pdf_discovery import PdfSourceReadError
     from allfold.pdf_rules import PdfCandidate
 
     publisher = 'https://publisher.example.org'
@@ -426,9 +427,9 @@ def test_prepared_ebsco_can_save_before_publisher_challenge_recovery(institution
 
     class IO:
         def ebsco_candidates(self, target):
+            if institution_body in {'unprepared', 'direct'}:
+                return None
             seen.append('EBSCO lookup')
-            if institution_body == 'unprepared':
-                raise PdfSourceReadError('EBSCO requires a prepared Service', diagnostic='service-unprepared')
             return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),)
 
         def reader(self, candidate, response):
@@ -447,14 +448,12 @@ def test_prepared_ebsco_can_save_before_publisher_challenge_recovery(institution
         return CandidateResult.failed()
 
     result = PdfDiscovery(paper, facts=(facts,), io=IO()).run(consume)
-    expected = [entry, 'EBSCO lookup']
-    if institution_body == 'direct':
-        expected = [entry, direct]
-    elif institution_body != 'unprepared':
-        expected.append(licensed)
-    if institution_body in {'failed', 'unprepared'}:
-        expected.append('publisher recovery')
-    assert seen == expected
+    assert seen == {
+        'available': ['EBSCO lookup', licensed],
+        'failed': ['EBSCO lookup', licensed, entry, 'publisher recovery'],
+        'unprepared': [entry, 'publisher recovery'],
+        'direct': [entry, direct],
+    }[institution_body]
     assert result.status == 'transferred'
     assert result.candidate.rule_id == ('R073' if institution_body == 'available' else 'GENERIC')
 
@@ -474,8 +473,10 @@ def test_linkinghub_publisher_challenge_preserves_the_ebsco_turn(prepared):
 
     class IO:
         def ebsco_candidates(self, target):
+            if entry not in calls:
+                return None
             calls.append('EBSCO lookup')
-            return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),) if prepared else ()
+            return (PdfCandidate(target, 'P4', 'R073', 'ebsco', licensed),) if prepared else None
 
         def reader(self, candidate, response):
             calls.append('Reader')

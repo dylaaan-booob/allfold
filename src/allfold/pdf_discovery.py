@@ -154,8 +154,9 @@ class PdfDiscovery:
     """One invocation binds one immutable Paper and never renews its authority.
 
     io may expose query_missing(target, inputs, facts), document(target),
-    reader(candidate), ebsco_candidates(target), and openalex(doi). query_missing is a lazy iterator of
-    qualified PdfRuleInputs so the first sufficient answer stops further queries.
+    reader(candidate), ebsco_candidates(target), and openalex(doi).
+    ebsco_candidates returns None without a currently prepared EBSCO Service.
+    query_missing lazily yields qualified PdfRuleInputs until the first sufficient answer.
     Every IO/consumer dispatch is preceded and followed by the captured guard.
     """
     def __init__(self, target, *, facts=(), inputs=None, io=None, cancel_event=None,
@@ -389,15 +390,16 @@ class PdfDiscovery:
     def _entry_key(self, candidate):
         return _request_key(self._entry_request(candidate))
 
-    def _ebsco_candidates(self):
+    def _ebsco_candidates(self, *, defer_unprepared=False):
         if self._ebsco_attempted or self.io is None or not callable(getattr(type(self.io), 'ebsco_candidates', None)):
             return ()
-        self._ebsco_attempted = True
+        candidates = ()
         try:
-            return self._call(self.io.ebsco_candidates, self.target)
+            candidates = self._call(self.io.ebsco_candidates, self.target)
         except PdfSourceReadError as error:
             self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
-            return ()
+        self._ebsco_attempted = candidates is not None or not defer_unprepared
+        return candidates or ()
 
     def _ebsco_viewer(self, candidate):
         if (self._ebsco_viewer_attempted or candidate.rule_id != 'R073' or candidate.field != 'ebsco_download_link'
@@ -414,6 +416,7 @@ class PdfDiscovery:
         if self._initial is not None:
             yield self._initial
             return
+        yield self._ebsco_candidates(defer_unprepared=True)
         p1 = tuple(self._rules('P1'))
         existing = tuple(self._rules('P2'))
         saved_p3 = tuple(self._saved('P3'))

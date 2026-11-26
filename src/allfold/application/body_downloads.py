@@ -343,18 +343,18 @@ class _BodyDiscoveryIO:
     def ebsco_candidates(self, target):
         request = self.reservation.body_request
         if not request.service_id or not target.identity_doi or target.content_type != 'journal-article':
-            return ()
+            return None
         from allfold.application.task_authority import ServiceAccessUnavailable
         try:
             authority = self.reservation.registry._authority(request.service_id, ())
         except ServiceAccessUnavailable:
-            return ()
+            return None
         except (OSError, ValueError, RuntimeError):
             raise PdfSourceReadError('EBSCO access changed', diagnostic='service-invalidated',
                 service_id=request.service_id) from None
         binding = authority.native_access()
         if binding.pdf_source != 'ebsco' or binding.target_page_id is None:
-            return ()
+            return None
         return self._read_ebsco(target, authority, 'ebsco')
 
     def ebsco_viewer(self, candidate):

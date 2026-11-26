@@ -274,11 +274,14 @@ def test_download_revisits_a_challenge_only_when_the_request_context_advances(tm
         host.join()
 
 
-@pytest.mark.parametrize(('institutional_referer', 'ready', 'direct'), [
-    ('record', True, None), (None, True, None), (None, False, None),
-    (None, True, 'available'), (None, True, 'authorization'), (None, True, 'challenge'),
+@pytest.mark.parametrize(('institutional_referer', 'ready', 'direct', 'publisher_available'), [
+    ('record', True, None, False), (None, True, None, False), (None, False, None, False),
+    (None, True, 'available', False), (None, True, 'authorization', False),
+    (None, True, 'challenge', False), (None, True, None, True), (None, False, None, True),
+    (None, None, None, True),
 ])
-def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path, institutional_referer, ready, direct):
+def test_public_download_tries_prepared_ebsco_before_other_sources(
+        tmp_path, institutional_referer, ready, direct, publisher_available):
     from concurrent.futures import Future
     from datetime import datetime, timezone
     from pathlib import Path
@@ -309,6 +312,8 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
         discovery_facts=facts)
     host, workspace, paper, bridge, bound = prepared_application_host(tmp_path, metadata=metadata,
         service_updates={'name': 'Licensed Library', 'access_url': 'https://proxy.example.org/library'}, pdf_source='ebsco')
+    if ready is None:
+        host.login.invalidate_pages((17,))
 
     def execute(action, data, progress=None, **kwargs):
         bridge.calls.append((action, data))
@@ -332,7 +337,7 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
                 identifiers=[], diagnostics=[], candidates=[dict(stage='P4', rule_id='R073',
                     url=licensed_pdf, referer=search if link else referer,
                     field='ebsco_download_link' if link else None)] if institutional else [])))
-        elif data['url'] == denied:
+        elif data['url'] == denied and not publisher_available:
             result.set_result(dict(kind='response', outcome='response', response=dict(url=denied,
                 status=403, content_type='text/html', body='Access required', access='authorization')))
         else:
@@ -345,6 +350,9 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
                     return result
                 assert data['referer'] == (search if direct == 'available' else referer)
                 body = b'%PDF-licensed'
+            elif data['url'] == denied:
+                assert 'service_id' not in data
+                body = b'%PDF-publisher'
             else:
                 assert data['url'] == preprint and 'service_id' not in data
                 body = b'%PDF-preprint'
@@ -362,14 +370,26 @@ def test_public_download_uses_prepared_ebsco_before_repository_preprint(tmp_path
         task = service.start(paper.id, paper.workspace_id, qualification=qualification)
         result = task.future.result(3)
         assert result.status == 'completed'
-        expected = b'%PDF-licensed' if ready else b'%PDF-preprint'
+        if ready:
+            expected = b'%PDF-licensed'
+        elif publisher_available:
+            expected = b'%PDF-publisher'
+        else:
+            expected = b'%PDF-preprint'
         assert (workspace / result.paper.body.relative_path).read_bytes() == expected
-        assert result.paper.body.pdf_source == ('P4' if ready else 'P5')
+        assert result.paper.id == paper.id
+        assert result.paper.body.pdf_source == ('P4' if ready or publisher_available else 'P5')
         document_sources = [data.get('prepared_source') for action, data in bridge.calls if action == 'extract_paper_pdf_clues']
-        expected_sources = ['ebsco', 'ebsco-viewer'] if blocked_direct else ['ebsco']
-        assert document_sources == (expected_sources if ready else ['ebsco', None])
+        if ready is None:
+            assert document_sources == []
+        else:
+            first_action, first_request = bridge.calls[0]
+            assert first_action == 'extract_paper_pdf_clues' and first_request['prepared_source'] == 'ebsco'
+            expected_sources = ['ebsco', 'ebsco-viewer'] if blocked_direct else ['ebsco']
+            assert document_sources == (expected_sources if ready or publisher_available else ['ebsco', None])
         assert not any(data.get('recover_access') for _, data in bridge.calls)
-        assert any(data.get('url') == preprint for _, data in bridge.calls) is not ready
+        assert any(data.get('url') == denied for _, data in bridge.calls) is not ready
+        assert any(data.get('url') == preprint for _, data in bridge.calls) is (not ready and not publisher_available)
         assert not host.browser_lock.owners
     finally:
         host.shutdown()
