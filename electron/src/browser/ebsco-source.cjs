@@ -273,25 +273,21 @@ function watchPdf(browser,tab,viewer,{signal,deadline,verify}) {
       || (details.initiatorOrigin || new URL(details.frame.url).origin)!==viewer.origin
       || root.frameToken!==contents.mainFrame.frameToken || root.processId!==contents.mainFrame.processId)return;
     verify();
-    const fields=Object.entries(details.requestHeaders || {});
-    const header=name=>fields.find(([key])=>key.toLowerCase()===name)?.[1] ?? '';
-    const entry={stage:'P4',rule_id:'R073',url:details.url,referer:httpsURL(header('referer'))?.href ?? null};
-    requests.set(details.id,{entry,expectsPDF:/\bapplication\/pdf\b/i.test(header('accept'))});
+    const referer=Object.entries(details.requestHeaders || {}).find(([name])=>name.toLowerCase()==='referer')?.[1];
+    requests.set(details.id,{stage:'P4',rule_id:'R073',url:details.url,referer:httpsURL(referer)?.href ?? null});
   },{signal});
   const response=browser.sessionEvents.subscribe('headersReceived',details=>{
     const request=requests.get(details.id);
     requests.delete(details.id);
-    if(details.webContentsId!==tab.id || request?.entry.url!==details.url
-      || !browser.ownsPage(owner,tab.id) || signal?.aborted || Date.now()>=deadline)return;
+    if(details.webContentsId!==tab.id || request?.url!==details.url || details.statusCode<200
+      || details.statusCode>=300 || !browser.ownsPage(owner,tab.id) || signal?.aborted || Date.now()>=deadline)return;
     verify();
     const fields=Object.entries(details.responseHeaders || {});
     const header=name=>fields.find(([key])=>key.toLowerCase()===name)?.[1]?.[0] ?? '';
     const mime=header('content-type').split(';',1)[0].trim().toLowerCase();
     const attached=/^attachment[; ]/i.test(header('content-disposition'));
-    const pdf=mime==='application/pdf' || attached && mime==='application/octet-stream';
-    if(details.statusCode>=400 && (request.expectsPDF || pdf))resolve(null);
-    if(details.statusCode<200 || details.statusCode>=300 || !pdf)return;
-    resolve(request.entry);
+    if(mime!=='application/pdf' && !(attached && mime==='application/octet-stream'))return;
+    resolve(request);
     return {cancel:true};
   },{signal});
   const terminal=['completed','errorOccurred'].map(event=>browser.sessionEvents.subscribe(event,
@@ -433,8 +429,8 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
       const landed=await visit(viewer,{referer:recordURL});
       const url=httpsURL(landed.url);
       if(url?.origin!==viewer.origin || url.pathname!==viewer.pathname)throw refusal('contentReady');
+      // A refused request can be followed by another eligible Viewer response.
       const candidate=await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
-      if(!candidate)throw new BrowserFailure('navigation','content_access_blocked');
       return retrieved(recordURL,[candidate]);
     } finally {reader.dispose();}
   }
