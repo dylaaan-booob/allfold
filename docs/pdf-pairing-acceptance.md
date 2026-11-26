@@ -3,7 +3,7 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-## Current acceptance · 23 November 2026
+## Current acceptance · 26 November 2026
 
 PR #141 is Draft. This round started at `b45e95ae9312d99bbb60e9625c929f82f107a7f2`.
 The user authorized normal cookie, site storage and HTTP cache writes to a
@@ -54,15 +54,33 @@ unavailable.
 
 ### F23 first-transfer status
 
-Allfold's untimed Login produced a retained EBSCO target. Chrome independently
-reached the licensed search interface and returned one exact DOI result. The
-current Chrome capture covers search preparation. It recorded neither a full
-delivery body nor a Connector attachment upload for this trial.
+On production `7144cba8c12e76b7238df6e63bdacc9d61ccfded`, Allfold's untimed
+Login retained its independently opened EBSCO Service. Chrome independently
+reached the licensed search interface and opened the exact DOI record.
 
-The native Computer Use connection timed out before a new paired measurement.
-The results-page discovery path stays in place. There is no new comparable
-click-to-association time, body duration or verified pair for F23 on the disk
-Session build. The first-transfer gap and its cause remain open.
+- Ordinary Allfold Download saved and associated the licensed 29-page PDF
+  on attempt 1 of the original Paper in 38.924–39.496 seconds, including
+  discovery. The file matched the previously verified edition byte for byte.
+  The delivery request began 34.352–34.456 seconds after the click. Its HTTP
+  200 response delivered 2,996,661 decoded bytes from the network with zero
+  cache reads. First byte arrived 1.374 seconds after the request started,
+  followed by 3.240 seconds of body reception.
+- Chrome's inline preview separately received 2,996,661 decoded bytes over
+  the network, with 4.246 seconds from first to last body byte. The measured
+  Connector click issued a successful `saveSnapshot` POST and created a
+  webpage entry without a DOI or PDF attachment. The record renderer then
+  showed a crash. A normal reload recovered the exact record. One explicit
+  EBSCO Discovery Layer Save produced no new Zotero parent or attachment
+  during the next 113 seconds. Chrome NetLog had stopped automatically
+  before the retry click, leaving its network behavior unverified.
+
+The inline preview and Allfold body timings describe observed network
+reception. F23 still needs a verified Connector PDF, its actual first
+network transfer and a comparable full user wait. The Draft merge gate
+remains open.
+
+On 23 November, Chrome reached the exact result before the Computer Use
+connection timed out. That capture covered preparation only.
 
 Fixed-baseline review reproduced a second Community POST after the first POST
 returned another selector, and a missing Viewer fallback after repeated direct
@@ -108,11 +126,12 @@ focused regression reproduces removal between descriptor verification and
 pathname recheck. Progress may now observe an absent partial file with the
 owned directories intact. Final publication still requires a verified file.
 
-The temporary Discover fields and Browser page limit were restored. The
-configuration bytes match preflight. F23 remains a Candidate and the verified
-F19 and F18 bodies remain Downloaded, with zero Trash entries. Workspace
-Reset is pending the new F23 pair. The restarted application uses a fresh
-Session and requires independent access preparation for the next F23 trial.
+The temporary Discover fields and Browser page limit were restored on
+23 November. After the 26 November trial, configuration bytes still matched
+preflight and Workspace held three Downloaded Papers, F23, F19 and F18,
+with zero Candidates and zero Trash entries. The F23 file and network
+evidence were preserved outside Workspace. Workspace Reset remains pending
+the F23 gate.
 
 The following sections preserve the earlier measurements and Reset history.
 

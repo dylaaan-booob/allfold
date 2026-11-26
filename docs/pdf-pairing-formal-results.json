@@ -1,5 +1,52 @@
 {
   "status": "draft_f23_first_transfer_acceptance_open",
+  "f23_live_followup": {
+    "date_asia_shanghai": "2026-11-26",
+    "doi": "10.1287/moor.2024.0601",
+    "production_code_sha": "7144cba8c12e76b7238df6e63bdacc9d61ccfded",
+    "versions": {"electron": "45.0.0", "chrome": "158.0.8127.88"},
+    "independent_access": {
+      "allfold_service_target_opened_before_click": true,
+      "chrome_licensed_record_opened_before_click": true
+    },
+    "allfold": {
+      "ordinary_download": true,
+      "original_paper_association": true,
+      "attempt": 1,
+      "pages": 29,
+      "licensed_historical_pdf_matches": true,
+      "full_wait_seconds": [38.924, 39.496],
+      "click_to_delivery_request_seconds": [34.352, 34.456],
+      "body_http_status": 200,
+      "decoded_network_body_bytes": 2996661,
+      "body_cache_reads": 0,
+      "request_to_first_byte_seconds": 1.374,
+      "first_to_last_byte_seconds": 3.240
+    },
+    "chrome_inline_preview": {
+      "decoded_network_body_bytes": 2996661,
+      "first_to_last_byte_seconds": 4.246
+    },
+    "connector": {
+      "first_save_route": "saveSnapshot",
+      "first_save_http_status": 201,
+      "webpage_parent_without_doi_observed": true,
+      "first_save_pdf_attachment": false,
+      "renderer_crash_observed_after_first_save": true,
+      "record_recovered_by_normal_reload": true,
+      "explicit_translator_retry": {
+        "observed_seconds_after_click": 113,
+        "new_matching_parent_observed": false,
+        "pdf_attachment_observed": false,
+        "network_capture_ended_before_click": true
+      }
+    },
+    "paired_network_transfer_verified": false,
+    "comparable_full_waits": null,
+    "transfer_fix_verified": false,
+    "workspace_reset": false,
+    "workspace_counts": {"candidates": 0, "downloaded": 3, "trash": 0}
+  },
   "disk_session_followup": {
     "comparison_base_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
     "starting_pr_head_sha": "b45e95ae9312d99bbb60e9625c929f82f107a7f2",
