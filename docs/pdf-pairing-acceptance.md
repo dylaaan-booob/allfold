@@ -5,7 +5,7 @@ Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 
 ## Current acceptance · 26 November 2026
 
-PR #141 is Draft. This round started at `b45e95ae9312d99bbb60e9625c929f82f107a7f2`.
+This round of PR #141 started at `b45e95ae9312d99bbb60e9625c929f82f107a7f2`.
 The user authorized normal cookie, site storage and HTTP cache writes to a
 fresh managed Browser Session directory during each app run. Each launch
 starts with fresh website state. Saved institution credentials and Workspace
@@ -14,15 +14,15 @@ Reset keep their existing scope.
 - [x] Verify F19 and F18 through ordinary Download, body removal, Restore and
   a second Download. Both repeats saved the cached body to the original Paper
   on a new attempt with zero network body reads.
-- [ ] Resolve the first full network transfer gap on F23. Verify independent
-  access, the same licensed PDF in both products, actual network body bytes,
-  and full click-to-association and transfer timings under comparable
-  conditions. The existing criterion allows about five additional seconds
-  for Allfold. Discovery stays in the full wait.
+- [x] The user accepted the measured F23 complete wait as a performance
+  exception for this PR. The verified deliveries saved the same licensed PDF
+  in both products from complete network bodies. The complete wait includes
+  discovery and exceeded the approximately five-second allowance.
 - [x] Verify the Session lifecycle and restore temporary settings. Preserve
   the completed SIAM evidence outside Workspace.
-- [ ] Complete the product Workspace Reset after both live goals pass. The
-  Workspace remains available for F23.
+- [x] Complete the product Workspace Reset after matching all three saved
+  bodies to their external archives. Verify the empty Workspace and retained
+  settings, credentials, Logs and Zotero acceptance collection.
 
 ### SIAM with the production disk Session
 
@@ -89,9 +89,14 @@ another 3.421 s. Attempt 4 exceeded the captured Zotero wait by
 **20.599–21.623 s**, including a longer body-reception interval. This run
 confirms the selected source and bounds the remaining waits. Request and
 body durations varied across runs, so the earlier baseline does not isolate
-the effect of source ordering on total time. F23 remains outside the existing
-roughly five-second allowance. The measured files and raw traces are archived
-outside Workspace. Workspace retains F23, F19 and F18 and awaits product Reset.
+the effect of source ordering on total time. F23 exceeds the roughly
+five-second allowance. On 26 November the user accepted the observed waits
+as an exception for this F23 DOI-to-EBSCO path. The additional wait was
+26.924–27.998 s with profile setup and 20.599–21.623 s when reusing the
+profile. The slow DOI search request was sent on an existing connection.
+Its 11.094 s time to response headers covers more than the 462 ms upstream
+interval reported by Envoy. The available traces leave the remaining delay
+unattributed. The measured files and raw traces are archived outside Workspace.
 
 #### Paired baseline before EBSCO priority
 
@@ -124,8 +129,8 @@ about 4.38 s. The additional time in this run accrued mainly before the
 delivery GET. Allfold tried the publisher access route and resolved the EBSCO
 search result before requesting the body. Zotero started from the restored
 article detail page. The full wait includes those product steps. F23 remains
-an open merge gate. Workspace retains the three verified bodies and awaits
-the product Reset after the gate passes.
+an open merge gate at this earlier checkpoint. The three verified bodies
+were retained in Workspace pending the later acceptance decision.
 
 #### Earlier F23 observations
 
@@ -176,7 +181,7 @@ The earlier 45.786–46.047 s Allfold wait and 11.274–11.621 s Connector wait
 remain separate measurements with different preparations. The previous
 post-first-byte body intervals were 23.131 s and 7.149 s, respectively.
 
-### Runtime shutdown and retained Workspace
+### Runtime shutdown and Workspace Reset
 
 On returning after the interruption, the measured production process had
 exited and left its Session path. The next ordinary launch reclaimed it and
@@ -204,11 +209,20 @@ pathname recheck. Progress may now observe an absent partial file with the
 owned directories intact. Final publication still requires a verified file.
 
 The temporary Discover fields and Browser page limit were restored on
-23 November. After the 26 November trial, configuration bytes still matched
-preflight and Workspace held three Downloaded Papers, F23, F19 and F18,
-with zero Candidates and zero Trash entries. The F23 file and network
-evidence were preserved outside Workspace. Workspace Reset remains pending
-the F23 gate.
+23 November. After the 26 November trial, configuration bytes matched
+preflight and Workspace held the three Downloaded Papers F23, F19 and F18,
+with zero Candidates and zero Trash entries. Each saved body matched its
+verified external archive byte for byte before Reset.
+
+On 26 November at 17:28 Asia/Shanghai, the user confirmed the configured
+Workspace through the Settings Reset preview. The product reported
+successful deletion. Workspace was uninitialized afterward and Candidates,
+Downloaded and Trash were empty. Configuration, Journals, Services, saved
+institution credentials, Logs, covers and the Zotero acceptance collection
+and PDF were verified after Reset. The Browser Session directory survived
+Reset and normal quit. The next normal launch reclaimed it, created a fresh
+Session and left Workspace uninitialized with the saved credential and
+configuration intact. Raw evidence remains outside Workspace.
 
 The following sections preserve the earlier measurements and Reset history.
 

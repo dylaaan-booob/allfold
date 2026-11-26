@@ -1,5 +1,40 @@
 {
-  "status": "draft_f23_first_transfer_acceptance_open",
+  "status": "acceptance_verified_with_f23_performance_exception",
+  "merge_acceptance": {
+    "date_asia_shanghai": "2026-11-26",
+    "production_code_sha": "31c9c15548dfe39f905bc5e59feb408070e59a34",
+    "siam_warm_cache_verified": true,
+    "f23_performance_exception": {
+      "user_accepted": true,
+      "scope": "The measured F23 ordinary DOI-to-EBSCO Download path and access conditions for PR #141.",
+      "full_wait_criterion_met": false,
+      "full_wait_includes_discovery": true,
+      "paired_complete_network_bodies_and_correct_associations": true,
+      "allfold_extra_full_wait_initial_seconds": [26.924, 27.998],
+      "allfold_extra_full_wait_reused_seconds": [20.599, 21.623],
+      "slow_doi_post_to_response_headers_seconds": 11.094,
+      "reported_envoy_upstream_time_seconds": 0.462,
+      "delay_attribution_confirmed": false
+    },
+    "workspace_reset": {
+      "status": "completed_and_verified",
+      "confirmation_click_utc_bracket": ["2026-11-26T09:28:14.934Z", "2026-11-26T09:28:15.029Z"],
+      "verification_utc": "2026-11-26T09:28:28.231Z",
+      "product_action": "Settings → Data → Reset → Workspace",
+      "workspace_uninitialized": true,
+      "counts_before": {"candidates": 0, "downloaded": 3, "trash": 0},
+      "counts_after": {"candidates": 0, "downloaded": 0, "trash": 0},
+      "archived_matching_pdfs_before_reset": ["F18", "F19", "F23"],
+      "preserved": ["configuration", "journals", "services", "saved institution credentials", "logs", "covers", "zotero acceptance collection and pdf", "running browser session"]
+    },
+    "browser_session_after_normal_quit": {
+      "retired_directory_present_after_quit": true,
+      "retired_directory_reclaimed_at_next_start": true,
+      "fresh_session_created": true,
+      "workspace_uninitialized_after_launch": true,
+      "verification_utc": "2026-11-26T09:30:57.179Z"
+    }
+  },
   "f23_ebsco_priority_retest": {
     "date_asia_shanghai": "2026-11-26",
     "doi": "10.1287/moor.2024.0601",
