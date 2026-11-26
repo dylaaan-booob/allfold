@@ -1,5 +1,54 @@
 {
   "status": "draft_f23_first_transfer_acceptance_open",
+  "f23_detail_record_retest": {
+    "date_asia_shanghai": "2026-11-26",
+    "doi": "10.1287/moor.2024.0601",
+    "production_code_sha": "7144cba8c12e76b7238df6e63bdacc9d61ccfded",
+    "versions": {"electron": "45.0.0", "chrome": "158.0.8127.88", "connector": "5.0.218", "zotero_desktop": "10.0.9"},
+    "order": ["zotero", "allfold"],
+    "independent_access": {
+      "zotero_article_detail_page_restored": true,
+      "allfold_carsi_and_ebsco_targets_opened": true,
+      "allfold_login_active": false
+    },
+    "verified_same_licensed_pdf": {"pages": 29, "bytes": 2996661, "byte_identical": true},
+    "zotero": {
+      "new_journal_article_parent_correct_doi": true,
+      "pdf_associated_in_acceptance_collection": true,
+      "full_wait_seconds": [9.600, 9.940],
+      "click_to_delivery_request_seconds": [3.832, 3.876],
+      "body_http_status": 200,
+      "decoded_network_body_bytes": 2996661,
+      "body_cache_reads": 0,
+      "request_to_first_byte_seconds": 1.449,
+      "first_to_last_byte_seconds": 4.379,
+      "save_attachment_http_status": 201,
+      "inline_preview": {
+        "decoded_network_body_bytes": 2996661,
+        "full_url_matches_connector_save": false,
+        "network_isolation_key_matches_connector_save": false
+      }
+    },
+    "allfold": {
+      "ordinary_download_after_product_body_removal_and_restore": true,
+      "original_paper_association": true,
+      "attempt": 2,
+      "body_source": "P4",
+      "full_wait_seconds": [18.868, 19.532],
+      "click_to_delivery_request_seconds": [12.909, 13.021],
+      "body_http_status": 200,
+      "decoded_network_body_bytes": 2996661,
+      "body_cache_reads": 0,
+      "request_to_first_byte_seconds": 1.781,
+      "first_to_last_byte_seconds": 4.378
+    },
+    "paired_network_transfer_verified": true,
+    "allfold_extra_full_wait_seconds": [8.928, 9.932],
+    "full_wait_includes_discovery": true,
+    "full_wait_criterion_met": false,
+    "workspace_reset": false,
+    "workspace_counts": {"candidates": 0, "downloaded": 3, "trash": 0}
+  },
   "f23_live_followup": {
     "date_asia_shanghai": "2026-11-26",
     "doi": "10.1287/moor.2024.0601",

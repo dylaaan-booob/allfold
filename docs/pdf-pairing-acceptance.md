@@ -54,6 +54,40 @@ unavailable.
 
 ### F23 first-transfer status
 
+The 26 November Zotero → Allfold rerun used production
+`7144cba8c12e76b7238df6e63bdacc9d61ccfded`, Chrome 158.0.8127.88,
+Connector 5.0.218 and Zotero Desktop 10.0.9. Chrome restored the exact EBSCO
+article detail page for `10.1287/moor.2024.0601`. Allfold retained its own
+opened CARSI and EBSCO targets with no Login workflow running. The previous
+Allfold trial file was already archived outside Workspace. After the Zotero
+save, it was removed through the product before Restore and one ordinary
+Download.
+
+| Product | Click to correct PDF association | Click to delivery GET | Delivery GET to first byte | First to last body byte |
+| --- | ---: | ---: | ---: | ---: |
+| Zotero Save from article details | 9.600–9.940 s | 3.832–3.876 s | 1.449 s | 4.379 s |
+| Allfold Download | 18.868–19.532 s | 12.909–13.021 s | 1.781 s | 4.378 s |
+
+The resulting licensed 29-page PDFs were byte-identical. Zotero created a
+new journal article with the correct DOI and an attached PDF in the acceptance
+collection. Allfold saved through P4 on attempt 2 of the original Paper. Each
+HTTP 200 delivery had a complete 2,996,661-byte decoded network body and zero
+cache reads. Chrome's inline preview had already fetched a full body after
+restore. Connector Save made its own full network request with a different
+full URL and network isolation key from the preview. Its details and RIS
+requests returned 200 and `/connector/saveAttachment` returned 201.
+
+Allfold's complete wait exceeded Zotero's by **8.928–9.932 s**, outside the
+existing allowance of about five seconds. Both body reception intervals were
+about 4.38 s. The additional time in this run accrued mainly before the
+delivery GET. Allfold tried the publisher access route and resolved the EBSCO
+search result before requesting the body. Zotero started from the restored
+article detail page. The full wait includes those product steps. F23 remains
+an open merge gate. Workspace retains the three verified bodies and awaits
+the product Reset after the gate passes.
+
+#### Earlier F23 observations
+
 On production `7144cba8c12e76b7238df6e63bdacc9d61ccfded`, Allfold's untimed
 Login retained its independently opened EBSCO Service. Chrome independently
 reached the licensed search interface and opened the exact DOI record.
@@ -74,10 +108,12 @@ reached the licensed search interface and opened the exact DOI record.
   during the next 113 seconds. The last event in Chrome NetLog preceded the
   retry click. The retry's network behavior remains unverified.
 
-The inline preview and Allfold body timings describe observed network
-reception. F23 still needs a verified Connector PDF, its actual first
-network transfer and a comparable full user wait. The Draft merge gate
-remains open.
+Investigation of the failed Connector click matched the extra path segment
+from the PDF viewer URL in both of its record ID requests. EBSCO returned 404
+for the details request and 400 for the RIS request. The installed translator
+reproduced that ID extraction offline. The Connector then used its webpage
+fallback. The cause of the later renderer crash and the outcome of the
+unrecorded retry remain undetermined.
 
 On 23 November, Chrome reached the exact result before the Computer Use
 connection timed out. That capture covered preparation only.
