@@ -75,25 +75,83 @@ The public service builds `PdfTarget` from saved direct identity and validated
 target-bound discovery facts. Arbitrary `MetadataSource` URLs, another Work and
 related Preprint identity cannot become the target. Preserve qualified URL/DOI
 spelling, multiple DOI path segments, signatures and necessary Referer.
+Ordinary discovery entries without an explicit Referer inherit the current
+qualified article URL, including a resolved Document route, without another
+page request. Explicit Referer, native actions and trusted initial candidate
+context remain unchanged. Session transport keeps its existing origin and
+HTTPS downgrade projection. Reader/response continuations retain their supplied
+context, including an intentional absent Referer.
 
 `PdfDiscovery` owns source order, de-duplication, reader/redirect chains and the
-remaining parent budget. P1 templates precede conditional P2 identifiers/APIs,
-saved P3 Meta and stable saved P4 URLs. Existing P4 URLs need no article reload for
+remaining parent budget. After the prepared EBSCO opportunity below, P1
+templates lead the existing source order. Among already qualified P2,
+saved P3 Meta and stable saved P4 entries, direct PDF candidates precede Reader
+or form work and optional missing-input API queries. Equal kinds keep their
+source order; this preference applies to every platform. Existing P4 URLs need no article reload for
 a partial snapshot, missing Meta field or unrelated refresh locator. After
-failure/missing or a dynamic entry requirement, PDF-only refresh supplies its own
-P3 before its P4; exact-target OpenAlex P5 remains last. P1 success makes later
-queries/pages zero. Refresh never restarts failed P1/P2 or turns an action/refresh
-locator into a stable GET.
+failure/missing or a dynamic entry requirement, PDF-only refresh supplies current
+P3/P4 with the same direct-before-Reader preference; exact-target OpenAlex P5 remains last. P1 success makes later
+queries/pages zero. Known Atypon journal Hosts without a dedicated P1 template
+share the R039 direct DOI entry; a failed direct entry retains ordinary later
+sources. Current Document entries and newly qualified templates use the same
+direct-before-Reader preference, including candidates qualified by an API result.
+Optional Reader work after an HTML response waits for the batch's other direct
+entries; it resumes with its original response/context if needed. A valid response
+chain, including the existing ScienceDirect article-backlink recovery, stays in
+its source. Query variants of the same rule/endpoint remain that source's
+fallbacks rather than interrupting its Reader. R024's generated ScienceDirect
+entry starts with `/pdfft?download=true` and keeps plain `/pdfft` as a fallback.
+Refresh never repeats tried P1/P2 URLs, restarts the
+missing-input API sequence or turns an action/refresh locator into a stable GET.
+It retains the current Document's observed content URL and identifiers. After
+its current P3/P4 clues, these may qualify previously unavailable templates before
+P5, still bound to the original Paper.
+
+For a journal article with a DOI and one assigned Service with an opened EBSCO
+target, ordinary Download starts with the EBSCO DOI search. A saved Journal ISSN
+assignment remains usable when the publication type is missing. A source-local failure
+or missing eligible body returns to the existing order within the same attempt.
+Without that opened target, Download starts in the existing order. A deferred
+publisher challenge can give a Service that has since opened a turn before
+opening another publisher page. Independent sources keep their own authority.
+
+A verified profile can be reused by the same Service in its current Session.
+When the retained entry is still needed, follow its actual Community link or
+submit its visible native form once. DOI search resolves records within the
+current profile. Repeated links for one record count once. The main record DOI
+or a previously confirmed record establishes identity. Titles help distinguish
+results when stronger evidence is absent. A real identity conflict or different
+plausible records remain explicit failures. The existing authorized details
+lookup can supply PDF links from the search page when it confirms the selected
+record's DOI. The optional lookup uses the existing page-load budget within
+the Download deadline. Otherwise follow the current result link and read the
+record page. Discard links from a details response with a conflicting DOI.
+
+Try the verified record's PDF links in order. A returned JSON URL or an
+observed HTTP redirect can continue through the same Session stream. A link
+discovered from results uses that page as its referrer and retains the selected
+record for fallback. If direct entries fail, use the observed Viewer or open
+the verified record through the current profile's results. Its identity
+evidence applies within the verified profile. The Viewer can supply
+a PDF response observed on its owned GET. The stream preserves the actual
+Referer policy and checks the final transfer. Record and link details stay
+operation-local. The task releases its temporary pages at settlement.
+
 The [source catalogue](pdf-source-discovery.md) owns rule applicability. Conditional interfaces are skipped when their actual prerequisites
 are absent; no publisher-key settings product or generic header capability is
 added.
 
-Python may perform bounded API/JSON/HTML discovery reads, but the selected
-Chromium Session receives the first actual reusable PDF request. It does not
+Python may read API/JSON/HTML discovery responses within the parent operation's
+deadline. The selected Chromium Session receives the first actual reusable PDF request. It does not
 follow an HTTPX PDF GET/HEAD probe. PDF-only refresh uses [Document access](browser-documents.md) and never recollects
 completed Date/Abstract. Known Reader entry/HTML parsers retain their platform
 qualification. Actual ordinary GET HTTP redirects use the common Session chain;
 their target need not match a filename, PII or publisher CDN list.
+An R024 Reader can settle after a verification POST at its exact ScienceDirect
+PDF asset. With a current HTTP 200 Document and no PDF clue, it can hand off
+the previously observed main-frame GET for the same origin, path and query
+with that GET's Referer. The ordinary Session transfer still validates the
+body and owns any required access recovery.
 Unknown pages are not a crawler. Login/access refusals, missing entries and Reader failures are recorded for that source and allow other qualified candidates after actual cleanup. Only the fixed qualified native entries execute actions; inapplicable
 entries are finite condition skips, not pending or successful transfers, and do
 not manufacture `fallback_used`.
@@ -130,8 +188,8 @@ refused; no CDN URLs are guessed. Referer uses
 `strict-origin-when-cross-origin`, including HTTPS-to-HTTP suppression. Private
 request markers leave no outbound header. Renderer cannot configure API secrets.
 
-Already received bounded HTML/JSON is parsed for qualified next hops first.
-Only a necessary fixed Reader executes in Browser/Solver. Its operation-local
+Already received HTML/JSON is parsed for qualified next hops first.
+A necessary fixed Reader uses the Browser and its Solver. Its operation-local
 `reader_result` carries the actual owned main-frame GET URL, observed Referer
 (including absence), Cookie-context change and an opaque equality key separately
 from persistable facts. Main keys Cookie states with a Session-local secret;
@@ -157,17 +215,35 @@ private. The same response supplies exactly one five-byte `%PDF-` type observati
 independent of HTTP MIME. The prefix is replayed into the original backpressured
 pipeline without losing bytes or issuing GET/HEAD again. HTML carrying PDF MIME
 cannot become a body. No Content-Length equality, minimum size, EOF/structure/text/
-identity/hash/version validation is added. Non-PDF responses return a finite
-256 KiB observation with `partial` when truncated, after the output has settled.
-Parsers retain qualified links found before local work/field exhaustion; malformed
-JSON fields and unrelated large attributes cannot erase those links.
+identity/hash/version validation is added. Non-PDF responses are read up to
+the bridge's message capacity. If a read ends early, complete usable fields
+remain available and the observation is marked partial.
 Their access classification uses the exact response's Cloudflare mitigation header,
 real authorization/status errors and contextual verification/login/denial structure.
 An optional password field, hidden hCaptcha, background Turnstile/jsd script or
 ordinary `access denied` text is insufficient. Current CPE/Incapsula denial evidence
-remains distinct from auxiliary resources. HTTP/stream responses do not start a
-Solver tab or replay a form. Browser/Reader pages use the common tab-owned observer;
-Solver state cannot revoke a completed transfer. Access classification remains
+remains distinct from auxiliary resources. When discovery reaches a Cloudflare
+challenge on an ordinary stream GET outside the fixed Reader routes, the body
+owner can request a temporary verification Page for the exact observed URL.
+An eligible ready entry can still finish before deferred recovery. The owned
+Browser Page can load public navigation and verification requests across
+origins, including POSTs dispatched by the site. Main checks public destinations
+and the original task and Service. The Page uses the common observer and parent
+deadline. Only an observed qualified GET can become a Session body request.
+Main stops a recognized body response at headers. HTML without body headers
+reaches the usual access probe so a further challenge can be observed. A fresh
+signed URL and observed Referer belong to the confirmed main-frame GET. Within
+the same native operation, Main captures that
+Page's selected partition context before it drains. If a warm response arrives
+before the Page commits a Document, the original native request's still-current
+Cookie selection can supply missing names once on that exact GET. Main checks
+those values against the same Session at dispatch and keeps current same-name
+credentials. The values stay inside Main. The stream receives the actual
+PDF bytes and settles its writer before the host can publish and associate them.
+An identical request, response and access context stops further recovery. The
+real same-Session access state can permit a new attempt. API-key requests, generic
+authorization errors and form actions keep their own paths. Solver state cannot revoke a
+completed transfer. Access classification remains
 local to the current response. Independent sources continue under the original
 parent deadline; cancellation, invalid task authority, unfinished resources and
 actual file/database failure still stop the task. Missing credentials/native
@@ -253,8 +329,10 @@ Native output reserves an exclusive `0700` directory at
 Main observes its actual regular-file inode and Python independently checks it
 before publication. Before any inode is adopted, a progress observation may see
 Chromium's empty destination reservation already unlinked (`nlink=0`); it remains
-pending and supplies no output proof. Final output and every observation after
-adoption still require the same regular, singly linked inode. Each attempt has a
+pending and supplies no output proof. Progress can also find that Chromium has
+removed the partial file during interruption. With the owned directories intact,
+that observation supplies no output proof. Every accepted observation after
+adoption and final completion still require the same regular, singly linked inode. Each attempt has a
 distinct path for each physical native candidate, so a cancelled item cannot later unlink a fallback candidate's output. Existing recorded temporary capabilities remain eligible only for exact owned cleanup. Directory/file replacement,
 symlinks, unrelated links and unknown objects still cause application refusal;
 final body publication remains no-clobber. Application cleanup never deliberately
@@ -411,13 +489,12 @@ order across all qualified distinct locations. At the first refresh locator it
 can request fresh results, then merges/deduplicates them with the remaining stable
 cached URLs. Provider unavailability, failure, not-found and empty refresh results
 cannot erase those URLs or require a successful API request before consumption.
-IEEE/Springer/Elsevier records
-are matched and deduplicated without whole-list count rejection. Current facts
-still have a 64 KiB persistence/IPC byte capacity: qualified increments are retained
-and overflow is partial, allowing a current source refresh instead of false
-complete-empty data. Discovery's retained candidate/response state has a 1 MiB
-memory budget and the original parent deadline; there is no separate operation,
-hop or transfer-count expiry.
+IEEE, Springer and Elsevier match actual records and fields in their responses.
+The 64 KiB limit applies to the durable discovery snapshot. Excess durable
+fields become partial facts while current valid entries remain eligible.
+Discovery tracks compact request and response fingerprints, including access
+context. HTTPX keeps its own redirect limit and checks each actual destination.
+The captured parent deadline governs ordinary Download and its recovery.
 
 Reader/HTTP continuations use actual operation results, response observations and
 Cookie progress to stop unchanged loops. This does not authorize a form/POST replay

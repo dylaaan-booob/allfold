@@ -69,7 +69,7 @@ class BodyActionRuntime {
       let path=new URL(doc.url).pathname;
       try {path=decodeURI(path);}catch { /* Preserve the literal path when escapes cannot be decoded. */ }
       const doi=validDOI(doc.identity?.doi) || validDOI(path.match(/\/doi\/(?:abs\/|full\/)?(10\.\d{4,9}\/[^\s]+)$/)?.[1]);
-      const plan=await waitFor(()=>{frame.send('body:prepare',{id,candidate,doi,doiCasefold});return response;},signal,Math.min(deadline,Date.now()+15000));
+      const plan=await this.waitForReply(entry,'body:prepare',{id,candidate,doi,doiCasefold},frame,response,signal,deadline);
       entry.plan=plan;
       // Resolve only the controlled action's named destination, never grant the
       // current frame inventory native output authority.
@@ -93,8 +93,14 @@ class BodyActionRuntime {
     const frame=this.browser.documentFrame(sourceFrame(entry.doc));
     if(!frame) {this.pending.delete(id);throw new BrowserFailure('navigation','document_changed');}
     const response=new Promise((resolve,reject)=>Object.assign(entry,{resolve,reject,beforeDispatch,onError}));
-    try {await waitFor(()=>{frame.send('body:dispatch',{id});return response;},signal,Math.min(deadline,Date.now()+5000));}
+    try {await this.waitForReply(entry,'body:dispatch',{id},frame,response,signal,deadline);}
     catch(error){this.pending.delete(id);throw error;}
+  }
+  async waitForReply(entry,channel,message,frame,response,signal,deadline) {
+    const closed=()=>entry.reject(new BrowserFailure('navigation','page_closed'));
+    entry.contents.once('destroyed',closed);entry.contents.once('render-process-gone',closed);
+    try {return await waitFor(()=>{frame.send(channel,message);return response;},signal,deadline);}
+    finally {entry.contents.removeListener('destroyed',closed);entry.contents.removeListener('render-process-gone',closed);}
   }
   dispose() {
     for(const entry of this.pending.values())entry.reject(new BrowserFailure('navigation','page_closed'));

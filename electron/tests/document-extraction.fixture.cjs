@@ -3,6 +3,7 @@ const {app,BrowserWindow}=require('electron');
 const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {randomUUID}=require('node:crypto');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
+const {TASK_DEADLINE_MS}=require('../src/browser/browser-task.cjs');
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 app.whenReady().then(async()=>{
@@ -13,16 +14,20 @@ app.whenReady().then(async()=>{
   const html=(body,meta='')=>'<!doctype html><head>'+meta+'</head><body>'+body+'</body>';
   const article=(body,meta='')=>html('<article><h1>Fixture paper</h1>'+body+'</article>',meta);
   const controller=new AbortController(),signal=controller.signal;
+  // Successful extraction uses the normal task budget. The test runner limits
+  // the isolated process, including renderer startup and every fixture case.
+  const deadline=Date.now()+TASK_DEADLINE_MS;
   const data={workspace_identity:'a'.repeat(64),paper_id:randomUUID(),identity:{confirmed_article_url:url},wantAbstract:true};
   const nativeMessages=[],native=vm.createContext({require:require('node:module').createRequire(require.resolve('../src/main.cjs')),browser,operations:new Map(),exiting:false,bridgeReady:true,AbortController,
     ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),
     ...require('../src/browser/browser-errors.cjs'),operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
+    readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
     send:message=>nativeMessages.push(JSON.parse(JSON.stringify(message)))});
   const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
   vm.runInContext(main.slice(main.indexOf('const CONTROL_ACTIONS='),main.indexOf('async function startPython(')),native);
   const extract=async(body,wantAbstract=true)=>{
     page=body;const id=randomUUID();
-    await native.execute({id,action:'extract_paper_metadata',data:{...data,wantAbstract,deadline_ms:Date.now()+4000}});
+    await native.execute({id,action:'extract_paper_metadata',data:{...data,wantAbstract,deadline_ms:deadline}});
     const result=nativeMessages.find(message=>message.type==='result' && message.id===id)?.data;
     assert.ok(result,'Main must settle the fixed action');
     if(result.diagnostic){const error=Error(result.diagnostic.code);error.diagnostic=result.diagnostic;throw error;}
@@ -92,8 +97,8 @@ app.whenReady().then(async()=>{
     assert.deepEqual(broken.extraction_diagnostics,['json_ld_invalid']);
     // The same fixed snapshot rule handles body fallback through normal Main dispatch.
     const raw=async body=>{page=body;return browser.runTask(signal,{request_id:randomUUID()},async()=>{
-      const tab=await browser.newTaskPage({signal,deadline:Date.now()+4000,managed:true});browser.bindTaskPage(tab,signal);
-      await browser.navigate(url,{tab,signal,deadline:Date.now()+4000});
+      const tab=await browser.newTaskPage({signal,deadline,managed:true});browser.bindTaskPage(tab,signal);
+      await browser.navigate(url,{tab,signal,deadline});
       return browser.readDocument(tab,'extract',{signal,args:{wantAbstract:true}});
     });};
     assert.deepEqual((await raw(html('<article><p>2020-01-02</p></article><article><p>2020-02-02</p></article>'))).metadata.dates,
@@ -240,8 +245,8 @@ app.whenReady().then(async()=>{
     let retained;
     page=article('<p>Prepared target</p>');
     await browser.runTask(signal,{...scoped,request_id:randomUUID()},async()=>{
-      retained=await browser.newTaskPage({signal,deadline:Date.now()+4000,managed:true});browser.bindTaskPage(retained,signal);
-      await browser.navigate(url,{tab:retained,signal,deadline:Date.now()+4000});
+      retained=await browser.newTaskPage({signal,deadline,managed:true});browser.bindTaskPage(retained,signal);
+      await browser.navigate(url,{tab:retained,signal,deadline});
       browser.retainAccessPage(retained,scoped);
     });
     const oldExtract=browser.extractPaperMetadata.bind(browser);let sawPin=false;
@@ -255,7 +260,7 @@ app.whenReady().then(async()=>{
     };
     const invokeScoped=async fields=>{
       const id=randomUUID();page=article('<p>2020-01-02</p>');
-      await native.execute({id,action:'extract_paper_metadata',data:{...data,...scoped,target_page_id:retained.id,...fields,deadline_ms:Date.now()+4000}});
+      await native.execute({id,action:'extract_paper_metadata',data:{...data,...scoped,target_page_id:retained.id,...fields,deadline_ms:deadline}});
       return nativeMessages.find(message=>message.type==='result' && message.id===id).data;
     };
     assert.equal((await invokeScoped({})).outcome,'retrieved');assert.equal(sawPin,true,'retained preparation is pinned while separate work page reads');

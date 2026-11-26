@@ -174,6 +174,10 @@ class BodyAccessRevoked(RuntimeError):
     """Only the current Download access operation lost its Service context."""
 
 
+class BodyAccessBusy(RuntimeError):
+    """The current Download source could not acquire its Service scope."""
+
+
 @dataclass(eq=False)
 class BodyAccessOperation:
     """Temporary native owner under the original Paper reservation.
@@ -576,6 +580,8 @@ class WorkspaceRegistry:
         scope = handle.authority.service_scope
         owner = self.browser_lock.acquire('collection', scopes=(scope,) if scope else (), shared=True)
         if owner is None:
+            if scope and isinstance(handle, BodyAccessOperation):
+                raise BodyAccessBusy('Browser Service is currently controlled')
             raise InvalidPaperState('Browser authority is currently controlled')
         try:
             with self._gate:

@@ -37,10 +37,12 @@ The local origin is `http://127.0.0.1:18767`. An occupied port is an error; clos
 
 Pass an absolute `--config` path. The example expands `$PWD` from the project root before npm runs the Electron package script from `electron/`; a relative configuration argument would otherwise resolve under that directory.
 
-Normal exit stops admission and waits for foreground Run, all Workspace branches,
-native operations to actually settle before closing owned
-connections and the shared factory/Session. Restart fails interrupted attempts
-without replaying the queue or opening pages.
+Normal exit stops admission and waits for foreground Run, Workspace branches
+and native operations to settle. Main then closes the Browser pages and drains
+the shared Session's work. Restart fails
+interrupted attempts without replaying the queue or opening pages. The new
+Browser Session starts with fresh site state and reclaims retired storage as
+described in [Shared Browser Session](browser-session.md).
 
 ### Isolated source-startup smoke
 
@@ -136,6 +138,19 @@ requires focus. Parallel native processes can steal that focus. Use isolated
 files, SQLite, local HTTP and temporary profiles, never personal configuration,
 Workspace, covers, accounts or Zotero. Source/build, rendered fixtures, live-service
 acceptance and GitHub CI are distinct evidence.
+
+Native executable fixtures share `electron/tests/fixture-process.cjs`. Each owns
+an isolated POSIX process group, keeps its existing deadline/output limit, and
+ends that group on parent exit or test cancellation. This prevents a timed-out
+Electron/Python descendant from retaining the runner's output pipes. Fixture
+stdout streams once as case progress; bounded stderr remains available on failure.
+This test-only cleanup never targets the running application or personal data.
+
+Workspace field tests overlap the public read with an active collection and a
+real SQLite commit in a disposable library. Browser PDF fixtures exercise the
+owned requests, actual cookie send policy and terminal save. Recovery checks
+distinguish an ordinary GET or the browser's verification from replaying the
+application's own form action.
 
 ### GitHub Actions scope
 

@@ -73,12 +73,13 @@ function fixture(t) {
     destroy(){this.destroyed=true;}
   }
   class View {constructor(options){if(failCreation){failCreation=false;throw Error('fixture creation failed');}this.options=options;this.webContents=options.webContents || new Contents();}setBounds(bounds){this.bounds=bounds;}setVisible(value){this.visible=value;}}
-  const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},session:{fromPartition:()=>partition},
+  const electron={app:{getName:()=> 'allfold-desktop',getPath:()=>profile},
     webFrameMain:{fromFrameToken:(_process,token)=>frames.get(token) || null},
     BrowserWindow:Window,WebContentsView:View,Menu:{buildFromTemplate:items=>({popup(){menus.push(items);}})},
     ipcMain:Object.assign(new EventEmitter(),{handle:(name,fn)=>handlers.set(name,fn),removeHandler:name=>handlers.delete(name)})};
   const context=vm.createContext({module:{exports:{}},__dirname:path.dirname(require.resolve('../src/browser/browser-runtime.cjs')),URL,Buffer,Date,AbortController,AbortSignal,setTimeout,clearTimeout,
-    require:name=>name==='electron'?electron:name==='./document-runtime.cjs'?{DocumentRuntime:class {
+    require:name=>name==='electron'?electron:name==='./browser-session.cjs'?{sharedBrowserSession:()=>partition}
+      :name==='./document-runtime.cjs'?{DocumentRuntime:class {
       constructor(browser){this.browser=browser;}
       async call(doc,action){
         const wc=this.browser.tabs.get(doc.pageId).view.webContents;
@@ -757,6 +758,27 @@ test('Article pages are reused only within their active operation and close on c
   assert.equal(browser.tabs.size,0);assert.equal(browser.paperPages.size,0);
 });
 
+test('an explicit PDF snapshot failure ends toolbar polling without erasing an earlier read',async t=>{
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const url='https://www.sciencedirect.com/science/article/pii/S1234567812345678';
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',
+    identity:{confirmed_article_url:url}};
+  const read=browser.readDocument.bind(browser),signal=new AbortController().signal;
+  for(const earlier of [false,true]) {
+    let keepEarlier=earlier;
+    browser.readDocument=(tab,action,options)=>{
+      if(action!=='pdf')return read(tab,action,options);
+      const status=keepEarlier?'complete':'failed';
+      keepEarlier=false;
+      return {clues:{status,landing_url:url,candidates:[]},toolbarPending:true};
+    };
+    const result=await browser.runTask(signal,{...data,request_id:'toolbar'},()=>
+      browser.extractPaperPdfClues(data,{signal,deadline:Date.now()+1500}));
+    assert.equal(result.pdf_clues.status,earlier?'complete':'failed');
+  }
+});
+
 test('Login opens one managed CARSI Portal and prepares independent Service pages without resubmitting credentials',{timeout:5000},async t=>{
   const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t);
@@ -1036,42 +1058,37 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
   });
 }
 
-test('Paper page-load timeout replaces the provisional page without renewing the original deadline',async t=>{
+test('Paper can finish its original load within the parent deadline', {timeout:5000}, async t=>{
   t.mock.timers.enable({apis:['Date'],now:1000});
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
   t.after(()=>browser.close());await browser.ready;
   const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',request_id:'paper-timeout'};
-  const pages=[],recovery=[];
-  let authorities=0,firstDispatched;
+  const pages=[];
+  let firstDispatched,finishLoad;
   const started=new Promise(resolve=>{firstDispatched=resolve;});
   browser.events.on('tab-created',(_event,tab)=>{
     pages.push(tab);
-    const wc=tab.view.webContents;
-    wc.loadURL=url=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    wc.loadURL=async url=>{
+      if(pages.length!==1)throw Error('Replayed navigation while the original was still loading');
       wc.loading=true;
       wc.emit('did-start-navigation',{},url,false,true);
-      if(pages.length===1)firstDispatched();
-      else t.mock.timers.setTime(91000);
-      return new Promise(()=>{});
+      await new Promise(resolve=>{finishLoad=resolve;firstDispatched();});
+      wc.loading=false;
+      return load(url);
     };
   });
   const signal=new AbortController().signal;
-  const opened=browser.runTask(signal,data,()=>{
-    browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
-    browser.operation.validateRecovery=async()=>{authorities++;};
-    return browser.openPaperPage(data,'10.5555/fixture',{role:'article',signal,deadline:91000});
-  });
+  const opened=browser.runTask(signal,data,()=>
+    browser.openPaperPage(data,'10.5555/fixture',{role:'article',signal,deadline:100000}));
   await started;
-  t.mock.timers.setTime(86000);
-  await assert.rejects(opened,{diagnostic:{stage:'navigation',code:'timeout',step:'request'}});
-  assert.equal(authorities,1);
-  assert.equal(pages.length,2);
+  t.mock.timers.setTime(86001);
+  finishLoad();
+  const document=await opened;
+  assert.equal(document.status,200);
+  assert.equal(document.pageId,pages[0].id);
+  assert.equal(pages.length,1);
   assert.equal(pages[0].view.webContents.isDestroyed(),true);
-  assert.equal(pages[1].view.webContents.isDestroyed(),true);
-  assert.equal(recovery[0].recovery_action,'paper_reopen');
-  assert.equal(recovery[0].step,'page_load');
-  assert.equal(recovery.at(-1).step,'request');
-  assert.equal(recovery.at(-1).recovery_stop,'budget');
 });
 
 test('closing a manual page releases its long server cooldown without a new local deadline',async t=>{

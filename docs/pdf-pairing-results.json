@@ -1,0 +1,924 @@
+{
+  "status": "pilot_results_excluded_from_formal",
+  "formal_manifest_frozen": true,
+  "baseline_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+  "versions": {
+    "macos": "27.2.1 (26B131)",
+    "electron": "45.0.0",
+    "chromium": "156.0.8078.48",
+    "chrome": "157.0.8103.51",
+    "zotero_desktop": "10.0.9",
+    "zotero_connector": "5.0.217"
+  },
+  "measurement": {
+    "endpoint": "Correct permanent local PDF plus original Paper/attempt or parent attachment association.",
+    "nominal_poll_interval_ms": 250,
+    "timing": "Intervals from actual click bounds and preceding/completing file+association polls. Native request times are not final save endpoints.",
+    "missing": "null means not observed; no parent-only or progress-only success.",
+    "prepared_and_warm_visits": "Separated in each trial; no global cache reset or auth transfer.",
+    "formal_random_seed": null
+  },
+  "samples": [
+    {
+      "sample_id": "P01",
+      "queue": "pilot",
+      "doi": "10.1093/bioinformatics/btag263",
+      "article_entry": "https://doi.org/10.1093/bioinformatics/btag263",
+      "platform": "Oxford Academic / Silverchair",
+      "access": "OA, no prepared Service used",
+      "allfold_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "allfold": {
+        "click_utc_lower": "2026-11-16T14:13:53.600Z",
+        "click_utc_upper": "2026-11-16T14:13:53.688Z",
+        "completed_utc_lower": "2026-11-16T14:14:00.562Z",
+        "completed_utc_upper": "2026-11-16T14:14:00.818Z",
+        "waiting_seconds_lower": 6.874,
+        "waiting_seconds_upper": 7.218,
+        "status": "automatic_success",
+        "attempt": 1,
+        "source": "P2",
+        "fallback_used": false,
+        "file_bytes": 2100180,
+        "file_pages": 10,
+        "version": "Oxford published CC BY 4.0",
+        "verification": "original Paper/attempt completed + permanent PDF file + rendered first page DOI/title",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
+      },
+      "zotero": {
+        "status": "local_pdf_not_observed",
+        "translator": "Silverchair",
+        "click_utc_lower": "2026-11-16T14:17:34.840Z",
+        "click_utc_upper": "2026-11-16T14:17:34.869Z",
+        "completed_utc_lower": null,
+        "completed_utc_upper": null,
+        "parent_observed": false,
+        "file_bytes": null,
+        "preparation": "Article Cloudflare challenge eventually cleared automatically. Fresh-tab diagnostic preparation later remained on a challenge.",
+        "additional_actions": [
+          {
+            "action": "same-tab toolbar click",
+            "click_utc_lower": "2026-11-16T14:20:36.210Z",
+            "click_utc_upper": "2026-11-16T14:20:36.263Z",
+            "result": "Reopened existing save session; not a new save/download measurement."
+          },
+          {
+            "action": "Fresh normal Silverchair save after human challenge and CARSI Oxford resource renewal",
+            "click_utc_lower": "2026-11-17T00:26:53.681Z",
+            "click_utc_upper": "2026-11-17T00:26:53.701Z",
+            "result": "No local parent/PDF observed; popup ended, no visible activity and temporary storage empty; closed only this trial tab. Operator interruption, unknown product terminal state.",
+            "interruption_utc": [
+              "2026-11-17T00:32:26.983Z",
+              "2026-11-17T00:32:27.021Z"
+            ],
+            "measurement_revision": "keys-v2",
+            "formal_score": false
+          }
+        ],
+        "failure_reason": "Unconfirmed; cumulative extension errors could not be attributed to this save.",
+        "metadata_diagnostic": {
+          "translator_id": "3bae3a55-f021-4b59-8a14-43701f336adf",
+          "translator_last_updated": "2026-08-10 21:08:51",
+          "finding": "Installed Silverchair code requests citation RIS before completing parent. Normal publisher Cite reached Connector RIS import prompt; cancelled, no RIS contents or successful Translator metadata response proven. No code copied or changed."
+        }
+      },
+      "formal_score": false,
+      "access_method": "OA; no prepared Allfold Service",
+      "cache_note": "First PDF save per product; existing shared Chrome profile. No artificial cache clearing."
+    },
+    {
+      "sample_id": "P02",
+      "queue": "pilot",
+      "doi": "10.1007/s10618-026-01264-1",
+      "article_entry": "https://doi.org/10.1007/s10618-026-01264-1",
+      "platform": "Springer Link",
+      "access": "OA, no prepared Allfold Service used",
+      "allfold_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "version_comparable": true,
+      "file_bytes_both": 2728411,
+      "pages_both": 30,
+      "version": "Springer published OA; title/DOI/page count verified in both readers",
+      "zotero": {
+        "version": "10.0.9",
+        "connector": "5.0.217",
+        "translator": "Springer Link",
+        "click_utc_lower": "2026-11-16T14:26:44.121Z",
+        "click_utc_upper": "2026-11-16T14:26:44.169Z",
+        "completed_utc_lower": "2026-11-16T14:29:15.821Z",
+        "completed_utc_upper": "2026-11-16T14:29:16.096Z",
+        "waiting_seconds_lower": 151.652,
+        "waiting_seconds_upper": 151.975,
+        "status": "automatic_success",
+        "link_mode": "imported_url",
+        "source_origin": "https://link.springer.com",
+        "warning": "Connector saveAttachmentFromResolver timed out after 15000ms, but Desktop later completed actual PDF/association; no manual save/retry was used"
+      },
+      "allfold": {
+        "attempt": 1,
+        "click_utc_lower": "2026-11-16T14:31:46.626Z",
+        "click_utc_upper": "2026-11-16T14:31:46.815Z",
+        "completed_utc_lower": "2026-11-16T14:34:14.313Z",
+        "completed_utc_upper": "2026-11-16T14:34:14.579Z",
+        "waiting_seconds_lower": 147.498,
+        "waiting_seconds_upper": 147.953,
+        "status": "automatic_success",
+        "pdf_source": "P1",
+        "pdf_rule": "R001",
+        "fallback_used": false,
+        "source_origin": "https://link.springer.com",
+        "native_observed_duration_ms": [
+          4339,
+          1836,
+          141222
+        ],
+        "native_sequence": [
+          "link.springer.com response",
+          "idp.springer.com response",
+          "link.springer.com closed PDF stream"
+        ],
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
+      },
+      "formal_score": false,
+      "cache_note": "Each product first PDF save for this DOI; Zotero first, Allfold second. System/proxy cache equality not proven. No builds/full tests/other downloads during pair.",
+      "access_method": "OA; no prepared Allfold Service"
+    },
+    {
+      "sample_id": "P03",
+      "queue": "pilot",
+      "doi": "10.1016/j.patcog.2026.114755",
+      "article_entry": "https://www.sciencedirect.com/science/article/pii/S003132032601719X",
+      "platform": "ScienceDirect",
+      "access_method": "Institutional / configured ScienceDirect CARSI Service",
+      "formal_score": false,
+      "order": [
+        "allfold",
+        "zotero"
+      ],
+      "version_comparable": false,
+      "allfold_trials": [
+        {
+          "attempt": 1,
+          "allfold_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+          "click_utc_lower": "2026-11-16T14:37:22.579Z",
+          "click_utc_upper": "2026-11-16T14:37:22.746Z",
+          "terminal_utc_lower": "2026-11-16T14:37:28.975Z",
+          "terminal_utc_upper": "2026-11-16T14:37:29.247Z",
+          "status": "manual_cancel",
+          "reason": "cancelled",
+          "received_bytes": 0,
+          "local_pdf": false,
+          "access_cache_context": "Service not prepared; Cancel then resource cleanup before Retry.",
+          "terminal_wait_seconds_lower": 6.229,
+          "terminal_wait_seconds_upper": 6.668,
+          "cancel_click_utc": [
+            "2026-11-16T14:37:27.099Z",
+            "2026-11-16T14:37:27.312Z"
+          ],
+          "cloudflare_observation": {
+            "evidence": "no_matching_attempt_trace"
+          }
+        },
+        {
+          "attempt": 2,
+          "allfold_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+          "click_utc_lower": "2026-11-16T14:37:56.745Z",
+          "click_utc_upper": "2026-11-16T14:37:56.922Z",
+          "terminal_utc_lower": "2026-11-16T14:39:59.371Z",
+          "terminal_utc_upper": "2026-11-16T14:39:59.639Z",
+          "status": "failure",
+          "reason": "no-pdf-candidates",
+          "received_bytes": 0,
+          "local_pdf": false,
+          "access_cache_context": "Unprepared Allfold access vs later entitled Chrome; not same-access parity evidence.",
+          "terminal_wait_seconds_lower": 122.449,
+          "terminal_wait_seconds_upper": 122.894,
+          "native_document_duration_ms": 121292,
+          "cloudflare_observation": {
+            "evidence": "challenge_observed",
+            "solver_events": [
+              {
+                "time": "2026-11-16T14:38:48.263Z",
+                "event": "cloudflare_solver_started",
+                "page_id": 2
+              },
+              {
+                "time": "2026-11-16T14:39:29.557Z",
+                "event": "page_access",
+                "page_id": 2,
+                "code": "checkbox_clicked"
+              },
+              {
+                "time": "2026-11-16T14:39:57.522Z",
+                "event": "navigation_ready",
+                "page_id": 2,
+                "code": "page_ready",
+                "status": 200
+              },
+              {
+                "time": "2026-11-16T14:39:57.540Z",
+                "event": "cloudflare_solver_finished",
+                "page_id": 2,
+                "outcome": "not_executed",
+                "code": "canceled"
+              }
+            ],
+            "private_exports": [
+              "blocked-checkpoint-diagnostics.zip"
+            ]
+          }
+        },
+        {
+          "attempt": 3,
+          "allfold_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+          "click_utc_lower": "2026-11-16T15:05:06.955Z",
+          "click_utc_upper": "2026-11-16T15:05:06.994Z",
+          "terminal_utc_lower": "2026-11-16T15:05:22.037Z",
+          "terminal_utc_upper": "2026-11-16T15:05:22.302Z",
+          "status": "failure",
+          "reason": "no-pdf-candidates",
+          "received_bytes": 0,
+          "local_pdf": false,
+          "access_cache_context": "Normal Login/Prepare; target article visibly entitled in Allfold. Existing API facts, warm article, no prior PDF.",
+          "terminal_wait_seconds_lower": 15.043,
+          "terminal_wait_seconds_upper": 15.347,
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
+        },
+        {
+          "attempt": 4,
+          "allfold_sha": "1f28dc0840640605c271be8c2e2861c6fe6659a6",
+          "click_utc_lower": "2026-11-16T15:31:17.522Z",
+          "click_utc_upper": "2026-11-16T15:31:17.623Z",
+          "terminal_utc_lower": "2026-11-16T15:31:57.026Z",
+          "terminal_utc_upper": "2026-11-16T15:31:57.293Z",
+          "status": "failure",
+          "reason": "no-pdf-candidates",
+          "received_bytes": 0,
+          "local_pdf": false,
+          "access_cache_context": "Fresh process/Session after fix1; institutional target article confirmed again, no prior PDF.",
+          "terminal_wait_seconds_lower": 39.403,
+          "terminal_wait_seconds_upper": 39.771,
+          "source_observations": [
+            "P4/R024",
+            "P2/R024",
+            "P2/R024"
+          ],
+          "native_durations_ms": [
+            16990,
+            2337,
+            4618,
+            721,
+            5347,
+            1054,
+            5202
+          ],
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
+        },
+        {
+          "attempt": 5,
+          "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+          "click_utc_lower": "2026-11-16T16:58:14.992Z",
+          "click_utc_upper": "2026-11-16T16:58:15.078Z",
+          "completed_utc_lower": "2026-11-16T16:58:25.533Z",
+          "completed_utc_upper": "2026-11-16T16:58:25.808Z",
+          "waiting_seconds_lower": 10.455,
+          "waiting_seconds_upper": 10.816,
+          "status": "automatic_success",
+          "pdf_source": "P4",
+          "rule": "R024",
+          "fallback_used": false,
+          "file_bytes": 3784880,
+          "pages": 13,
+          "version": "ScienceDirect published Pattern Recognition article; first-page title and DOI verified.",
+          "source_origin": "https://pdf.sciencedirectassets.com",
+          "access_cache_context": "Same process as IEEE trials, new normal institutional access established for this platform and original article visibly entitled before Download. Warm article, no prior PDF success. No code-only speedup attribution across Session/access/cache changes.",
+          "native_operations": [
+            {
+              "action": "document",
+              "duration_ms": 5123
+            },
+            {
+              "action": "stream_response",
+              "duration_ms": 157
+            },
+            {
+              "action": "reader_document",
+              "duration_ms": 2240
+            },
+            {
+              "action": "closed_pdf_stream",
+              "duration_ms": 1966
+            }
+          ],
+          "native_download_item_observed": false,
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
+        }
+      ],
+      "zotero": {
+        "translator": "ScienceDirect",
+        "status": "local_pdf_not_observed",
+        "click_utc_lower": "2026-11-16T14:44:34.021Z",
+        "click_utc_upper": "2026-11-16T14:44:34.085Z",
+        "parent_utc_lower": "2026-11-16T14:44:37.653Z",
+        "parent_utc_upper": "2026-11-16T14:44:37.950Z",
+        "completed_utc_lower": null,
+        "completed_utc_upper": null,
+        "file_bytes": null,
+        "failure_reason": "PDF not observed; exact terminal failure time/cause unconfirmed.",
+        "human_intervention": "User completed Chrome Cloudflare checkbox during article preparation. Duration missing, inclusive preparation total unavailable."
+      },
+      "repair_relationship": "After fix2, original article saved correctly via current Document → R024 response → native Reader extraction → existing Session stream from ScienceDirect assets. Before-fix failures remain. Session/access/cache differed across source restarts, so no isolated causal timing gain is claimed. Unseen same-platform samples and matching Zotero PDF remain pending."
+    },
+    {
+      "sample_id": "P04",
+      "queue": "pilot",
+      "doi": "10.1109/tnnls.2026.3706351",
+      "article_entry": "https://ieeexplore.ieee.org/document/11591428/",
+      "platform": "IEEE Xplore",
+      "access_method": "Institutional / configured IEEE CARSI Service",
+      "formal_score": false,
+      "order": [
+        "zotero",
+        "allfold"
+      ],
+      "version_comparable": true,
+      "version": "IEEE publisher Early Access, final content except pagination; title/DOI and 15 pages verified in both. Watermarks differ.",
+      "zotero": {
+        "translator": "IEEE Xplore",
+        "click_utc_lower": "2026-11-16T15:46:42.275Z",
+        "click_utc_upper": "2026-11-16T15:46:42.309Z",
+        "completed_utc_lower": "2026-11-16T15:47:00.138Z",
+        "completed_utc_upper": "2026-11-16T15:47:00.495Z",
+        "waiting_seconds_lower": 17.829,
+        "waiting_seconds_upper": 18.22,
+        "status": "automatic_success",
+        "file_bytes": 3459180,
+        "pages": 15,
+        "link_mode": "imported_url",
+        "source_origin": "https://ieeexplore.ieee.org",
+        "source_path": "/stampPDF/getPDF.jsp"
+      },
+      "allfold_trials": [
+        {
+          "attempt": 1,
+          "allfold_sha": "1f28dc0840640605c271be8c2e2861c6fe6659a6",
+          "click_utc_lower": "2026-11-16T16:00:34.550Z",
+          "click_utc_upper": "2026-11-16T16:00:34.664Z",
+          "terminal_utc_lower": "2026-11-16T16:10:34.478Z",
+          "terminal_utc_upper": "2026-11-16T16:10:34.755Z",
+          "status": "product_timeout",
+          "reason": "expired",
+          "received_bytes": 0,
+          "local_pdf": false,
+          "access_cache_context": "Institution shown on homepage, target article had not loaded. Later article showed entitlement. Do not dismiss as a site restriction; request stage was unobserved.",
+          "terminal_wait_seconds_lower": 599.814,
+          "terminal_wait_seconds_upper": 600.205,
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
+        },
+        {
+          "attempt": 2,
+          "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+          "click_utc_lower": "2026-11-16T16:35:44.895Z",
+          "click_utc_upper": "2026-11-16T16:35:45.025Z",
+          "completed_utc_lower": "2026-11-16T16:36:05.506Z",
+          "completed_utc_upper": "2026-11-16T16:36:05.782Z",
+          "waiting_seconds_lower": 20.481,
+          "waiting_seconds_upper": 20.887,
+          "status": "automatic_success",
+          "pdf_source": "P2",
+          "rule": "R025",
+          "fallback_used": false,
+          "file_bytes": 3459191,
+          "pages": 15,
+          "access_cache_context": "Fresh process/Session, normal Login then target article visibly entitled/PDF link before Download. Warm article, first PDF in this Session. Temporary default NetLog on.",
+          "native_request": {
+            "headers_ms": 2755,
+            "first_body_ms": 2757,
+            "last_body_ms": 20590,
+            "pdf_bytes": 3459191,
+            "status": 200
+          },
+          "source_origin": "https://ieeexplore.ieee.org",
+          "source_path": "/stampPDF/getPDF.jsp",
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
+        },
+        {
+          "attempt": 3,
+          "pair_id": "P04-R01",
+          "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+          "click_utc_lower": "2026-11-16T16:38:35.398Z",
+          "click_utc_upper": "2026-11-16T16:38:35.498Z",
+          "completed_utc_lower": "2026-11-16T16:38:53.069Z",
+          "completed_utc_upper": "2026-11-16T16:38:53.344Z",
+          "waiting_seconds_lower": 17.571,
+          "waiting_seconds_upper": 17.946,
+          "status": "automatic_success",
+          "pdf_source": "P2",
+          "rule": "R025",
+          "fallback_used": false,
+          "file_bytes": 3459185,
+          "pages": 15,
+          "access_cache_context": "Same prepared Session and warm article after disposable trial PDF removal through Reject/delete/Restore; genuine new Download and body/operation generations.",
+          "native_request": {
+            "headers_ms": 2444,
+            "first_body_ms": 2446,
+            "last_body_ms": 17686,
+            "pdf_bytes": 3459185,
+            "status": 200
+          },
+          "source_origin": "https://ieeexplore.ieee.org",
+          "source_path": "/stampPDF/getPDF.jsp",
+          "cloudflare_observation": {
+            "evidence": "no_cloudflare_evidence_in_retained_trace"
+          }
+        }
+      ],
+      "repair_relationship": "fix2 does not alter IEEE P2. Two later successful Allfold downloads are separated from the initial expiry; changed Session/confirmed article access cannot be called code benefit. A paired repeat is waiting for user authentication before Zotero save.",
+      "pending_repeat": {
+        "pair_id": "P04-R01",
+        "order": [
+          "allfold",
+          "zotero"
+        ],
+        "allfold_attempt": 3,
+        "zotero_status": "old_pair_incomplete; access subsequently restored for new R02-R04 pairs",
+        "zotero_save_clicked": false,
+        "reason": "Default QR option was not mandatory; normal account/saved-credential flow and a fresh resource entry restored institutional access. Old AF attempt3 is not retroactively paired across the long interruption.",
+        "pair_complete": false
+      }
+    },
+    {
+      "sample_id": "P05",
+      "doi": "10.1016/j.neunet.2026.109387",
+      "article_entry": "https://doi.org/10.1016/j.neunet.2026.109387",
+      "reason": "Unseen repaired-platform sample, different journal from original P03; exercise discovery without opening its Allfold article/PDF before Download.",
+      "planned_order": [
+        "allfold",
+        "zotero"
+      ],
+      "existing_clues": "Normal Run OpenAlex and Crossref facts, alternative-id PII S0893608026008452; no manual PDF URL",
+      "initial_body": "none; attempt0; Download available; cleanup inactive",
+      "planned_mechanism_tags": [
+        "current-route discovery",
+        "R024",
+        "Reader/CDN if actually observed"
+      ],
+      "queue": "pilot-post-fix",
+      "formal_score": false,
+      "platform": "ScienceDirect",
+      "access_method": "Institutional / configured ScienceDirect CARSI Service; actual publisher article entitlement confirmed on Chrome",
+      "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+      "version_comparable": false,
+      "allfold": {
+        "attempt": 1,
+        "click_utc_lower": "2026-11-16T17:05:21.477Z",
+        "click_utc_upper": "2026-11-16T17:05:21.590Z",
+        "completed_utc_lower": "2026-11-16T17:05:34.519Z",
+        "completed_utc_upper": "2026-11-16T17:05:34.795Z",
+        "waiting_seconds_lower": 12.929,
+        "waiting_seconds_upper": 13.318,
+        "status": "automatic_success",
+        "file_bytes": 7803602,
+        "pages": 12,
+        "pdf_source": "P4",
+        "rule": "R024",
+        "fallback_used": false,
+        "source_origin": "https://pdf.sciencedirectassets.com",
+        "version": "Published Neural Networks PDF; full normalized title/DOI matched.",
+        "cache_context": "Same prepared platform Session as P03; first article/PDF operation for this Paper, no Allfold article preload.",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
+      },
+      "zotero_trials": [
+        {
+          "trial_id": "P05-Z1",
+          "click_utc_lower": "2026-11-16T17:08:23.761Z",
+          "click_utc_upper": "2026-11-16T17:08:23.784Z",
+          "parent_utc_lower": "2026-11-16T17:08:24.907Z",
+          "parent_utc_upper": "2026-11-16T17:08:25.204Z",
+          "status": "operator_interrupted",
+          "operator_action_utc": "2026-11-16T17:19:08.884Z",
+          "operator_action": "Normal Connector disable/enable to recover unresolved save context. Same version, enable/pin/permissions restored.",
+          "local_pdf": false,
+          "completed_utc_lower": null,
+          "completed_utc_upper": null,
+          "failure_time": null,
+          "translator": "ScienceDirect"
+        },
+        {
+          "trial_id": "P05-Z2",
+          "click_utc_lower": "2026-11-16T17:19:58.043Z",
+          "click_utc_upper": "2026-11-16T17:19:58.068Z",
+          "parent_utc_lower": "2026-11-16T17:19:59.011Z",
+          "parent_utc_upper": "2026-11-16T17:19:59.313Z",
+          "status": "no_local_pdf_challenge_unresolved",
+          "local_pdf": false,
+          "completed_utc_lower": null,
+          "completed_utc_upper": null,
+          "failure_time": null,
+          "translator": "ScienceDirect",
+          "human_action_requested": true,
+          "human_action_observed": false,
+          "challenge_first_observed_utc": "2026-11-16T17:20:12Z",
+          "challenge_later_state": "Verification popup no longer listed; disappearance time/cause unknown. No agent interaction/close.",
+          "diagnostics": "Connector saveAttachmentFromResolver communication error after this single fresh save; no reliable error timestamp or final Desktop failure time. Desktop parent has zero attachments; actual temporary storage empty.",
+          "debug_setting": "Temporary on at17:19:24.756, restored original off at17:24:28.219; not cleared/submitted.",
+          "inclusive_wait_seconds": null,
+          "machine_only_seconds": null
+        }
+      ]
+    },
+    {
+      "sample_id": "P06",
+      "doi": "10.1016/j.patcog.2026.114946",
+      "article_entry": "https://doi.org/10.1016/j.patcog.2026.114946",
+      "reason": "Second unseen repaired-platform sample selected before outcomes; another article in P03 journal, not a debug DOI.",
+      "planned_order": [
+        "zotero",
+        "allfold"
+      ],
+      "existing_clues": "Normal Run OpenAlex and Crossref facts, alternative-id PII S0031320326019102; no manual PDF URL",
+      "initial_body": "none; attempt0; Download available; cleanup inactive",
+      "planned_mechanism_tags": [
+        "current-route discovery",
+        "R024",
+        "Reader/CDN if actually observed"
+      ],
+      "queue": "pilot-post-fix",
+      "formal_score": false,
+      "platform": "ScienceDirect",
+      "access_method": "Institutional / configured ScienceDirect CARSI Service; actual publisher article entitlement confirmed on Chrome",
+      "allfold_sha": "9383359e05a625e027f228873a847b15196e02fa",
+      "version_comparable": false,
+      "allfold": {
+        "attempt": 1,
+        "click_utc_lower": "2026-11-16T17:34:06.959Z",
+        "click_utc_upper": "2026-11-16T17:34:07.065Z",
+        "completed_utc_lower": "2026-11-16T17:34:16.597Z",
+        "completed_utc_upper": "2026-11-16T17:34:16.875Z",
+        "waiting_seconds_lower": 9.532,
+        "waiting_seconds_upper": 9.916,
+        "status": "automatic_success",
+        "file_bytes": 2265082,
+        "pages": 12,
+        "pdf_source": "P4",
+        "rule": "R024",
+        "fallback_used": false,
+        "source_origin": "https://pdf.sciencedirectassets.com",
+        "version": "Published Pattern Recognition PDF; full normalized title/DOI matched.",
+        "cache_context": "Same prepared platform Session; first article/PDF operation for this Paper, no Allfold article preload.",
+        "cloudflare_observation": {
+          "evidence": "no_cloudflare_evidence_in_retained_trace"
+        }
+      },
+      "zotero_trials": [
+        {
+          "trial_id": "P06-Z1",
+          "click_utc_lower": "2026-11-16T17:29:44.885Z",
+          "click_utc_upper": "2026-11-16T17:29:44.915Z",
+          "status": "no_local_pdf_challenge_unresolved",
+          "local_pdf": false,
+          "completed_utc_lower": null,
+          "completed_utc_upper": null,
+          "failure_time": null,
+          "translator": "ScienceDirect",
+          "human_action_requested": true,
+          "human_action_observed": false,
+          "challenge_observed_by_utc": "2026-11-16T17:30:33Z",
+          "challenge_first_observed_absent_utc": "2026-11-16T17:32:25.219Z",
+          "diagnostics_observed_utc": "2026-11-16T17:32:57.014Z",
+          "diagnostics": "Desktop parent has zero attachment children; temporary storage empty. No visible active download. Popup disappearance alone is not a PDF or exact failure endpoint.",
+          "inclusive_wait_seconds": null,
+          "machine_only_seconds": null
+        }
+      ]
+    }
+  ],
+  "platform_parity": {
+    "Oxford/Silverchair": "not_confirmed",
+    "Springer Link": "not_confirmed_one_pilot_pair",
+    "ScienceDirect": "not_confirmed_no_paired_local_PDF",
+    "IEEE Xplore": "not_confirmed_timeout_and_unrepeated_difference"
+  },
+  "workspace_reset": {
+    "executed": false,
+    "reason": "Diagnosis and real retests outstanding."
+  },
+  "source_followup": {
+    "sha": "098288ae32e159811b9c49333b386d1533890862",
+    "change": "Compare escaped DOI spellings symmetrically and losslessly, preserving request URL spelling.",
+    "focused_tests_passed": 396,
+    "live_process_still": "9383359e05a625e027f228873a847b15196e02fa",
+    "affected_rules": [
+      "R029",
+      "R030",
+      "R031",
+      "R032",
+      "R033",
+      "R034"
+    ],
+    "affected_real_site_tests": "not_run; not among current pilot platforms"
+  },
+  "validation": {
+    "javascript": "npm --prefix electron run check:63 project files passed on098288a",
+    "python": {
+      "command": "uv run --locked pytest",
+      "sha": "098288ae32e159811b9c49333b386d1533890862",
+      "passed": 1622,
+      "warnings": 2,
+      "seconds": 49.76
+    },
+    "electron_local": {
+      "command": "npm --prefix electron test",
+      "sha": "098288ae32e159811b9c49333b386d1533890862",
+      "passed": 241,
+      "skipped": 0,
+      "seconds": 120.676,
+      "isolated_failure_reproduction": {
+        "command": "node --test --test-name-pattern='public Download' electron/tests/body-native.test.cjs",
+        "status": "passed",
+        "seconds": 12.653,
+        "public_cases": 41
+      },
+      "ci_failure_cause": "not established; no production timeout or required assertion changed"
+    },
+    "two_axis_review": {
+      "baseline_sha": "a2e511aa86ab5aa292f224301d6609a59c287fa2",
+      "target_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "standards_findings": 0,
+      "spec_findings": "4 disclosed incomplete requirement categories; no code defect/scope creep found"
+    },
+    "native_affected_review": "098288a no actionable defect,99 isolated checks; no live-site claim",
+    "ci": {
+      "pr": 141,
+      "head_sha": "098288ae32e159811b9c49333b386d1533890862",
+      "run": "https://github.com/dylaaan-booob/allfold/actions/runs/43912807839",
+      "status": "failure",
+      "step": "npm --prefix electron test",
+      "failure": "Public native Cancel fixture5-second public progress projection wait expired; original failure retained, cause not established."
+    },
+    "ci_last_checked_success": {
+      "head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+      "event": "pull_request",
+      "workflow": "Safety checks",
+      "check": "safety",
+      "status": "success",
+      "url": "https://github.com/dylaaan-booob/allfold/actions/runs/43921980119",
+      "all_required_steps_executed": true
+    }
+  },
+  "remaining": [
+    "Frozen formal cohort and representative/mechanism pairs not run",
+    "Formal IEEE coverage and preselected control repeats; initial600s expiry retained but not reproduced inR02-R04",
+    "ScienceDirect Zotero verification not completed; no successful comparable Zotero PDF",
+    "Further normal product collection required for actual platform coverage",
+    "Latest full PR CI must pass; current native fixture failure under investigation",
+    "Final normal runtime without temporary NetLog, affected checks, and actual product Workspace Reset pending"
+  ],
+  "pilot_paired_retests": {
+    "unique_papers": 1,
+    "successful_pairs": 3,
+    "formal_score": false,
+    "initial_expiry": "Retained separately; not reproduced after preparation, no IEEE code change or causal repair claim.",
+    "pairs": [
+      {
+        "pair_id": "P04-R02",
+        "queue": "pilot-retest",
+        "formal_score": false,
+        "doi": "10.1109/tnnls.2026.3706351",
+        "platform": "IEEE Xplore",
+        "access_method": "Institutional shared Session, normal CARSI preparation; ordinary R025 requires no retained Service capability",
+        "order": [
+          "zotero",
+          "allfold"
+        ],
+        "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "allfold": {
+          "attempt": 4,
+          "click_utc": [
+            "2026-11-16T17:59:28.624Z",
+            "2026-11-16T17:59:28.720Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T17:59:43.278Z",
+            "2026-11-16T17:59:43.562Z"
+          ],
+          "wait_seconds": [
+            14.558,
+            14.938
+          ],
+          "file_bytes": 3459194,
+          "status": "automatic_success",
+          "source": "P2/R025",
+          "fallback_used": false,
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "zotero": {
+          "version": "10.0.9",
+          "connector": "5.0.217",
+          "translator": "IEEE Xplore",
+          "click_utc": [
+            "2026-11-16T17:55:24.770Z",
+            "2026-11-16T17:55:24.799Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T17:55:40.860Z",
+            "2026-11-16T17:55:41.202Z"
+          ],
+          "wait_seconds": [
+            16.061,
+            16.432
+          ],
+          "file_bytes": 3459181,
+          "status": "automatic_success",
+          "link_mode": "imported_url",
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "difference_seconds": [
+          -1.874,
+          -1.123
+        ],
+        "ratio": [
+          0.886,
+          0.9301
+        ],
+        "transfer_segment_comparison": false,
+        "cache_context": "R02 fresh Allfold Session, institution homepage only, target article/PDF not preloaded; Chrome normal renewed institutional access. R03/R04 same prepared Sessions and warm repeated visits. Genuine new files/associations after product delete/Restore and fresh Zotero save sessions. Cache equality unproven.",
+        "preparation_context": "Initial QR page had official account login with existing saved credentials; old SAML session expired, fresh normal resource entry restored access without user MFA. Long operator preparation gap not product download time.",
+        "machine_only_preparation_seconds": null,
+        "measurement_note": "Same-machine click bounds and actual file+association poll intervals, not screen/tool turnaround."
+      },
+      {
+        "pair_id": "P04-R03",
+        "queue": "pilot-retest",
+        "formal_score": false,
+        "doi": "10.1109/tnnls.2026.3706351",
+        "platform": "IEEE Xplore",
+        "access_method": "Institutional shared Session, normal CARSI preparation; ordinary R025 requires no retained Service capability",
+        "order": [
+          "allfold",
+          "zotero"
+        ],
+        "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "allfold": {
+          "attempt": 5,
+          "click_utc": [
+            "2026-11-16T18:02:58.268Z",
+            "2026-11-16T18:02:58.418Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:03:13.495Z",
+            "2026-11-16T18:03:13.781Z"
+          ],
+          "wait_seconds": [
+            15.077,
+            15.513
+          ],
+          "file_bytes": 3459200,
+          "status": "automatic_success",
+          "source": "P2/R025",
+          "fallback_used": false,
+          "content_check": "Individual file deleted before text inspection; original target, localPDFprefix, source, association and size verified. Same published version inferred from stable entry/neighboring checked copies; excluded from strict transfer-segment comparison."
+        },
+        "zotero": {
+          "version": "10.0.9",
+          "connector": "5.0.217",
+          "translator": "IEEE Xplore",
+          "click_utc": [
+            "2026-11-16T18:04:28.676Z",
+            "2026-11-16T18:04:28.700Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:04:44.996Z",
+            "2026-11-16T18:04:45.362Z"
+          ],
+          "wait_seconds": [
+            16.296,
+            16.686
+          ],
+          "file_bytes": 3459201,
+          "status": "automatic_success",
+          "link_mode": "imported_url",
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "difference_seconds": [
+          -1.609,
+          -0.783
+        ],
+        "ratio": [
+          0.9036,
+          0.952
+        ],
+        "transfer_segment_comparison": false,
+        "cache_context": "R02 fresh Allfold Session, institution homepage only, target article/PDF not preloaded; Chrome normal renewed institutional access. R03/R04 same prepared Sessions and warm repeated visits. Genuine new files/associations after product delete/Restore and fresh Zotero save sessions. Cache equality unproven.",
+        "preparation_context": "Initial QR page had official account login with existing saved credentials; old SAML session expired, fresh normal resource entry restored access without user MFA. Long operator preparation gap not product download time.",
+        "machine_only_preparation_seconds": null,
+        "measurement_note": "Same-machine click bounds and actual file+association poll intervals, not screen/tool turnaround."
+      },
+      {
+        "pair_id": "P04-R04",
+        "queue": "pilot-retest",
+        "formal_score": false,
+        "doi": "10.1109/tnnls.2026.3706351",
+        "platform": "IEEE Xplore",
+        "access_method": "Institutional shared Session, normal CARSI preparation; ordinary R025 requires no retained Service capability",
+        "order": [
+          "zotero",
+          "allfold"
+        ],
+        "allfold_head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+        "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+        "allfold": {
+          "attempt": 6,
+          "click_utc": [
+            "2026-11-16T18:07:05.670Z",
+            "2026-11-16T18:07:05.771Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:07:20.411Z",
+            "2026-11-16T18:07:20.706Z"
+          ],
+          "wait_seconds": [
+            14.64,
+            15.036
+          ],
+          "file_bytes": 3459198,
+          "status": "automatic_success",
+          "source": "P2/R025",
+          "fallback_used": false,
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "zotero": {
+          "version": "10.0.9",
+          "connector": "5.0.217",
+          "translator": "IEEE Xplore",
+          "click_utc": [
+            "2026-11-16T18:05:53.259Z",
+            "2026-11-16T18:05:53.285Z"
+          ],
+          "local_pdf_and_association_utc": [
+            "2026-11-16T18:06:09.713Z",
+            "2026-11-16T18:06:10.093Z"
+          ],
+          "wait_seconds": [
+            16.428,
+            16.834
+          ],
+          "file_bytes": 3459200,
+          "status": "automatic_success",
+          "link_mode": "imported_url",
+          "content_check": "title/DOI/15pages directly inspected"
+        },
+        "difference_seconds": [
+          -2.194,
+          -1.392
+        ],
+        "ratio": [
+          0.8697,
+          0.9153
+        ],
+        "transfer_segment_comparison": false,
+        "cache_context": "R02 fresh Allfold Session, institution homepage only, target article/PDF not preloaded; Chrome normal renewed institutional access. R03/R04 same prepared Sessions and warm repeated visits. Genuine new files/associations after product delete/Restore and fresh Zotero save sessions. Cache equality unproven.",
+        "preparation_context": "Initial QR page had official account login with existing saved credentials; old SAML session expired, fresh normal resource entry restored access without user MFA. Long operator preparation gap not product download time.",
+        "machine_only_preparation_seconds": null,
+        "measurement_note": "Same-machine click bounds and actual file+association poll intervals, not screen/tool turnaround."
+      }
+    ],
+    "descriptive_midpoints_only": {
+      "median_allfold_seconds": 14.838000000000001,
+      "median_zotero_seconds": 16.491,
+      "median_paired_difference_seconds": -1.4984999999999964,
+      "median_paired_ratio": 0.9077647493306252
+    },
+    "parity": "Single-paper pilot supports no disadvantage on observed R025 path; whole-platform parity not established."
+  },
+  "runtime_after_pilots": {
+    "head_sha": "7c9be1c5e4487087c4dacf0afebd0e7c19b3435b",
+    "production_code_sha": "098288ae32e159811b9c49333b386d1533890862",
+    "netlog_flag": false
+  },
+  "formal_manifest": "pdf-pairing-manifest.json"
+}

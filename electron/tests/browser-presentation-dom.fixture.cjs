@@ -4,7 +4,7 @@ const {app,BrowserWindow,ipcMain}=require('electron'),http=require('node:http'),
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
 const {installBrowserIPC}=require('../src/browser/browser-ipc.cjs');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-presentation-'));
-app.setPath('userData',temp);app.commandLine.appendSwitch('disable-background-networking');
+app.setPath('userData',temp);app.setPath('sessionData',temp);app.commandLine.appendSwitch('disable-background-networking');
 app.on('window-all-closed',()=>{}); // Cleanup owns the explicit success/failure exit code.
 const source=path.resolve(__dirname,'../../frontend/ui'),index=fs.readFileSync(path.join(source,'index.html'),'utf8');
 const pane=index.match(/  <section id="browser-pane"[\s\S]*?\n  <\/section>/)[0];
@@ -100,9 +100,11 @@ app.whenReady().then(async()=>{
       await ready(()=>host("$('browser-tabs').textContent.includes('Background Tab')"),'background title update');
       assert(await host('focusedPageButton.isConnected&&document.activeElement===focusedPageButton'),'Tab lost keyboard focus on a background update');
       assert(browser.selected===tab,'Background update changed the selected page');
-      await click(win.webContents,`#browser-tabs [data-page-id="${other.id}"] button`);assert(browser.selected===other,'page switch');
+      await click(win.webContents,`#browser-tabs [data-page-id="${other.id}"] button`);
+      await ready(()=>Promise.resolve(browser.selected===other),'page switch');
       await click(win.webContents,'#browser-tabs-toggle');
-      await click(win.webContents,selector);assert(browser.selected===tab,'page restore');
+      await click(win.webContents,selector);
+      await ready(()=>Promise.resolve(browser.selected===tab),'page restore');
       await click(win.webContents,'#browser-return');
       assert(await host("document.activeElement.id==='browser-open'&&$('fixture-workspace-draft').value==='preserved'"),'Workspace draft and focus return');
       assert(!browser.presentation.mounted,'Workspace intercepted by native view');

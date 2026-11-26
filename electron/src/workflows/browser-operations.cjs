@@ -2,7 +2,7 @@
 const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('../browser/browser-errors.cjs');
 const {checkCanceled,timeoutFailure,pause,waitFor,withTaskDeadline,waitForLoad}=require('../browser/browser-task.cjs');
-const {PAGE_RECOVERY_MS,origin,reportRecovery,recoveryStop,pageRecoveryDetails}=require('../browser/browser-recovery.cjs');
+const {origin,reportRecovery,recoveryStop,pageRecoveryDetails}=require('../browser/browser-recovery.cjs');
 const {institutionPageAction,resourcePageAction,detailPageAction,imagePageAction}=require('./page-actions.cjs');
 
 async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,deadline=Infinity,beforeDispatch) {
@@ -122,7 +122,7 @@ async function loginCARSI(browser,tab,data,signal,progress,deadline) {
 async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
   const query=name.includes('&') ? name.slice(name.lastIndexOf('&')+1).trim() : name;
   const navigation=tab.navigation?.current,reloads=navigation?.reloads;
-  let step='resource_ready',doc,operationDeadline=Math.min(requestDeadline,Date.now()+15000);
+  let step='resource_ready',doc;
   const fail=code=>{
     const error=new BrowserFailure('preparation',code);
     error.diagnostic.step=step;
@@ -149,8 +149,7 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
   };
   const refresh=async action=>{
     step=action==='filter'?'resource_filter':'resource_search';
-    const token=randomBytes(16).toString('hex'),deadline=Math.min(requestDeadline,Date.now()+15000);
-    operationDeadline=deadline;
+    const token=randomBytes(16).toString('hex'),deadline=requestDeadline;
     try {
       await act(action,token,deadline);
       while(Date.now()<deadline) {
@@ -170,7 +169,7 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
     }
   };
   try {
-    const deadline=operationDeadline;
+    const deadline=requestDeadline;
     await waitForLoad(tab,signal,deadline,()=>{checkCARSISession([tab],signal);checkNavigation();});
     doc=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline,'preparation',step);
     let state;
@@ -193,7 +192,7 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
     if(['resource_filter','resource_search'].includes(step)
       && ['resource_request_failed','document_changed','controls_unavailable','refresh_unconfirmed'].includes(failure.diagnostic.code)) {
       // The site's AJAX error handler may navigate only after reporting its failure.
-      const until=Math.min(operationDeadline,requestDeadline,Date.now()+1500);
+      const until=Math.min(requestDeadline,Date.now()+1500);
       while(Date.now()<until) {
         checkCARSISession([tab],signal);
         await waitFor(()=>pause(signal,Math.min(350,until-Date.now())),signal,requestDeadline,'preparation','request');
@@ -293,7 +292,10 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
           {page_id:result.evidence?.target_page_id ?? browser.taskTab?.id,
             ...(opened?{dispatch_outcome:'confirmed'}:{recovery_stop:'failed'})});
         }
-        if(result.outcome==='Opened')browser.retainAccessPage(browser.tabs.get(result.evidence.target_page_id),data);
+        if(result.outcome==='Opened') {
+          const retained=browser.retainAccessPage(browser.tabs.get(result.evidence.target_page_id),data);
+          if(retained.ebscoEntry)result.evidence.pdf_source='ebsco';
+        }
         return result;
       } catch(error) {
         const failed=browser.taskTab;
@@ -308,7 +310,6 @@ async function prepareLoggedInService(browser,data,{signal,progress}) {
         checkCARSISession([failed],bounded);
         verifyPortal();
         if(Date.now()>=deadline)throw timeoutFailure('preparation','request');
-        deadline=Math.min(deadline,Date.now()+PAGE_RECOVERY_MS);
         firstFailure=error;sourcePageId=failed.id;priorTargetOrigin=attempt.targetOrigin;
         record('recovery_scheduled',error,{page_id:sourcePageId,dispatch_outcome:'not_dispatched'});
         await browser.retirePageAttempt(attempt);
@@ -326,9 +327,9 @@ async function visitManualService(browser,data,{signal,progress}) {
     const document=await navigate(browser,tab,data.access_url,bounded,progress,deadline);
     if(!browser.documentCurrent(document))throw new BrowserFailure('navigation','document_changed');
     tab.preparationKey=data.preparation_key;
-    browser.retainAccessPage(tab,data);
+    const retained=browser.retainAccessPage(tab,data);
     return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
-      navigation_observed:true,target_page_id:tab.id}};
+      navigation_observed:true,target_page_id:tab.id,...(retained.ebscoEntry && {pdf_source:'ebsco'})}};
   });
 }
 

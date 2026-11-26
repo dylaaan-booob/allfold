@@ -44,7 +44,6 @@ class PdfTarget:
             raise ValueError('Paper binding is required')
         for value, limit, name in ((self.paper_id, 128, 'Paper binding'), (self.doi, 512, 'DOI'),
                                    (self.platform, 64, 'platform'), (self.content_host, 253, 'host'),
-                                   (self.article_url, 8192, 'article URL'),
                                    (self.content_type, 64, 'content type')):
             _bounded(value, limit, name)
         if self.article_url is not None:
@@ -78,18 +77,27 @@ class PdfCandidate:
     # Ephemeral host-captured access inherited only by this source's descendants.
     # Never accepted from the renderer or persisted in discovery facts.
     access: object = dataclass_field(default=None, repr=False, compare=False)
+    recover_access: bool = dataclass_field(default=False, repr=False, compare=False)
+    referer_observed: bool = dataclass_field(default=False, repr=False, compare=False)
+    article_verified: bool = dataclass_field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, PdfTarget) or self.stage not in {'P1', 'P2', 'P3', 'P4', 'P5'}:
             raise ValueError('invalid candidate target/stage')
         for value, name in ((self.rule_id, 'rule'), (self.platform, 'platform')):
             _bounded(value, 64, name, required=True)
-        _bounded(self.url, 8192, 'candidate URL', required=True)
-        normalize_public_http_url(self.url)
+        if not isinstance(self.url, str) or not normalize_public_http_url(self.url):
+            raise ValueError('invalid candidate URL')
         if self.referer is not None:
-            _bounded(self.referer, 8192, 'Referer')
             normalize_public_http_url(self.referer)
 
+
+# The existing Atypon response-parser family also shares a DOI PDF entry.
+ATYPON_HOSTS = frozenset({
+    'onlinelibrary.wiley.com', 'journals.sagepub.com', 'www.tandfonline.com',
+    'www.annualreviews.org', 'pubs.aiaa.org', 'www.liebertpub.com',
+    'www.worldscientific.com', 'epubs.siam.org',
+})
 
 # Exact content Hosts only. Aliases here are known public site Hosts, never
 # institution/proxy suffix matching. Unrecognised Hosts still permit generic P3.
@@ -123,13 +131,16 @@ def content_host(target: PdfTarget) -> str | None:
     if target.content_host:
         host = target.content_host.lower()
         # Validate hints as Hosts, not arbitrary netlocs with ports or userinfo.
-        if host in HOST_PLATFORMS:
+        if host in HOST_PLATFORMS or host in ATYPON_HOSTS:
             return host
     return None
 
 
 def content_platform(target: PdfTarget) -> str | None:
-    return HOST_PLATFORMS.get(content_host(target))
+    host = content_host(target)
+    if _elsevier_linking_pii(target.article_url):
+        return 'sciencedirect'
+    return HOST_PLATFORMS.get(host) or ('atypon' if host in ATYPON_HOSTS else None)
 
 
 def _doi(target: PdfTarget) -> str | None:
@@ -186,6 +197,9 @@ def iter_p1_candidates(target: PdfTarget, inputs: PdfRuleInputs | None = None) -
         if platform == 'springer' and inputs and 'springer_in_press' in inputs.conditions:
             yield PdfCandidate(target, 'P1', 'R019', platform,
                                'https://' + host + '/content/pdf/' + _path_doi(doi) + '_reference.pdf')
+    elif platform == 'atypon' and target.content_type == 'journal-article':
+        yield PdfCandidate(target, 'P1', 'R039', platform,
+                           'https://' + host + '/doi/pdf/' + _path_doi(doi))
     elif platform == 'spie':
         journal = target.content_type == 'journal-article'
         yield PdfCandidate(target, 'P1', 'R012' if journal else 'R013', platform,
@@ -264,15 +278,14 @@ class KnownPdfUrl:
     reader_kind: str | None = None
 
     def __post_init__(self) -> None:
-        _bounded(self.url, 8192, 'known PDF URL', required=True)
-        normalize_public_http_url(self.url)
+        if not isinstance(self.url, str) or not normalize_public_http_url(self.url):
+            raise ValueError('invalid known PDF URL')
         item = RULE_CATALOG.get(self.rule_id) or API_CATALOG.get(self.rule_id)
         if not item or item.status in {'historical', 'extension', 'non-pdf', 'reference'} or self.rule_id == 'API01':
             raise ValueError('explicit PDF source rule and field are required')
         _bounded(self.field, 128, 'PDF source field', required=True)
         _bounded(self.reader_kind, 64, 'reader kind')
         if self.referer:
-            _bounded(self.referer, 8192, 'Referer')
             normalize_public_http_url(self.referer)
 
 
@@ -288,7 +301,24 @@ def _valid_id(inputs: PdfRuleInputs | None, kinds: tuple[str, ...], pattern: re.
     return None
 
 
+def _elsevier_linking_pii(article_url: str | None) -> str | None:
+    if not article_url:
+        return None
+    url = urlsplit(article_url)
+    if url.scheme != 'https' or url.hostname != 'linkinghub.elsevier.com' or url.port not in {None, 443}:
+        return None
+    match = re.fullmatch(r'/retrieve/pii/([^/]+)/?', url.path)
+    return match[1] if match and _PII.fullmatch(match[1]) else None
+
+
+def linkinghub_article_origin(article_url: str | None) -> str | None:
+    """Return the publisher origin for a qualified Elsevier registered entry."""
+    return 'https://www.sciencedirect.com' if _elsevier_linking_pii(article_url) else None
+
+
 def _pii(target: PdfTarget, inputs: PdfRuleInputs | None) -> str | None:
+    if pii := _elsevier_linking_pii(target.article_url):
+        return pii
     if value := _valid_id(inputs, ('pii',), _PII):
         return value
     if inputs:
@@ -379,7 +409,7 @@ def needs_p2_query(target: PdfTarget, inputs: PdfRuleInputs, *, known_refresh=Fa
 def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleInputs | None) -> tuple[str, str] | None:
     if target.article_url:
         url = urlsplit(target.article_url)
-        path, rule, converted = url.path, None, None
+        path, rule, converted, route_doi = url.path, None, None, None
         if platform == 'nature':
             matched = re.fullmatch(r'(/[^/]+/journal/(?:[^/]+/)+)(?:full|abs)/([^/]+)\.html', path)
             if matched:
@@ -388,9 +418,12 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
             if re.fullmatch(r'/article/10\.[0-9]{4,9}/.+', path) or re.fullmatch(r'/[0-9]{4}-[0-9]{3}[0-9X]/[0-9]+/[0-9]+/[^/]+(?:/meta)?', path):
                 base = re.sub(r'/(?:meta|pdf)/?$', '', path.rstrip('/'))
                 rule, converted = 'R029', base + '/pdf'
+                if base.startswith('/article/'):
+                    route_doi = base[len('/article/'):]
         elif platform == 'aps':
             if matched := re.fullmatch(r'/([a-z][a-z0-9-]*)/abstract/(10\.[0-9]{4,9}/.+)', path):
                 rule, converted = 'R030', '/' + matched[1] + '/pdf/' + matched[2]
+                route_doi = matched[2]
         elif platform in {'asco', 'aha', 'healio', 'chicago'}:
             rule, origin, destination = {
                 'asco': ('R031', 'full', 'pdfdirect'), 'aha': ('R032', 'reader', 'pdf'),
@@ -398,6 +431,7 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
             }[platform]
             if matched := re.fullmatch(r'/doi/' + origin + r'/(10\.[0-9]{4,9}/.+)', path):
                 converted = '/doi/' + destination + '/' + matched[1]
+                route_doi = matched[1]
         elif platform == 'jmlr':
             if matched := re.fullmatch(r'/papers/v([0-9]+)/([A-Za-z0-9_-]+)\.html', path):
                 volume, key = matched.groups()
@@ -407,6 +441,12 @@ def _article_transform(target: PdfTarget, platform: str | None, inputs: PdfRuleI
                 volume, key = matched.groups()
                 rule, converted = 'R036', f'/v{volume}/{key}/{key}.pdf'
         if converted:
+            # Compare one decoded layer on both sides without losing distinct
+            # non-UTF-8 octets. The request still keeps its original spelling.
+            if (route_doi and target.identity_doi
+                    and unquote(route_doi, errors='surrogateescape').casefold()
+                    != unquote(target.identity_doi, errors='surrogateescape').casefold()):
+                return None
             # Preserve query spelling/order, filename case and existing escapes.
             # Fragment is not part of a request and is not copied to candidates.
             return rule, urlunsplit((url.scheme, url.netloc, converted, url.query, ''))
@@ -438,10 +478,18 @@ def iter_p2_candidates(target: PdfTarget, inputs: PdfRuleInputs | None = None) -
                                known.url, known.reader_kind, known.referer, known.field)
     if platform == 'sciencedirect' and (pii := _pii(target, inputs)):
         article = urlsplit(target.article_url or '')
-        origin = urlunsplit((article.scheme, article.netloc, '', '', '')) if article.hostname == host else 'https://' + host
+        registered_origin = linkinghub_article_origin(target.article_url)
+        origin = registered_origin or (urlunsplit((article.scheme, article.netloc, '', '', ''))
+            if article.hostname == host else 'https://' + host)
         url = origin + '/science/article/pii/' + pii + '/pdfft'
-        yield PdfCandidate(target, 'P2', 'R024', platform, url, referer=target.article_url)
-        yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true', referer=target.article_url)
+        # DOI registration supplies the PII even if Linking Hub cannot redirect.
+        # Send the Referer only when the route supplies an article page.
+        from_linkinghub = registered_origin is not None
+        referer = None if from_linkinghub else target.article_url
+        yield PdfCandidate(target, 'P2', 'R024', platform, url + '?download=true',
+            referer=referer, referer_observed=from_linkinghub)
+        yield PdfCandidate(target, 'P2', 'R024', platform, url,
+            referer=referer, referer_observed=from_linkinghub)
     elif platform == 'cell' and (pii := _cell_pii(target, inputs)):
         yield PdfCandidate(target, 'P2', 'R023', platform, 'https://' + host + '/action/showPdf?pii=' + _component(pii))
     elif platform == 'ieee' and (number := _ieee_number(target, inputs)):

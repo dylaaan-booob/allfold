@@ -1,7 +1,22 @@
 # Shared Browser Session
 
-The application keeps `session.fromPartition('allfold')`. One
-`SharedSessionEvents` lifetime installs the native request/header/redirect/error,
+BrowserRuntime uses one disk-backed Session per application run, opened with
+`session.fromPath()` in a fresh Allfold directory under Electron's
+`sessionData`. Browser pages, Prepare, Solver, Document and ordinary Download
+share this Session. Chromium uses its normal disk cache rules and writes
+cookies and website storage during the run. Each launch uses a new directory,
+so previous website state is unavailable to the new Session. Saved institution
+credentials have their own lifetime.
+
+The existing shutdown drains owned work, pages and native items. Electron
+owns the remaining native Session lifetime. After the next startup has
+claimed the UI port, it reclaims managed directories from exited processes
+in the background using an opened directory and directory-relative removal.
+A still-running process keeps its directory even after
+its UI port is released. Cleanup failures are logged and retried on later
+launches. Workspace Reset leaves Session storage to this lifecycle.
+
+One `SharedSessionEvents` lifetime installs the native request/header/redirect/error,
 completion and `will-download` listeners. BrowserRuntime and Browser identity
 subscribe to that entry; WoS registers an attempt before its export action.
 Finishing a task disposes its registrations, never the Session listeners.
@@ -35,8 +50,28 @@ or a private Electron Response field. Terminal native events remove request-ID
 references; cancellation and failed dispatch remove unused marker registrations.
 No URL, selected tab, Service label or request ordering supplies ownership.
 
+Ordinary body streams can use a qualified native Page in the same Session as
+their partition context. The Page can have a valid context while the HTTP
+request omits Referer. `Network.getCookies` queries the requested URL with that
+Page's native isolation key. Main checks the schemeful top-level site before
+and after the query. Same-site document changes and navigation within the Page
+can preserve the context.
+
+Chromium determines the request's SameSite eligibility from the native
+initiator and destination. The controlled dispatch can supplement its ordinary
+Cookie header with eligible partitioned values, including same-site
+cross-subdomain cookies. Additions remain within the initial origin and their
+own domain, path and expiry. A cross-site request can receive only
+SameSite=None additions. Ordinary Cookie order is retained, with known longer
+paths inserted first and ordinary-first ties. A newer ordinary value with an
+unknown path keeps its position. Values stay in Main and are never written
+back to the jar or logged. See the original mechanism investigation for the
+pinned Chromium version. [Partitioned Cookie research](partitioned-cookie-research.md)
+
 Main-frame `cf-mitigated: challenge` evidence is associated with its native Page
 and request ID through this same event owner, then reset on a new navigation.
+That response header remains authoritative when localized verification copy in
+`main` resembles readable content; it must still dispatch the page solver.
 Subresources never assign that state to the whole page. Every managed Page has
 an independent [challenge observer](browser-documents.md#solver-recovery-and-terminal-ownership),
 including idle retained targets and user popups. Solver uses only this Session's
@@ -46,9 +81,10 @@ Closing a page waits for its solver cleanup as well as native downloads/destruct
 One `BrowserCooldown` belongs to this Session lifetime. Main-frame responses and
 explicitly associated requests observe actual response origins: 429 uses valid
 Retry-After or the existing one-second default; 503 requires valid Retry-After.
-Unowned subresources retain the existing exclusion. Active waits can only extend,
-currently have a 30-second ceiling and the parent deadline. That arbitrary
-ceiling is a current limit to revise, not a general Retry-After requirement. Independent origins remain independent. Chromium's
+Unowned subresources retain the existing exclusion. Active waits can only extend
+and use the parent's remaining deadline, without a separate 30-second ceiling.
+Expiry ends the operation rather than dispatching before Retry-After permits it.
+Independent origins remain independent. Chromium's
 existing redirect/authentication chain proceeds without host action replay.
 
 ## Managed download contract

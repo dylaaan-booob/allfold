@@ -10,17 +10,17 @@ function fixture({preferences={},tabs=[],services={scope:{scope_id:'scope-a'},se
     replaceChildren(...children){this.children=children;}
     append(...children){for(const child of children)this.insertBefore(child,null);}
     insertBefore(child,next){child.remove();child.parentElement=this;this.children.splice(next?this.children.indexOf(next):this.children.length,0,child);}
-    remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=null;}
+    remove(){if(this.parentElement){if(this.contains(document.activeElement))document.activeElement=document.body;this.parentElement.children=this.parentElement.children.filter(child=>child!==this);}this.parentElement=null;}
     contains(node){return node===this || this.children.some(child=>child.contains(node));}
     closest(selector){return selector.includes('[hidden]')?(this.hidden?this:this.parentElement?.closest(selector)):null;}
-    focus(){document.activeElement=this;}
+    focus(){for(let parent=this.parentElement;parent;parent=parent.parentElement)if(parent.localName==='details' && !parent.open && !parent.children[0].contains(this))return;document.activeElement=this;}
     getBoundingClientRect(){return this.id==='browser-body'?{x:0,y:160,left:0,top:160,width:720,height:600,right:720,bottom:760}:{x:0,y:0,left:0,top:0,width:1000,height:600};}
     querySelectorAll(){return [];}
     scrollIntoView(){}
   }
   const document={addEventListener(){},body:new Element('body'),documentElement:new Element('html'),activeElement:null,
     getElementById:id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);},
-    createElement:()=>new Element(),
+    createElement:tag=>Object.assign(new Element(),{localName:tag}),
     querySelector:selector=>selector==='.masthead'?document.getElementById('masthead'):document.getElementById('footer'),
     querySelectorAll:selector=>selector==='dialog[open]'?[...elements.values()].filter(node=>node.open):[]};
   const window=new EventTarget();window.window=window;window.workspaceNavigation={current:()=>window.workspace || 'workspace'};
@@ -130,8 +130,65 @@ test('one grouped list preserves Page identities, scope and managed toolbar cont
   assert.equal(f.document.getElementById('browser-back').disabled,true);
   assert.equal(f.document.getElementById('browser-reload').disabled,false);
   f.setState({selected:1,tabs:[{...page(1,'scope-b','service-a','article'),managed:true,busy:true}]});
-  assert.equal(list.children.length,1);assert.equal(list.children[0].children[1].children[0].dataset.pageId,'1');
+  assert.equal(list.children.length,2);
+  assert.equal(list.children.find(group=>group.dataset.groupKey==='scope-a:service-a').children[1].children.length,0);
+  assert.equal(list.children.find(group=>group.dataset.groupKey==='scope-b:service-a').children[1].children[0].dataset.pageId,'1');
   assert.equal(f.document.getElementById('browser-reload').disabled,true);
+});
+
+test('configured Service groups remain without retained pages and CARSI popups use a unique configured access origin',async()=>{
+  const services={scope:{scope_id:'scope-a'},services:[
+    {id:'oxford',name:'Oxford',access_method:'carsi',access_url:'https://academic.example/journals'},
+    {id:'taylor',name:'Taylor',access_method:'carsi',access_url:'https://taylor.example/'},
+  ]};
+  const f=fixture({services});await f.window.allfoldWorkbench.show();await Promise.resolve();
+  const list=f.document.getElementById('browser-tabs');
+  assert.deepEqual(list.children.map(group=>group.children[0].textContent),['Oxford','Taylor']);
+  const portal={id:1,title:'CARSI',url:'https://ds.carsi.edu.cn/resource/resource.php',association:{role:'carsi-portal',service_scope:{scope_id:'scope-a'}}};
+  const detail={id:2,url:'https://ds.carsi.edu.cn/resource/resourceDetail.php',openerId:1};
+  const target={id:3,title:'Verification',url:'https://taylor.example/',openerId:2,association:{role:'popup',source_page_id:2}};
+  const before=JSON.stringify(target);
+  f.setState({selected:3,tabs:[portal,detail,target]});
+  const pages=name=>list.children.find(group=>group.children[0].textContent===name).children[1].children.map(row=>row.dataset.pageId);
+  assert.deepEqual(pages('CARSI'),['1','2']);assert.deepEqual(pages('Taylor'),['3']);assert.deepEqual(pages('Oxford'),[]);
+  assert.equal(JSON.stringify(target),before,'display grouping must not assign a task or access identity');
+  const row=list.children.find(group=>group.children[0].textContent==='Taylor').children[1].children[0];
+  row.children[0].focus();target.url='https://taylor.example/doi/abs/10.5555/example';
+  f.setState({selected:3,tabs:[portal,detail,target]});
+  assert.equal(list.children.find(group=>group.children[0].textContent==='Taylor').children[1].children[0],row);
+  assert.equal(f.document.activeElement,row.children[0]);
+  assert.equal(f.calls.some(call=>call.action && call.action!=='select'),false);
+});
+
+test('ambiguous configured origins do not infer a Service and recorded scoped associations take precedence',async()=>{
+  const f=fixture({services:{scope:{scope_id:'scope-a'},services:[
+    {id:'one',name:'One',access_url:'https://shared.example/a'},
+    {id:'two',name:'Two',access_url:'https://shared.example/b'},
+    {id:'unique',name:'Unique',access_url:'https://unique.example/'},
+  ]}});
+  await f.window.allfoldWorkbench.show();await Promise.resolve();
+  const portal={id:1,url:'https://ds.carsi.edu.cn/resource/resource.php',association:{role:'carsi-portal',service_scope:{scope_id:'scope-a'}}};
+  f.setState({selected:2,tabs:[portal,{id:2,url:'https://shared.example/article',openerId:1},
+    {id:3,url:'https://unique.example/article',association:{role:'service-target',service_scope:{scope_id:'old-scope'},service_id:'old-service'}},
+    {id:4,url:'https://unique.example.evil.test/article',openerId:1}]});
+  const groups=f.document.getElementById('browser-tabs').children;
+  const ids=key=>groups.find(group=>group.dataset.groupKey===key).children[1].children.map(row=>row.dataset.pageId);
+  assert.deepEqual(ids('carsi'),['1','2','4']);assert.deepEqual(ids('scope-a:unique'),[]);
+  assert.deepEqual(ids('old-scope:old-service'),['3']);
+});
+
+test('a focused CARSI row moving into a collapsed Service group focuses its summary without expanding it',async()=>{
+  const f=fixture({services:{scope:{scope_id:'scope-a'},services:[{id:'taylor',name:'Taylor',access_url:'https://taylor.example/'}]}});
+  await f.window.allfoldWorkbench.show();await Promise.resolve();
+  const portal={id:1,url:'https://ds.carsi.edu.cn/resource/resource.php',association:{role:'carsi-portal',service_scope:{scope_id:'scope-a'}}};
+  const target={id:2,url:'https://ds.carsi.edu.cn/resource/resourceDetail.php',openerId:1};
+  f.setState({selected:2,tabs:[portal,target]});
+  const list=f.document.getElementById('browser-tabs'),group=list.children.find(node=>node.dataset.serviceId==='taylor');
+  group.open=false;
+  const row=list.children.find(node=>node.dataset.groupKey==='carsi').children[1].children[1];row.children[0].focus();
+  target.url='https://taylor.example/';f.setState({selected:2,tabs:[portal,target]});
+  assert.equal(group.open,false);assert.equal(group.children[1].children[0],row);
+  assert.equal(f.document.activeElement,group.children[0]);
 });
 
 test('Browser status belongs to the selected page and distinguishes verification from business tasks',async()=>{

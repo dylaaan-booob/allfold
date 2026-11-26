@@ -73,6 +73,12 @@ Directory identity and symlink checks apply before deletion. Logs Reset removes
 only owned history/diagnostics, preserving library, configuration, Session and
 credentials. Neither operation silently resets corrupt data.
 
+The shared Browser Session stores cookies, website data and HTTP cache files
+under Electron's Session data directory during the run. Each new run opens a
+fresh directory. Managed directories from normal or interrupted exits are
+eligible for reclamation on later startup once the owning process has exited.
+Session reclamation leaves Workspace, saved credentials and Logs in place.
+
 ## Native requests and access
 
 IPC messages and native responses stay associated with the actual request, target,

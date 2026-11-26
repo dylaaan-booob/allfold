@@ -60,7 +60,8 @@ retains its stricter foreground Run input snapshot and Query→Export binding.
 
 Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, bound to the saved Service and institution authority. After a settled batch with Services that need attention, one user confirmation marks the batch's unchanged saved Services available. Existing prepared targets are retained. Ordinary settings edits preserve a prepared target while the next task takes a fresh configuration and User State revision. Discover uses the prepared WoS target or opens the official query page in the shared Session after manual confirmation. Query and Export still validate the scoped Service, document and export path. API discovery remains independent of that prerequisite.
 
-Browser Runtime uses one business Session from `session.fromPartition('allfold')`.
+Browser Runtime uses one disk-backed business Session in a fresh directory for
+each launch. See [Session storage and ownership](browser-session.md).
 Selection and presentation are separate from task ownership. DocumentRuntime and
 its isolated preload supply fixed binding/access observations and detached
 extract/pdf snapshots. [Document access](browser-documents.md) owns the local

@@ -1,16 +1,157 @@
 'use strict';
 const {app,BrowserWindow}=require('electron');
-const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const {randomUUID}=require('node:crypto');
+const assert=require('node:assert/strict'),http=require('node:http'),https=require('node:https'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {randomUUID,X509Certificate}=require('node:crypto');
 app.commandLine.appendSwitch('no-proxy-server');
 const fixtureHosts=['oce.ovid.com','assets.ovid.com','www.nature.com','journals.lww.com','www.sciencedirect.com','opg.optica.org','ieeexplore.ieee.org','x.biomedcentral.com','pubs.rsc.org','journals.plos.org','www.mdpi.com','x.copernicus.org','pubs.acs.org','academic.oup.com','pubs.aip.org','jamanetwork.com','rupress.org','ashpublications.org','iovs.arvojournals.org','pubs.geoscienceworld.org','www.cambridge.org','www.bmj.com','www.degruyterbrill.com','www.emerald.com','brill.com','elifesciences.org','www.thieme-connect.com','www.microbiologyresearch.org','epubs.siam.org','onlinelibrary.wiley.com','hindawi.com'];
-app.commandLine.appendSwitch('host-resolver-rules',fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1').join(', '));
+const readerAsset='https://pdf.sciencedirectassets.com/1-s2.0-S1234567812345678/main.pdf';
+fixtureHosts.push(new URL(readerAsset).hostname);
+const ebscoHosts=['search.ebscohost.com','research.ebsco.com','content.ebscohost.com'];
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 require('../src/shared/logging.cjs').initializeLogging({stderr(){}});
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
-app.whenReady().then(async()=>{
-  let page='',requests=[],delayedPDF,challengeResponse=false;
-  const server=http.createServer((request,response)=>{requests.push({url:request.url,referer:request.headers.referer});
+(async()=>{
+  let page='',requests=[],delayedPDF,challengeResponse=false,ebscoDOI='10.5555/fixture',ebscoMode='viewer';
+  const ebscoProfile='https://research.ebsco.com/c/test-profile';
+  const ebscoPdf='https://content.ebscohost.com/files/licensed?Signature=A%2FB';
+  const resultsPath='/c/test-profile/search/results';
+  const recordPath='/c/test-profile/search/details/record';
+  const viewerPath='/c/test-profile/viewer/pdf/record',viewerQuery='?intent=download%20now';
+  const recordDetails='/api/viewer/v6/details/record',downloadLink='/record-access/record';
+  const requestPDF='<script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>';
+  const deniedPDF=ebscoPdf+'&denied=1';
+  const requestAfterDenial='<script>fetch('+JSON.stringify(deniedPDF)+',{headers:{Accept:"application/pdf"}})'
+    +'.finally(()=>fetch('+JSON.stringify(ebscoPdf)+')).catch(()=>{});</script>';
+  const previews=['/cds/retrieve?Signature=preview-first','/cds/retrieve?Signature=preview-second'].map(path=>
+    new URL(path,ebscoPdf).href);
+  const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
+    const current=new URL(request.url,'http://fixture.invalid');
+    const ebscoHub='<a href="'+ebscoProfile+'/search">Search the collection</a>';
+    const subframePost=ebscoMode==='profile-postback-subframe';
+    const multiProfile=ebscoMode==='profile-postback-several';
+    const ebPostback='<form method="post" action="/webauth/Community.aspx">'
+      +(multiProfile?'<a href="javascript:WebForm_DoPostBackWithOptions(1)">Publication Finder</a>':'')
+      +'<a href="javascript:WebForm_DoPostBackWithOptions()">'+(multiProfile?'EBSCO 一站式检索':'Search the collection')+'</a></form>'
+      +(subframePost?'<iframe name="follow-up" hidden></iframe>':'')
+      +'<script>function WebForm_DoPostBackWithOptions(other){const form=document.querySelector("form");'
+      +'if(other)form.action="/publication-finder";'
+      +(ebscoMode==='profile-postback-other-origin'||subframePost?'form.action="https://research.ebsco.com/webauth/Community.aspx";':'')
+      +(subframePost?'form.target="follow-up";':'')
+      +'form.submit();}</script>';
+    if(request.headers.host==='content.ebscohost.com') {
+      if(ebscoMode==='viewer-recovers' && current.searchParams.has('denied')) {
+        response.writeHead(403,{'content-type':'text/html','cache-control':'no-store'});
+        response.end('Access required');return;
+      }
+      response.writeHead(200,{'content-type':'application/pdf','cache-control':'no-store'});
+      response.end('%PDF-fixture');return;
+    }
+    const recordMetadata='<aside aria-label="References"><a href="https://doi.org/10.9876/reference">Reference</a></aside>'
+      +'<h3>DOI</h3><p>'+ebscoDOI+'</p>'
+      +'<a href="/c/test-profile/viewer/pdf/related">Related PDF</a>'
+      +'<a aria-label="Access now (PDF) Licensed fixture" href="'+viewerPath+viewerQuery+'">View PDF</a>';
+    const signIn='<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>';
+    const resultLink='<h2><a href="'+recordPath+'">Licensed fixture</a></h2>';
+    const pendingImage='<img src="/ebsco-pending-image">';
+    let results='<main><h1>Search results</h1>'+resultLink+'</main>';
+    if(ebscoMode==='expired-search')results=signIn+pendingImage;
+    if(ebscoMode==='pending-asset')results='<main aria-busy="true"><h1>Search results</h1></main>'
+      +'<script>setTimeout(()=>{history.replaceState(null,"",location.href+"&db=licensed");'
+      +'const main=document.querySelector("main");main.setAttribute("aria-busy","false");'
+      +'main.insertAdjacentHTML("beforeend",'+JSON.stringify(
+        '<h2><a href="/c/foreign/search/details/first">Licensed fixture</a></h2>'
+        +'<h2><a href="/c/foreign/search/details/second">Licensed fixture</a></h2>'
+        +'<article><h2><a href="'+recordPath+'">Updated title</a></h2><p>DOI: 10.5555/fixture</p></article>'+resultLink+resultLink)
+      +');},800);</script>';
+    if(ebscoMode==='ambiguous')results='<main><h1>Search results</h1>'+resultLink
+      +resultLink.replace(recordPath,recordPath+'-other')+'</main>';
+    if(ebscoMode==='record-in-app-duplicate')
+      results+=resultLink.replace(recordPath,recordPath+'-other');
+    if(ebscoMode.startsWith('record-in-app'))results+='<script>document.querySelector("h2 a").addEventListener("click",event=>{'
+      +'event.preventDefault();history.pushState(null,"",event.currentTarget.href+"?db=licensed");'
+      +'document.querySelector("main").innerHTML='+JSON.stringify('<h1>Licensed fixture</h1>'+recordMetadata)+';});</script>';
+    if(ebscoMode==='replace-search' && !current.searchParams.has('replacement'))
+      results='<main><h1>Search results</h1></main>'+pendingImage
+        +'<script>setTimeout(()=>location.replace(location.href+"&replacement=1"),800);</script>';
+    if(current.pathname==='/ebsco-pending-image')return;
+    if(ebscoMode.startsWith('profile-postback') && current.pathname==='/webauth/Community.aspx') {
+      if(ebscoMode==='profile-postback-redirect-post' && !current.search) {
+        response.writeHead(307,{location:'/webauth/Community.aspx?second=1'});response.end();return;
+      }
+      if(ebscoMode==='profile-postback-return-selector' && requests.filter(item=>item.method==='POST').length===1) {
+        response.writeHead(200,{'content-type':'text/html','cache-control':'no-store'});
+        response.end('<main><h1>Choose a research interface</h1>'+ebPostback+'</main>');return;
+      }
+      response.writeHead(303,{location:ebscoProfile+'/search'});response.end();return;
+    }
+    if(current.pathname===recordPath && ebscoMode.startsWith('record-in-app'))return;
+    if(current.pathname===recordDetails && (ebscoMode.startsWith('search-direct-conflict')
+      || ebscoMode==='search-direct' && URL.parse(request.headers.referer)?.pathname===resultsPath)) {
+      response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      const doi=ebscoMode==='search-direct-conflict'?'10.5555/other':'10.5555/fixture';
+      const rows=[{result:{doi,links:{'v2-downloadLinks':[
+        {type:'pdf',url:downloadLink},
+      ]}}}];
+      if(ebscoMode==='search-direct-conflict-metadata') {
+        rows[0].result.recordId='record';
+        rows.push({result:{recordId:'record',doi:'10.5555/other'}});
+      }
+      response.end(JSON.stringify(rows));return;
+    }
+    if(ebscoMode==='direct-link' && current.pathname===recordDetails) {
+      response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});
+      const row={result:{metadata:'x'.repeat(1100000),recordId:'record',links:{'v2-downloadLinks':[
+        {type:'pdf',url:downloadLink},{type:'pdf',url:ebscoPdf}]}}};
+      response.end(JSON.stringify([row,row]));return;
+    }
+    if(current.pathname.startsWith(recordPath+'-')) {
+      response.writeHead(404,{'content-type':'text/html'});
+      response.end('<main><h1>Record unavailable</h1></main>');return;
+    }
+    if(current.pathname===recordPath && ebscoMode==='unsafe') {
+      response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
+    }
+    const viewerRequest=ebscoMode==='viewer-recovers'?requestAfterDenial:requestPDF;
+    const ebscoPages={
+      '/Community.aspx':'<main><h1>Institution library</h1>'+(ebscoMode.startsWith('profile-postback')?ebPostback:ebscoHub+ebscoHub)+'</main>',
+      '/c/test-profile/search':'<main><h1>Search the library</h1><p>All databases</p></main>',
+      [resultsPath]:results,
+      [recordPath]:ebscoMode==='expired'
+        ? signIn
+        : '<main><h1>Licensed content title</h1>'+(ebscoMode==='delayed'||ebscoMode==='preview'?''
+          :ebscoMode==='html-only'||ebscoMode==='late-viewer'?'<h3>DOI</h3><p>'+ebscoDOI+'</p>'
+            +(ebscoMode==='html-only'?'<section data-testid="full-text-actions" aria-busy="false"><a href="'
+              +viewerPath.replace('/pdf/','/html/')+'">HTML full text</a></section>':'')
+            :recordMetadata)+'</main>'
+          +(ebscoMode==='preview'?'<script>Promise.allSettled('+JSON.stringify(previews)
+            +'.map(url=>fetch(url))).then(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'));</script>':ebscoMode==='delayed'
+            ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>'
+            :ebscoMode==='late-viewer'?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'
+              +JSON.stringify('<a href="'+viewerPath+viewerQuery+'">PDF Full Text</a>')+'),900);</script>':''),
+      [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?viewerRequest:'')
+        +(ebscoMode==='record-in-app'?pendingImage:''),
+    };
+    if(Object.hasOwn(ebscoPages,current.pathname)) {
+      response.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});
+      response.end('<!doctype html>'+ebscoPages[current.pathname]);return;
+    }
+    const handoff=current.searchParams.get('verify-reader');
+    if(handoff==='same' || handoff==='different') {
+      response.setHeader('content-type','text/html');
+      response.end('<!doctype html><script>location.replace('+JSON.stringify(readerAsset+'?case='+handoff)+')</script>');
+      return;
+    }
+    if(current.pathname===new URL(readerAsset).pathname) {
+      response.setHeader('content-type','text/html');
+      if(current.searchParams.get('case')==='replacement') {
+        response.end('<!doctype html><h1>Replacement Document</h1>');return;
+      }
+      const action=current.searchParams.get('case')==='different'?current.pathname+'?case=changed':current.pathname+current.search;
+      response.end(request.method==='GET'
+        ?'<!doctype html><form method="post" action="'+action+'"></form><script>document.forms[0].submit()</script>'
+        :'<!doctype html><h1>Verified reader</h1>');
+      return;
+    }
     if(request.url==='/snapshot-resource'){response.writeHead(200,{'content-type':'text/plain','cache-control':'no-store'});response.end('resource');return;}
     if(request.url==='/snapshot-script'){response.end('');return;}
     if(request.url==='/hydrated-pdf'){delayedPDF=response;return;}
@@ -19,16 +160,28 @@ app.whenReady().then(async()=>{
     if(request.url.startsWith('/pdfviewer/web/viewer.html')||request.url.startsWith('/arbitrary?')){response.setHeader('content-type','text/html');response.end('<body>Fixed viewer fixture</body>');return;}
     if(request.url.includes('/reader-next/')){response.setHeader('content-type','text/plain');response.end('controlled reader carrier');return;}
     if(request.url==='/redirect'){response.writeHead(302,{location:'/actual/Article'});response.end();return;}
-    response.setHeader('content-type','text/html');if(challengeResponse)response.setHeader('cf-mitigated','challenge');response.end(page);});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    response.setHeader('content-type','text/html');if(challengeResponse)response.setHeader('cf-mitigated','challenge');response.end(page);};
+  const fixture=path.resolve(__dirname,'../../tests/fixtures/http');
+  const cert=fs.readFileSync(path.join(fixture,'localhost-cert.pem'));
+  const fingerprint=new X509Certificate(cert).fingerprint256;
+  const server=http.createServer(serve);
+  const secureServer=https.createServer({cert,key:fs.readFileSync(path.join(fixture,'localhost-key.pem'))},serve);
+  await Promise.all([server,secureServer].map(listener=>new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve))));
+  app.commandLine.appendSwitch('host-resolver-rules',[
+    ...fixtureHosts.map(host=>'MAP '+host+' 127.0.0.1'),
+    ...ebscoHosts.map(host=>'MAP '+host+' 127.0.0.1:'+secureServer.address().port),
+  ].join(', '));
+  await app.whenReady();
   const port=server.address().port,url='http://www.nature.com:'+port+'/redirect';
   const host=new BrowserWindow({show:false}),browser=new BrowserRuntime({hostWindow:host});
   const messages=[],native=vm.createContext({require:require('node:module').createRequire(require.resolve('../src/main.cjs')),browser,operations:new Map(),exiting:false,bridgeReady:true,AbortController,
+    readerDiagnosticFields:require('../src/browser/pdf-clues.cjs').readerDiagnosticFields,
     ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),...require('../src/browser/browser-errors.cjs'),operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
     send:message=>messages.push(JSON.parse(JSON.stringify(message)))});
   const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
   vm.runInContext(main.slice(main.indexOf('const CONTROL_ACTIONS='),main.indexOf('async function startPython(')),native);
   const data={workspace_identity:'a'.repeat(64),paper_id:randomUUID(),identity:{confirmed_article_url:'http://www.nature.com:'+port+'/actual/Article'},wantAbstract:true};
+  const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32),preparation_key:'f'.repeat(64)};
   const invoke=async(action='extract_paper_metadata',extra={})=>{const id=randomUUID();requests=[];
     const payload={...data,...extra,deadline_ms:Date.now()+6000};if(action==='extract_paper_pdf_clues')delete payload.wantAbstract;
     await native.execute({id,action,data:payload});
@@ -36,9 +189,8 @@ app.whenReady().then(async()=>{
     assert.ok(result);assert.equal(browser.paperPages.size,0);assert.equal([...browser.tabs.values()].filter(tab=>tab.taskOwner).length,0);
     return result;};
   const article=(head='',body='')=>'<!doctype html><head>'+head+'</head><body><article><h1>Paper</h1><p>Published 2020-05-02</p><div class="abstract">A complete result.</div>'+body+'</article></body>';
-  try {
-    await browser.ready;
-    browser.partition.protocol.handle('https',request=>{const target=new URL(request.url);assert.ok(fixtureHosts.includes(target.hostname));return fetch('http://127.0.0.1:'+port+target.pathname+target.search);});
+  async function checkDocumentClues() {
+    browser.partition.protocol.handle('https',request=>{const target=new URL(request.url);assert.ok(fixtureHosts.includes(target.hostname));return fetch('http://127.0.0.1:'+port+target.pathname+target.search,{method:request.method});});
     page=article('<meta name="fulltext_pdf_url" content="/Full.pdf"><meta name="citation_pdf_url" content="Case.PDF?sig=A%2FB&amp;k=2"><meta name="citation_pdf_url" content="Case.PDF?sig=A%2FB&amp;k=2">','<a data-track-action="download pdf" href="/platform.PDF">PDF</a>');
     const composite=await invoke('extract_paper_metadata',{});
     assert.equal(composite.outcome,'retrieved',JSON.stringify(composite));assert.equal(composite.metadata.abstract,'A complete result.');
@@ -62,15 +214,15 @@ app.whenReady().then(async()=>{
     browser.readDocument=read;
     page=article('','<a href="/supplement.pdf">Supplementary PDF</a><a href="/one.pdf">PDF</a><a href="/two.pdf">PDF</a>');
     const empty=await invoke();assert.deepEqual(empty.pdf_clues.candidates,[]);assert.equal(empty.pdf_clues.status,'complete');
-    page=article('<meta name="citation_pdf_url" content="'+('x'.repeat(4097))+'">');
-    const partial=await invoke();assert.equal(partial.metadata.abstract,'A complete result.');assert.equal(partial.pdf_clues.status,'partial');assert.deepEqual(partial.pdf_clues.diagnostics,['pdf_budget_exceeded']);
-    page=article('<meta name="citation_pdf_url" content="'+('x'.repeat(4097))+'"><meta name="citation_pdf_url" content="https://cdn.example/after-large-field.pdf">');
-    const afterField=await invoke();assert.equal(afterField.pdf_clues.status,'partial');assert.equal(afterField.pdf_clues.candidates[0].url,'https://cdn.example/after-large-field.pdf');
+    const longLink='https://cdn.example/Body.PDF?sig='+('x'.repeat(9000))+'%2FB';
+    page=article('<meta name="citation_pdf_url" content="'+longLink+'"><meta name="citation_pdf_url" content="https://cdn.example/next.pdf">');
+    const afterField=await invoke();assert.equal(afterField.pdf_clues.status,'complete');
+    assert.deepEqual(afterField.pdf_clues.candidates.map(item=>item.url),[longLink,'https://cdn.example/next.pdf']);
     page=article(Array.from({length:40},(_,i)=>'<meta name="citation_pdf_url" content="https://cdn.example/body-'+i+'.pdf">').join(''));
     const manyCandidates=await invoke();assert.equal(manyCandidates.pdf_clues.status,'complete');assert.equal(manyCandidates.pdf_clues.candidates.length,40);
     page=article(Array.from({length:33},(_,i)=>'<meta name="citation_pdf_url" content="https://cdn.example/Body'+i+'/'+('a'.repeat(1900))+'.pdf">').join(''));
     const aggregate=await invoke('extract_paper_metadata',{identity:{confirmed_article_url:'http://www.nature.com:'+port+'/actual/'+('L'.repeat(3900))}});assert.equal(aggregate.outcome,'retrieved',JSON.stringify(aggregate));assert.equal(aggregate.metadata.abstract,'A complete result.');
-    assert.notEqual(aggregate.pdf_clues.status,'complete');assert.deepEqual(aggregate.pdf_clues.diagnostics,['pdf_budget_exceeded']);assert.ok(JSON.stringify(aggregate.pdf_clues).length<=65536);
+    assert.equal(aggregate.pdf_clues.candidates.length,33);assert.equal(aggregate.pdf_clues.status,'complete');
     if(process.argv[3])fs.writeFileSync(process.argv[3],JSON.stringify(aggregate));
     page=article('<meta name="citation_pdf_url" content="https://cdn.example/Paper.PDF">');
     let changed=false;browser.readDocument=async(...args)=>{const result=await read(...args);if(args[1]==='extract'&&!changed){changed=true;await args[0].view.webContents.executeJavaScript('document.body.replaceWith(document.body.cloneNode(true));history.replaceState({},"","?changed=1")');}return result;};
@@ -120,11 +272,12 @@ app.whenReady().then(async()=>{
     assert.equal(toolbar.pdf_clues.candidates.length,2,'only current PII toolbar entrances are body clues');
     assert.equal(toolbar.pdf_clues.candidates[0].url,'http://www.sciencedirect.com:'+port+currentPDF);
     assert.equal(toolbar.pdf_clues.candidates[0].reader_kind,'sciencedirect');
-    page=article('','<script>fetch("/hydrated-pdf").then(r=>r.text()).then(markup=>document.querySelector("article").insertAdjacentHTML("beforeend",markup));</script>');
+    page=article('','<nav id="accessbar" aria-busy="true"></nav><script>fetch("/hydrated-pdf").then(r=>r.text()).then(markup=>document.querySelector("#accessbar").outerHTML=markup);</script>');
     browser.readDocument=async(...args)=>{
       const result=await read(...args);
       if(args[1]==='pdf' && !result.clues.candidates.length && delayedPDF) {
-        delayedPDF.end('<nav><a href="'+currentPDF+'">View PDF</a></nav>');delayedPDF=null;
+        const response=delayedPDF;delayedPDF=null;
+        setTimeout(()=>response.end('<nav id="accessbar"><a href="'+currentPDF+'">View PDF</a></nav>'),2300);
       }
       return result;
     };
@@ -133,7 +286,8 @@ app.whenReady().then(async()=>{
     assert.equal(hydrated.outcome,'retrieved');
     assert.deepEqual(hydrated.pdf_clues.candidates.map(item=>item.url),['http://www.sciencedirect.com:'+port+currentPDF],
       'a current article toolbar hydrated after the initial empty PDF observation is retained');
-    const overflow=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:"'+('x'.repeat(4097))+'"}};</script>');assert.equal(overflow.pdf_clues.status,'failed');assert.deepEqual(overflow.pdf_clues.diagnostics,['pdf_budget_exceeded']);
+    const readerRuntime=await forHost('www.sciencedirect.com','<script>var article={pdfDownload:{urlMetadata:'+JSON.stringify(longLink)+'}};</script>');
+    assert.equal(readerRuntime.pdf_clues.candidates[0].url,longLink);
     const ieee=await forHost('ieeexplore.ieee.org','','','/document/12345');assert.deepEqual(ieee.pdf_clues.identifiers.map(item=>[item.kind,item.value]),[['article_number','12345']]);
     const an='22222222-222222222-22222',otherAn='11111111-111111111-11111';
     const lwwArticle=await forHost('journals.lww.com','<div class="related"><button onclick="PDFDownloadInit(\''+otherAn+'\')">Related PDF</button></div><button onclick="PDFDownloadInit(\''+an+'\')">PDF</button>','','/journal/fulltext/2026/paper.aspx');
@@ -202,6 +356,32 @@ app.whenReady().then(async()=>{
     const sdReader={target:data.identity,rule_id:'R024',platform:'sciencedirect',url:sdReaderURL,identifier:pii,source_url:'https://www.sciencedirect.com/science/article/pii/'+pii,stage:'P2'};
     const redirected=await invoke('extract_paper_pdf_clues',{reader:sdReader});assert.equal(redirected.outcome,'retrieved',JSON.stringify(redirected));assert.equal(redirected.pdf_clues.landing_url,sdReaderURL.replace('redirect-reader=1','final=1'));
     assert.equal(redirected.pdf_clues.candidates[0].stage,'P2');assert.equal(redirected.pdf_clues.candidates[0].url,'http://www.sciencedirect.com:'+port+'/science/article/pii/'+pii+'/Relative.PDF?signature=A%2FB&key=2');
+    const readerIdentity={confirmed_article_url:sdReader.source_url};
+    const verifiedReader=mode=>invoke('extract_paper_pdf_clues',{identity:readerIdentity,
+      reader:{...sdReader,target:readerIdentity,url:sdReaderURL.replace('redirect-reader=1','verify-reader='+mode)}});
+    const verified=await verifiedReader('same');
+    assert.equal(verified.outcome,'retrieved',JSON.stringify(verified));
+    assert.equal(verified.pdf_clues.landing_url,readerAsset+'?case=same');
+    assert.deepEqual(verified.pdf_clues.candidates,[]);
+    const assetPath=new URL(readerAsset).pathname;
+    assert.deepEqual(requests.filter(request=>request.url.startsWith(assetPath)).map(request=>request.method),['GET','POST']);
+    assert.equal(verified.reader_result?.url,readerAsset+'?case=same','the exact earlier asset GET survives verification');
+    assert.equal(verified.reader_result.referer,null,'no unobserved Referer is added to the earlier GET');
+    const changedAsset=await verifiedReader('different');
+    assert.equal(changedAsset.outcome,'retrieved',JSON.stringify(changedAsset));
+    assert.equal(changedAsset.pdf_clues.landing_url,readerAsset+'?case=changed');
+    assert.equal(changedAsset.reader_result,undefined,'a verified landing with a different query cannot reuse the old GET');
+    const cookieContext=browser.sessionEvents.cookieContext;
+    let cookieReads=0,replacedReader;
+    browser.sessionEvents.cookieContext=async entry=>{
+      if(++cookieReads===2)await browser.taskTab.view.webContents.loadURL(readerAsset+'?case=replacement');
+      return cookieContext.call(browser.sessionEvents,entry);
+    };
+    try {replacedReader=await verifiedReader('same');}
+    finally {browser.sessionEvents.cookieContext=cookieContext;}
+    assert.equal(cookieReads,2);
+    assert.equal(replacedReader.pdf_clues.landing_url,readerAsset+'?case=same');
+    assert.equal(replacedReader.reader_result,undefined,'a new navigation during the cookie read has no verified handoff');
     const unsafe=await invoke('extract_paper_pdf_clues',{reader:{...sdReader,url:sdReaderURL.replace('redirect-reader=1','internal-redirect=1')}});assert.ok(unsafe.diagnostic);assert.ok(!requests.some(item=>item.url==='/forbidden'),'internal redirect is blocked before its request');
     page='<!doctype html><body><iframe src="/reader-next/IEEE.PDF?signature=AbC"></iframe></body>';
     const ieeeReader={target:data.identity,rule_id:'R025',platform:'ieee',url:'http://ieeexplore.ieee.org:'+port+'/stamp/stamp.jsp?tp=&arnumber=12345',identifier:'12345',source_url:'https://ieeexplore.ieee.org/document/12345',stage:'P2'};
@@ -214,7 +394,6 @@ app.whenReady().then(async()=>{
     assert.ok((await invoke('extract_paper_pdf_clues',{reader:{...reader,identifier:'wrong'}})).diagnostic);
     // OCE uses its own prepared retained target, including when preparation
     // originally entered through CARSI. Capability reads never navigate.
-    const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32),preparation_key:'f'.repeat(64)};
     const capability=await invoke('extract_paper_pdf_clues',{reader_access_only:true});
     assert.deepEqual(capability.reader_access,{oce:false});assert.deepEqual(requests,[]);
     let retained;page=article();
@@ -238,6 +417,182 @@ app.whenReady().then(async()=>{
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader:oceReader})).diagnostic,'retained non-OCE context is refused');
     await browser.closePage(retained);
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).diagnostic,'closed preparation cannot be renewed');
-    console.log('PDF CLUES PASS');
-  } finally {await browser.close();host.destroy();await new Promise(resolve=>server.close(resolve));}
-}).then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});
+  }
+  async function checkEbscoClues() {
+    // Use real Session webRequest callbacks for the viewer subresource.
+    let retained;
+    browser.partition.setCertificateVerifyProc((request,callback)=>callback(ebscoHosts.includes(request.hostname)
+      && new X509Certificate(request.certificate.data).fingerprint256===fingerprint?0:-3));
+    const prepareEbsco=async()=>{
+      if(retained)await browser.closePage(retained);
+      await browser.runTask(new AbortController().signal,{...scoped,request_id:randomUUID()},async()=>{
+        retained=await browser.newTaskPage({deadline:Date.now()+4000,managed:true});
+        await browser.navigate('https://search.ebscohost.com/Community.aspx',{tab:retained,deadline:Date.now()+4000});
+        browser.retainAccessPage(retained,scoped);
+      });
+    };
+    await prepareEbsco();
+    let licensed={...scoped,target_page_id:retained.id,prepared_source:'ebsco',
+      identity:{doi:'10.5555/fixture'},target_title:'Licensed fixture'};
+    const freshProfile=async()=>{await prepareEbsco();licensed={...licensed,target_page_id:retained.id};};
+    const found=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(found.outcome,'retrieved',JSON.stringify({found,requests}));
+    assert.equal(found.pdf_clues.landing_url,ebscoProfile+'/search/details/record');
+    assert.equal(found.pdf_clues.candidates[0].url,ebscoPdf);
+    assert.equal(found.pdf_clues.candidates[0].rule_id,'R073');
+    assert.ok(requests.some(request=>request.url==='/c/test-profile/search/results?q=10.5555%2Ffixture'));
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery),'keep the actual viewer action and query');
+    assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/related')));
+    assert.equal(requests.filter(request=>request.url.startsWith('/files/licensed')).length,1,'Viewer supplies the observed PDF GET');
+    assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='profile-postback';await freshProfile();
+    const community=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(community.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(community));
+    assert.deepEqual(requests.filter(request=>request.url==='/webauth/Community.aspx').map(request=>request.method),['POST']);
+    assert.equal(retained.view.webContents.getURL(),'https://search.ebscohost.com/Community.aspx');
+    ebscoMode='profile-postback-several';await freshProfile();
+    const severalProfiles=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(severalProfiles.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(severalProfiles));
+    assert.deepEqual(requests.filter(request=>request.method==='POST').map(request=>request.url),['/webauth/Community.aspx']);
+    ebscoMode='profile-postback-other-origin';await freshProfile();
+    const wrongPost=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(wrongPost.diagnostic && !wrongPost.pdf_clues);
+    assert.equal(requests.filter(request=>request.method==='POST').length,0,'the submitted destination is checked before any POST');
+    ebscoMode='profile-postback-subframe';await freshProfile();
+    const wrongFrame=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(wrongFrame.diagnostic && !wrongFrame.pdf_clues);
+    assert.equal(requests.filter(request=>request.method==='POST').length,0,'a changed form target cannot POST in a child frame');
+    ebscoMode='profile-postback-redirect-post';await freshProfile();
+    const replayPost=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(replayPost.diagnostic && !replayPost.pdf_clues);
+    assert.equal(requests.filter(request=>request.method==='POST').length,1,'a 307 does not replay the managed form');
+    ebscoMode='profile-postback-return-selector';await freshProfile();
+    const stillAtSelector=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(requests.filter(request=>request.method==='POST').length,1,'a replacement selector cannot replay the submitted form');
+    assert.ok(stillAtSelector.diagnostic && !stillAtSelector.pdf_clues);
+    ebscoMode='direct-link';await freshProfile();
+    const direct=await invoke('extract_paper_pdf_clues',licensed);
+    assert.deepEqual(direct.pdf_clues?.candidates?.map(item=>item.url),
+      ['https://research.ebsco.com'+downloadLink,ebscoPdf]);
+    assert.ok(requests.some(request=>new URL(request.url,ebscoProfile).searchParams.get('opid')==='test-profile'));
+    assert.ok(!requests.some(request=>request.url.startsWith(viewerPath) || request.url.startsWith('/files/licensed')));
+    ebscoMode='viewer';
+    const fixedViewer={...licensed,prepared_source:'ebsco-viewer',prepared_viewer:direct.ebsco_viewer_url};
+    const wrongRecord=await invoke('extract_paper_pdf_clues',{...fixedViewer,prepared_record:'https://research.ebsco.com'+recordPath+'-other'});
+    assert.ok(wrongRecord.diagnostic && !wrongRecord.pdf_clues);
+    assert.ok(!requests.some(request=>request.url.startsWith(viewerPath)),'another record cannot supply the direct entry fallback');
+    const sameRecord=await invoke('extract_paper_pdf_clues',{...fixedViewer,prepared_record:'https://research.ebsco.com'+recordPath});
+    assert.equal(sameRecord.pdf_clues?.candidates[0]?.url,ebscoPdf);
+    assert.ok(!requests.some(request=>request.url==='/Community.aspx' || request.url.startsWith(resultsPath)
+      || request.url===recordPath),'fallback uses the captured Viewer without repeating preparation or search');
+    ebscoMode='viewer-recovers';
+    const recoveredViewer=await invoke('extract_paper_pdf_clues',
+      {...fixedViewer,prepared_record:'https://research.ebsco.com'+recordPath});
+    assert.equal(recoveredViewer.pdf_clues?.candidates[0]?.url,ebscoPdf,'a later valid Viewer response survives an earlier 403');
+    assert.ok(requests.some(request=>request.url.endsWith('&denied=1')));
+    ebscoMode='search-direct';
+    const fromResults=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(fromResults.pdf_clues?.landing_url,'https://research.ebsco.com'+recordPath);
+    const [link]=fromResults.pdf_clues?.candidates || [];
+    assert.equal(link?.url,'https://research.ebsco.com'+downloadLink,'matching details from the authorized search provide the PDF entry');
+    assert.equal(new URL(link.referer).pathname,resultsPath);
+    assert.ok(!requests.some(request=>request.url===recordPath || request.url.startsWith(viewerPath)
+      || request.url.startsWith('/files/licensed')),'discovery needs neither the record page nor a body request');
+    for(const mode of ['search-direct-conflict','search-direct-conflict-metadata']) {
+      ebscoMode=mode;
+      const verifiedOnPage=await invoke('extract_paper_pdf_clues',licensed);
+      assert.equal(verifiedOnPage.pdf_clues?.candidates[0]?.url,ebscoPdf,'conflicting details leave record and Viewer available');
+      assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    }
+    ebscoMode='record-in-app-duplicate';
+    const openedViewer=await invoke('extract_paper_pdf_clues',{...licensed,prepared_source:'ebsco-viewer',
+      prepared_record:fromResults.pdf_clues.landing_url});
+    assert.equal(openedViewer.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(openedViewer));
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    assert.ok(!requests.some(request=>request.url.startsWith(recordPath)),
+      'Viewer follows the verified result through the current search even with a second plausible record');
+    ebscoMode='pending-asset';
+    const pendingAsset=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(pendingAsset.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({pendingAsset,requests}));
+    assert.ok(!requests.some(request=>request.url==='/Community.aspx'),'prepared profile is reused across downloads');
+    ebscoMode='ambiguous';
+    const ambiguous=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(ambiguous.diagnostic?.step,'result');
+    assert.ok(!requests.some(request=>request.url.startsWith(recordPath)));
+    ebscoMode='record-in-app';
+    const inAppRecord=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(inAppRecord.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({inAppRecord,requests}));
+    assert.equal(inAppRecord.pdf_clues.landing_url,'https://research.ebsco.com'+recordPath+'?db=licensed');
+    assert.ok(!requests.some(request=>request.url===recordPath),'the working record route keeps the search document');
+    assert.ok(requests.some(request=>request.url==='/ebsco-pending-image'),'the verified Viewer can provide the PDF while an unrelated asset is pending');
+    ebscoMode='viewer';
+    const documentCall=browser.documents.call.bind(browser.documents);
+    let readRaced=false;
+    browser.documents.call=async (binding,action,args,options)=>{
+      if(!readRaced && action==='ebsco' && args.mode==='results') {
+        readRaced=true;
+        const contents=browser.tabs.get(binding.pageId).view.webContents;
+        await contents.executeJavaScript('history.replaceState(null,"",location.href+"&db=licensed")');
+      }
+      return documentCall(binding,action,args,options);
+    };
+    try {
+      const raced=await invoke('extract_paper_pdf_clues',licensed);
+      assert.ok(readRaced);
+      assert.equal(raced.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify(raced));
+      assert.equal(requests.filter(request=>request.url.startsWith(resultsPath)).length,1,'only the local document read is retried');
+    } finally {browser.documents.call=documentCall;}
+    ebscoMode='replace-search';
+    let replacementStarted=false;
+    browser.events.once('tab-created',(_event,tab)=>{
+      tab.view.webContents.on('did-start-navigation',(event,url,inPlace,main)=>{
+        if((event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace) && (event.url ?? url).endsWith('&replacement=1'))
+          replacementStarted=true;
+      });
+    });
+    const replacedSearch=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(replacedSearch.pdf_clues?.candidates[0]?.url,ebscoPdf,JSON.stringify({replacedSearch,requests}));
+    assert.ok(replacementStarted,'a full replacement triggers a fresh observation of the same search');
+    ebscoMode='expired-search';await freshProfile();
+    const expiredSearch=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(expiredSearch.diagnostic?.code,'content_access_blocked',JSON.stringify(expiredSearch));
+    assert.ok(!requests.some(request=>request.url===recordPath));
+    ebscoMode='delayed';
+    const delayed=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(delayed.pdf_clues?.candidates[0]?.url,ebscoPdf,'title-only intermediate state must not stop extraction');
+    ebscoMode='html-only';
+    const htmlOnly=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(htmlOnly.outcome,'retrieved');
+    assert.deepEqual(htmlOnly.pdf_clues.candidates,[],'a ready HTML-only record releases this source for fallback');
+    ebscoMode='late-viewer';
+    const lateViewer=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(lateViewer.pdf_clues?.candidates[0]?.url,ebscoPdf,'DOI readiness alone cannot report a missing Viewer');
+    ebscoMode='preview';
+    const preview=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(preview.outcome,'retrieved',JSON.stringify({preview,requests}));
+    assert.equal(preview.pdf_clues.candidates[0].url,ebscoPdf,'distinct automatic previews cannot qualify the body');
+    assert.ok(requests.some(request=>request.url===viewerPath+viewerQuery));
+    assert.equal(requests.filter(request=>request.url.startsWith('/files/licensed')).length,1);
+    ebscoDOI='10.5555/different';
+    const wrong=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(wrong.diagnostic && !wrong.pdf_clues,'the actual licensed record must match the Paper DOI');
+    assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/')));
+    ebscoMode='expired';
+    const expired=await invoke('extract_paper_pdf_clues',licensed);
+    assert.equal(expired.diagnostic?.code,'content_access_blocked',JSON.stringify(expired));
+    assert.ok(!requests.some(request=>request.url.includes('/viewer/pdf/')));
+    ebscoMode='unsafe';
+    const unsafeEbsco=await invoke('extract_paper_pdf_clues',licensed);
+    assert.ok(unsafeEbsco.diagnostic && !unsafeEbsco.pdf_clues);
+    assert.ok(!requests.some(request=>request.url==='/ebsco-forbidden'),'private redirect is refused before sending');
+    await browser.closePage(retained);
+  }
+  try {
+    await browser.ready;
+    const mode=process.argv[4];
+    if(mode==='document')await checkDocumentClues();
+    else if(mode==='ebsco')await checkEbscoClues();
+    else throw Error('Unknown Document fixture mode');
+    console.log(mode+' PDF CLUES PASS');
+  } finally {await browser.close();host.destroy();await Promise.all([server,secureServer].map(listener=>new Promise(resolve=>listener.close(resolve))));}
+})().then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

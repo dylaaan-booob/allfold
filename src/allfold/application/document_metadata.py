@@ -1,7 +1,6 @@
 """Guarded fixed Document operation; native evidence is consumed after normal cleanup."""
 from dataclasses import dataclass, field
 import re
-from urllib.parse import urlsplit
 
 from allfold.url_safety import normalize_public_http_url
 from allfold.pdf_facts import (PdfDiscoveryFacts, PdfIdentifier, PdfRefreshLocator,
@@ -14,7 +13,7 @@ from allfold.persistence.library_models import MetadataDelta, normalize_ordinary
 _DIAGNOSTICS = frozenset({'json_ld_invalid', 'json_ld_ambiguous',
     'abstract_candidate_failed', 'abstract_budget_exceeded', 'date_scan_failed', 'metadata_extraction_failed'})
 _PARTIAL = frozenset({'abstract_candidate_failed', 'abstract_budget_exceeded', 'date_scan_failed', 'metadata_extraction_failed',
-    'pdf_parse_failed', 'pdf_budget_exceeded'})
+    'pdf_parse_failed', 'pdf_budget_exceeded', 'pdf_context_missing'})
 
 
 class DocumentMetadataFailed(RuntimeError):
@@ -100,6 +99,8 @@ class DocumentPdfResult:
     recovery: object = None
     diagnostics_status: object = None
     reader_result: ReaderResult | None = None
+    ebsco_viewer_url: str | None = field(default=None, repr=False)
+    current_landing_url: str | None = field(default=None, repr=False)
 
 
 def validate_document_pdf_clues(value, *, target_doi=None):
@@ -110,43 +111,50 @@ def validate_document_pdf_clues(value, *, target_doi=None):
     if not isinstance(clues, dict) or set(clues) != {'status', 'landing_url', 'observed_at',
             'platform', 'content_type', 'identifiers', 'candidates', 'diagnostics'}:
         raise DocumentMetadataFailed('Invalid Document PDF clues')
-    if len(str(clues)) > 70000:
-        raise DocumentMetadataFailed('Invalid Document PDF payload budget')
-    landing = clues['landing_url']
-    if (not isinstance(landing, str) or not 1 <= len(landing) <= 4096 or re.search(r'[\s\x00-\x1f]', landing)):
-        raise DocumentMetadataFailed('Invalid Document PDF landing URL')
+    def public_url(url):
+        try:
+            return normalize_public_http_url(url) if isinstance(url, str) else None
+        except ValueError:
+            return None
+
+    landing = public_url(clues['landing_url'])
     try:
-        parsed = urlsplit(landing)
-        if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password:
-            raise ValueError('Invalid landing URL')
-        parsed.port
         if (not isinstance(clues['observed_at'], str) or not re.fullmatch(
                 r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z', clues['observed_at'])
                 or not isinstance(clues['candidates'], list)
                 or not isinstance(clues['identifiers'], list)
-                or not isinstance(clues['diagnostics'], list) or len(clues['diagnostics']) > 2
+                or not isinstance(clues['diagnostics'], list) or len(clues['diagnostics']) > 3
                 or len(set(clues['diagnostics'])) != len(clues['diagnostics'])
-                or any(code not in {'pdf_parse_failed', 'pdf_budget_exceeded'} for code in clues['diagnostics'])):
+                or any(code not in {'pdf_parse_failed', 'pdf_budget_exceeded', 'pdf_context_missing'} for code in clues['diagnostics'])):
             raise ValueError('Invalid bounded clues')
         current, persisted = [], []
+        reasons = {'pdf_budget_exceeded': 'overflow', 'pdf_context_missing': 'invalid-url', 'pdf_parse_failed': 'parse-failed'}
+        diagnostics = list(dict.fromkeys(reasons[code] for code in clues['diagnostics']))
+        def missing_context():
+            if 'invalid-url' not in diagnostics:
+                diagnostics.append('invalid-url')
+
+        if landing is None:
+            missing_context()
         for candidate in clues['candidates']:
             if (not isinstance(candidate, dict) or not {'stage', 'rule_id', 'url'} <= set(candidate)
                     or set(candidate) - {'stage', 'rule_id', 'url', 'action', 'reader_kind', 'referer', 'field'}
                     or candidate['stage'] not in {'P1', 'P2', 'P3', 'P4', 'P5'}
                     or not re.fullmatch(r'(?:R[0-9]{3}|GENERIC)', candidate['rule_id'])
-                    or not isinstance(candidate['url'], str) or len(candidate['url']) > 4096
                     or candidate.get('action') not in {None, 'refresh_form'}
                     or candidate.get('reader_kind') not in {None, 'sciencedirect', 'lww', 'ieee'}
-                    or candidate.get('field') not in {None, 'citation_pdf_url', 'fulltext_pdf_url'}):
+                    or candidate.get('field') not in {None, 'citation_pdf_url', 'fulltext_pdf_url', 'ebsco_download_link'}
+                    or candidate.get('field') == 'ebsco_download_link' and (
+                        clues['platform'], candidate['rule_id'], candidate['stage']) != ('ebsco', 'R073', 'P4')):
                 raise ValueError('Invalid candidate')
-            if normalize_public_http_url(candidate['url']) is None:
-                raise ValueError('Empty candidate URL')
-            if candidate.get('referer') is not None:
-                if not isinstance(candidate['referer'], str) or len(candidate['referer']) > 4096:
-                    raise ValueError('Invalid Referer')
-                normalize_public_http_url(candidate['referer'])
-            current.append(CurrentPdfClue(**candidate))
+            if not public_url(candidate['url']):
+                missing_context()
+                continue
             fields = dict(candidate)
+            if fields.get('referer') is not None and public_url(fields['referer']) is None:
+                missing_context()
+                fields['referer'] = None
+            current.append(CurrentPdfClue(**fields))
             if fields.get('action') == 'refresh_form':
                 # A form locator is an action to re-read, never a durable GET request.
                 fields.update(url=None, referer=None, refresh=PdfRefreshLocator(kind='document-pdf',
@@ -154,15 +162,18 @@ def validate_document_pdf_clues(value, *, target_doi=None):
             persisted.append(persistent_pdf_candidate(refresh_kind='document-pdf', landing_url=landing, **fields))
         if any(not isinstance(item, dict) or set(item) != {'kind', 'value', 'rule_id'} for item in clues['identifiers']):
             raise ValueError('Invalid identifiers')
-        facts = bounded_discovery_facts(source='document', capability='document-pdf', status=clues['status'],
+        status = clues['status']
+        if status == 'complete' and clues['diagnostics']:
+            raise ValueError('Parse failures cannot become complete empty success')
+        if status == 'complete' and diagnostics:
+            status = 'partial'
+        facts = bounded_discovery_facts(source='document', capability='document-pdf', status=status,
             observed_at=clues['observed_at'], target_doi=target_doi,
             landing_url=stable_discovery_url(landing), platform=clues['platform'], content_type=clues['content_type'],
             identifiers=tuple(PdfIdentifier(**item) for item in clues['identifiers']), candidates=tuple(persisted),
-            diagnostics=tuple('overflow' if code == 'pdf_budget_exceeded' else 'parse-failed' for code in clues['diagnostics']))
+            diagnostics=tuple(diagnostics))
         if facts.status != 'complete' and not facts.diagnostics:
-            raise ValueError('Failed extraction must carry a bounded diagnostic')
-        if facts.status == 'complete' and facts.diagnostics:
-            raise ValueError('Parse failures cannot become complete empty success')
+            raise ValueError('Failed extraction must carry a diagnostic')
     except (TypeError, ValueError) as error:
         raise DocumentMetadataFailed('Invalid Document PDF clues') from error
     reader = value.get('reader_result')
@@ -172,16 +183,21 @@ def validate_document_pdf_clues(value, *, target_doi=None):
                     or type(reader['context_changed']) is not bool
                     or not isinstance(reader['context_key'], str) or not re.fullmatch(r'[a-f0-9]{64}', reader['context_key'])):
                 raise ValueError('Invalid Reader result')
-            for key in ('url', 'referer'):
-                url = reader[key]
-                if key == 'referer' and url is None:
-                    continue
-                if not isinstance(url, str) or len(url) > 4096 or not normalize_public_http_url(url):
-                    raise ValueError('Invalid Reader URL')
+            if not public_url(reader['url']) or reader['referer'] is not None and not public_url(reader['referer']):
+                raise ValueError('Invalid Reader URL')
             reader = ReaderResult(**reader)
-        except (TypeError, ValueError) as error:
-            raise DocumentMetadataFailed('Invalid Reader result') from error
-    return DocumentPdfResult(facts, tuple(current), value.get('recovery'), value.get('diagnostics_status'), reader)
+        except (TypeError, ValueError):
+            reader = None
+            status = 'partial' if facts.status == 'complete' else facts.status
+            facts = facts.model_copy(update={'status': status,
+                'diagnostics': tuple(dict.fromkeys((*facts.diagnostics, 'invalid-url')))})
+    viewer = value.get('ebsco_viewer_url')
+    if viewer is not None and (clues['platform'] != 'ebsco' or not public_url(viewer)):
+        viewer = None
+        facts = facts.model_copy(update={'status': 'partial',
+            'diagnostics': tuple(dict.fromkeys((*facts.diagnostics, 'invalid-url')))})
+    return DocumentPdfResult(facts, tuple(current), value.get('recovery'), value.get('diagnostics_status'),
+        reader, viewer, current_landing_url=landing)
 
 
 def validate_document_metadata(value, *, target_doi=None):
@@ -198,8 +214,11 @@ def validate_document_metadata(value, *, target_doi=None):
         if (status == 'partial') != content.partial:
             raise DocumentMetadataFailed('Invalid partial Document metadata')
     pdf = validate_document_pdf_clues(value, target_doi=target_doi)
+    pdf_diagnostics = (*value['pdf_clues']['diagnostics'], *(
+        code for reason, code in (('overflow', 'pdf_budget_exceeded'), ('invalid-url', 'pdf_context_missing'))
+        if reason in pdf.facts.diagnostics))
     return DocumentMetadataResult(MetadataDelta(**content.delta.model_dump() | {'discovery_facts': (pdf.facts,)}),
-        content.diagnostics + tuple(value['pdf_clues']['diagnostics']),
+        content.diagnostics + tuple(dict.fromkeys(pdf_diagnostics)),
         recovery=content.recovery, diagnostics_status=content.diagnostics_status)
 
 
@@ -208,10 +227,7 @@ def _paper_identity(paper, confirmed_article_url):
     if paper.primary_identity is not None and paper.primary_identity.namespace == 'doi':
         identity['doi'] = paper.primary_identity.value
     if confirmed_article_url is not None:
-        if not isinstance(confirmed_article_url, str) or not 1 <= len(confirmed_article_url) <= 4096 or re.search(r'\s', confirmed_article_url):
-            raise ValueError('Expected a trusted confirmed article URL')
-        parsed = urlsplit(confirmed_article_url)
-        if parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.username or parsed.password:
+        if not isinstance(confirmed_article_url, str) or not normalize_public_http_url(confirmed_article_url):
             raise ValueError('Expected a trusted confirmed article URL')
         identity['confirmed_article_url'] = confirmed_article_url
     if not identity:
@@ -219,17 +235,25 @@ def _paper_identity(paper, confirmed_article_url):
     return identity
 
 
-def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None):
+def read_document_pdf_clues(context, *, confirmed_article_url=None, reader=None, prepared_source=None,
+                           prepared_record=None, prepared_viewer=None):
     """Read current PDF inputs without emitting or reopening any collection state.
 
     The caller owns a captured read-only task context with read_paper(),
     native_payload(), execute_native() and its normal authority/cleanup lifecycle.
     A reader is a trusted immutable candidate chain, never a webpage-supplied URL.
     """
-    identity = _paper_identity(context.read_paper(), confirmed_article_url)
+    paper = context.read_paper()
+    identity = _paper_identity(paper, confirmed_article_url)
     payload = context.native_payload() | {'identity': identity}
     if reader is not None:
         payload['reader'] = dict(reader) | {'target': identity}
+    if prepared_source is not None:
+        payload.update(prepared_source=prepared_source, target_title=paper.metadata.title)
+        if prepared_record is not None:
+            payload['prepared_record'] = prepared_record
+        if prepared_viewer is not None:
+            payload['prepared_viewer'] = prepared_viewer
     return validate_document_pdf_clues(context.execute_native('extract_paper_pdf_clues', payload).result(),
         target_doi=identity.get('doi'))
 

@@ -80,6 +80,13 @@ The following real-UI checks are a reference for changes affecting those behavio
 
 ## Task Browser synthetic acceptance
 
+Browser keeps a group for each currently configured Service even when Prepare
+failed or its retained page was evicted. Recorded scoped page associations take
+precedence. A CARSI descendant without a Service association can display under
+the single current Service whose configured access URL has the page's actual
+HTTP(S) origin; ambiguous origins remain in CARSI. This display choice never
+assigns a native task, prepared access or credential authority.
+
 The Electron fixtures use temporary profiles and loopback HTTP pages. They reject
 non-fixture HTTP(S) requests.
 

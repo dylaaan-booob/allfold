@@ -122,7 +122,10 @@ PDF Source Discovery 不运行 Zotero Translator、Zotero Translate 或 Zotero U
 - P1 下载完成时，本次 PDF 操作不再请求 Handle/Crossref、不额外加载文章 HTML，也不调用 OpenAlex；不否定此前 Run 已完成的网页/API 采集。
 - P1 不适用时，直接进入第一个适用阶段；不对所有平台试探 `/doi/pdf/`。
 - P2 的 Handle、Crossref 和官方 API 不是固定串联步骤。按缺少的信息选择相应来源，前一次结果足够时停止补查。
-- P1/P2 及已有 P3 之后，稳定的已有 P4 URL 可直接进入 Session；partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；该次实际读取的 P3 仍先于其 P4，不重跑已失败的 P1/P2，不把动作/刷新定位信息当 GET。
+- 具备唯一已打开 EBSCO Service 的 DOI 期刊论文先尝试 [R073](#r073)。其余来源沿用 P1 模板先行；已经具备资格的 P2、已有 P3 和稳定 P4 候选中，直达 PDF 先于 Reader、表单动作及可选的缺失输入 API 查询，同类候选保持来源次序。partial 快照、可能补出的 P3 或无关刷新线索不强制先重开文章。已有候选失败、缺失或动态入口确需更新时，再按需执行 PDF-only 取页；当前 Document 与因此新获资格的模板也采用直达优先，不重发已试 P1/P2 URL 或重启缺失输入 API，不把动作/刷新定位信息当 GET。原 Paper、候选来源阶段、实际 Service、签名和访问上下文仍保留；P5 仍在后面。
+- API 查询新获资格的候选采用相同稳定排序。普通入口收到 HTML 后，可选的 Reader 取页先让同批其他直达入口尝试；需要回退时沿用原响应及上下文。有效响应/重定向链及已有 ScienceDirect 文章回链恢复保留在原来源内。IEEE `stamp.jsp` 即使来自普通 Meta、没有 Reader 标记也可按既有固定入口识别；ScienceDirect、Optica 和 IEEE `stampPDF` 可能直接返回 PDF 的 URL 不因此被一概判作 Reader。
+- 同一规则、同一 origin/path 的查询参数变体仍是该来源的回退，不为先轮询这些变体而中断其 Reader；该判断不改写任何请求 URL 或参数。其他已合格直达来源仍优先，原生显式动作顺序不重排。
+- 普通发现候选没有显式 Referer 时，沿用已合格的当前文章 URL（含 Document 实际解析后的路由），不为补这个上下文额外取页。已有 Referer、原生动作及可信显式候选上下文保留；Session 层仍执行原有跨 origin 与 HTTPS 降级策略。
 - 规则在某个阶段取得新的 ID 或明确下载地址，可以就地完成其依赖链。无需为了阶段编号重新开始整个流程。
 
 #### F2.3 中间页面随候选处理
@@ -159,7 +162,7 @@ DOI 前缀只作辅助线索。既有目标 URL 或解析结果表明内容已�
 
 | 信息 | 用途 |
 |---|---|
-| 稳定规则编号 | 保留本材料的 `R001`–`R072`，关联来源和诊断 |
+| 稳定规则编号 | 保留本材料的 `R001`–`R073`，关联来源和诊断 |
 | Platform、Host 和内容类型 | 限定适用对象，防止跨平台替换 |
 | 所需输入 | DOI、内部 ID、文章 URL、Document 或页面状态 |
 | 规则种类 | DOI 构造、ID 解析、URL 转换、Meta、DOM、中间页解析 |
@@ -260,10 +263,12 @@ Handle、Crossref 和官方 API 的响应按用途解释。登记 URL 不等于 
 有合格 PII 后生成：
 
 ```text
-https://www.sciencedirect.com/science/article/pii/{PII}/pdfft
+https://www.sciencedirect.com/science/article/pii/{PII}/pdfft?download=true
 ```
 
-已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。`?download=true` 作为该平台已有依据的变体处理。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)
+已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。生成入口时优先使用 `?download=true`，无法继续时回退到普通 `/pdfft`。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
+
+同一 DOI 的可信登记落点若是 Elsevier Linking Hub 的 `/retrieve/pii/{pii}`，用其中合格的 PII 生成现有 ScienceDirect R024 入口。仅在已取得文章页上下文时附带文章 Referer；后续 Session、Reader 和保存仍按正常权限与任务范围处理。
 
 Cell Press 的 [R023](#r023) 使用 `https://www.cell.com/action/showPdf?pii={pii}`，输入可来自 `fulltext`、`pdfExtended` 或 `showPdf` URL。保留其有标点 PII/端点条件，不把 ScienceDirect 的规范化与 Host 直接套到 Cell。
 
@@ -338,7 +343,7 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 | ACS | 当前 Silverchair PDF 链接；引用链接提供 `resourceId/resourceType` | [R044](#r044)，不自动推广 OUP 的 BibTeX `eprint` 行为 |
 | Cambridge Core | 期刊 Meta；材料中图书/章节另有 `.actions a[target='_blank'][href*='.pdf']` | [R051](#r051)，期刊与图书分支不混用 |
 | Nature | Meta；`a[data-track-action='download pdf']` | [R037](#r037) |
-| Atypon | 页面确有 `/doi/pdf/`、`/doi/epdf/`、`/doi/pdfplus/` 链接时选择对应变体 | [R039](#r039)、[R061](#r061) |
+| Atypon | 已识别实际期刊 Host 与 DOI 复用通用直达入口；已有专用 P1 模板优先，DOM/Reader 保留为回退 | [R039](#r039)、[R061](#r061) |
 | De Gruyter Brill | `a.downloadPdf[href]` | [R054](#r054)，与 `brill.com` 规则分开 |
 | Emerald | `a.intent_pdf_link[href]` 或已在 `full/pdf?` 的当前 URL | [R055](#r055) |
 | eLife | `.article-download-list a[href]` 中明确 PDF 入口 | [R057](#r057)，不猜文件版本后缀 |
@@ -391,7 +396,7 @@ Meta 值指向 HTML 下载器时进入适用的中间页规则。不能因为 UR
 
 | 平台 | 采用的处理路径 | 保留的条件 |
 |---|---|---|
-| **ScienceDirect** | PII → `/pdfft`；必要时读取 `meta refresh`、`#redirect-message a`、`.PdfEmbed > object` 或明确 JSON 下载字段 | `md5/pid` 等值来自页面，不自行生成；已有下一跳时不返回文章页重走。[R024](#r024) |
+| **ScienceDirect** | PII → `/pdfft?download=true`，保留 `/pdfft` 回退。必要时读取 `meta refresh`、`#redirect-message a`、`.PdfEmbed > object` 或明确 JSON 下载字段。 | `md5/pid` 等值来自页面，不自行生成。已有下一跳时不返回文章页重走。[R024](#r024) |
 | **IEEE** | 已知编号先请求 `getPDF.jsp`；失败后解析 `stamp.jsp` 的 frame/iframe/meta refresh | 区分阅读器与二进制候选；保持目标 `arnumber`。[R025](#r025) |
 | **Optica / OSA** | `citation_pdf_url` 或 `#link-pdf` → 中间页 `frame:not(:first-of-type)[src]`，或已知 `gotourl` 参数 | `frame` 规则不能退化为任意第一个 iframe；`gotourl` 为平台字段。[R053](#r053) |
 | **Silverchair / OUP** | 明确的 article-pdf 入口 → 正常 HTTP 重定向 → CDN | 不生成或修改签名；是否需要导航、Cookie 或 Referer 按 Host 和现有上下文处理。[R020](#r020)、[R044](#r044)–[R050](#r050) |
@@ -480,7 +485,7 @@ API 的 HTTP 状态、限流和访问要求以相应官方证据为依据，不�
 
 **不算回退：** 因输入或凭证不足而跳过不适用规则；从 DOI 查询取得 PII 后首次请求 PDF；正常 HTTP 重定向；同一路径读取已知中间页；下载方对同一候选的受控重试。
 
-**算回退：** 已发生物理候选尝试且失败后，再实际尝试另一合格候选，包括来自 DOM 或 OpenAlex 的候选。只读取元数据、执行资格检查或得到空 OpenAlex 列表不虚构物理回退。同一规则明确列出的第二个 URL 在首个失败后被尝试，也属于候选回退。
+**算回退：** 已发生物理候选尝试且失败后，再实际尝试另一合格候选，包括来自 DOM 或 OpenAlex 的候选。R073 已执行的馆藏正文查找失败后改试其他来源，也记录回退。只读取元数据、执行资格检查或得到空 OpenAlex 列表不虚构物理回退。同一规则明确列出的第二个 URL 在首个失败后被尝试，也属于候选回退。
 
 例如，无 DOI 模板但已有 `arnumber`，直接取得 PDF 时不记为回退；Wiley 模板失败后 Meta 成功时记录 Meta 来源及回退；仅能适用 OpenAlex 时，最终来源已经清楚表示使用了该服务，不为被跳过的规则伪造失败记录。
 
@@ -1093,11 +1098,11 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 **本规格采用：** 纳入 P2；已有所需 ID 优先，缺失时只执行有依据的解析路径。
 
 **Host：** `www.sciencedirect.com`  
-**表达式或提取位置：** `https://www.sciencedirect.com/science/article/pii/{PII}/pdfft`
+**表达式或提取位置：** `https://www.sciencedirect.com/science/article/pii/{PII}/pdfft?download=true`
 
 **所需输入与解析：** PII；Crossref alternative-id经PII格式校验；或DOI登记/redirect目标的/pii/；已有API响应也可直接给scidir-pdf；HTML条件：已有所需ID时可构造或查询；ID来源见解析规则。
 
-**已列变体：** `/pdfft?download=true；页面JSON article.pdfDownload.urlMetadata`
+**已列变体：** 普通 `/pdfft` 回退入口，页面 JSON `article.pdfDownload.urlMetadata`。
 
 **中间页或响应：** meta refresh；#redirect-message a；.PdfEmbed>object；明确JSON字段。
 
@@ -1105,7 +1110,7 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **源实现范围：** 无需把HTML中间页放成每篇必经阶段。PII通常应使用规范化串；B类/旧PII及非标准值需校验；不能取alternative-id任意第一项。
 
-**研究证据及模块：** 源码验证；本轮未做授权下载；函数/模块：getPDFLink; parseIntermediatePDFPage; _crossref_pii。**来源：** [S002](#s002)、[S033](#s033)、[S025](#s025)。
+**研究证据及模块：** 原研究验证源码 `getPDFLink`、`parseIntermediatePDFPage`、`_crossref_pii`。实际入口顺序依据本地 PDF 配对验收的 F27 诊断。[S002](#s002)、[S033](#s033)、[S025](#s025)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
 
 
 <a id="r025"></a>
@@ -1414,12 +1419,12 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 #### R039 · Atypon 共用解析器
 
-**本规格采用：** 纳入 P3/P4；只读取目标论文页面及本条明确字段。
+**本规格采用：** 复用已有 Atypon Host 识别。实际 Host、期刊类型与 DOI 确认后，已有专用 P1 模板优先；没有专用模板时，共享 `/doi/pdf/{doi}` 直达入口。P3/P4、Reader 和 P5 保留为后续来源。
 
-**Host：** `依具体 journal Host`  
-**表达式或提取位置：** `在 DOM 确认存在 /doi/pdf/、/doi/epdf/、/doi/pdfplus/ 对应链接，再将文章 DOI 路径替换`
+**Host：** `pdf_rules.ATYPON_HOSTS` 中已有实际期刊 Host，不按 publisher 名称推断。
+**表达式或提取位置：** 通用 P1 为 `/doi/pdf/{doi}`；当前 DOM 中的 `/doi/pdf/`、`/doi/epdf/`、`/doi/pdfplus/` 仍供 P3/P4 使用。
 
-**所需输入与解析：** 文章 DOI URL + 当前 DOM；buildPdfUrl 检查真实 anchor 路径；HTML条件：需要文章HTML、DOM或页面状态。
+**所需输入与解析：** P1 需要已确认 Host、期刊文章类型和 DOI；书籍、章节、会议及未知 Host 不获得这个共享模板。P3/P4 仍只读取目标论文页面。专用模板的 URL、查询参数和 DOI 请求拼写保持原规则。
 
 **已列变体：** `/doi/pdf/{doi}; /doi/epdf/{doi}; /doi/pdfplus/{doi}`
 
@@ -1427,9 +1432,9 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **访问条件：** PDF 请求依目标站点授权；所读构造函数未规定额外请求头。
 
-**源实现范围：** 这是受 DOM 门控的共享模板，不能把三个变体对所有 Atypon Host 无条件轮询。doWeb 244 接入，scrape 381–387 写入附件。
+**源实现范围：** 源 `buildPdfUrl` 根据 DOM 选择路径。本机版本及现场出版版 PDF 入口对照用于扩展共用直达资格；不轮询三个变体，不复制 Translator 实现。共用优先级还适用于其他平台已有的直达候选与 Reader；不会为了排序提前打开新页面。
 
-**研究证据及模块：** 源码验证；固定 commit 3fb4e794446763ac2053250112890631c428159f；未运行实站下载；函数/模块：buildPdfUrl; doWeb; scrape。**来源：** [S026](#s026)。
+**研究证据及模块：** 历史源码固定 commit `3fb4e794446763ac2053250112890631c428159f`，本机 Atypon Journals 更新日期 `2022-10-25 02:51:38`；具体实站覆盖及未验证 Host 见 [配对验收报告](pdf-pairing-acceptance.md)。**来源：** [S026](#s026)。
 
 
 <a id="r040"></a>
@@ -1898,22 +1903,22 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 #### R061 · SIAM Journals（Atypon 规则线索）
 
-**本规格采用：** 纳入 P3/P4；只读取目标论文页面及本条明确字段。
+**本规格采用：** 本条保留 P3/P4 DOM 线索；直达入口使用共用 [R039](#r039)，不增加 SIAM 专用性能分支。所有候选适用共用直达优先级，失败后仍可进入 Reader 与 P5。
 
 **Host：** `epubs.siam.org`  
-**表达式或提取位置：** `已确认DOM中的/doi/pdf/{doi}、/doi/epdf/{doi}或/doi/pdfplus/{doi}`
+**表达式或提取位置：** 已确认 DOM 中的 `/doi/pdf/{doi}`、`/doi/epdf/{doi}`、`/doi/pdfplus/{doi}`。
 
-**所需输入与解析：** 文章 DOI URL + 页面链接；Atypon buildPdfUrl；测试含SIAM站点；HTML条件：需要文章HTML、DOM或页面状态。
+**所需输入与解析：** 本条读取文章 DOI URL + 目标论文 DOM；已识别 Host 的期刊 DOI 直达资格由 R039 共用规则处理。
 
-**已列变体：** `依实际锚点确定变体`
+**已列变体：** ePDF 可能返回 HTML，与直接 PDF 是不同入口。
 
 **中间页或响应：** 依响应。
 
 **访问条件：** 机构Session或OA。
 
-**源实现范围：** 本记录保留可复用Host映射。源码支持的是DOM确认后的路径转换；未补作当前站点下载实测。
+**源实现范围：** 本机 Atypon Journals `2022-10-25 02:51:38` 的 `buildPdfUrl` 按 DOM 线索选择路径。真实 Connector 已从当前 SIAM `/doi/pdf/` 保存出版版；Allfold 将该证据用于共用入口选择，保留原 Session、Service 与保存终点，未复制 Translator 源码。
 
-**研究证据及模块：** 源码验证；本轮未做授权下载；函数/模块：buildPdfUrl。**来源：** [S026](#s026)。
+**研究证据及模块：** 本轮具体样本、修复前后版本及现场结果见 [配对验收报告](pdf-pairing-acceptance.md)。历史源码依据仍为 `buildPdfUrl`。**来源：** [S026](#s026)。
 
 
 ### A.5 历史候选：默认不启用
@@ -2148,6 +2153,15 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **研究证据及模块：** 源码验证；本轮未做授权下载；函数/模块：_PUBLISHER_DIRECT_TEMPLATES; Silverchair.scrape。**来源：** [S025](#s025)、[S067](#s067)、[S029](#s029)。
 
+<a id="r073"></a>
+
+#### R073 · EBSCOhost 馆藏正文
+
+有 DOI 且唯一分配到已打开 EBSCO Service 的期刊 Paper 优先查找馆藏正文。出版类型缺失时沿用已保存的期刊 ISSN 分配。Service 通过实际保留的 EBSCO Community 或检索 profile 建立能力。未取得正文时回到原有来源顺序。有效 profile 由同一 Service 和 Session 复用。仍需进入 Community 时，按实际链接或当前可见表单操作，并核对落点。
+
+从当前 profile 查询 DOI。按记录标识去重后，选定记录的现有详情接口能确认同一 DOI 并提供 PDF 链接时，从检索页继续下载。缺少有效链接或主 DOI 证据时，点击当前检索页的记录链接，由原页面流程确认详情。标题参与确有歧义时的选择。引用或相关文章的 DOI 不改变主记录身份。结果就绪看检索组件和明确空态。
+
+依次尝试已确认记录给出的 PDF 链接。JSON 链接和重定向沿实际响应继续，正文仍由原 Session 流和文件关联判断。回退时使用当前任务已观察的 Viewer，或通过当前 profile 的检索结果打开同一记录。profile 可在同一有效 Service 的 Session 内复用，记录与签名链接留在任务内。缺少权限或实际记录冲突后，独立来源仍可继续。 [S143](#s143) · [S144](#s144)
 
 ---
 
@@ -3779,3 +3793,15 @@ Zotero 相关已读文件主要声明 AGPL-3.0-or-later；其他仓库按表中�
 网页/官方资料；许可：不适用；原研究范围：见关联记录；不含实际授权下载验证。
 
 [资料](<https://www.annualreviews.org/page/librarians/MigrationFAQ_LRC>)
+
+<a id="s143"></a>
+
+### S143 · EBSCO 机构 profile 检索入口
+
+官方资料说明如何从已登录的 EBSCO profile 取得检索路径及 `q` 参数。 [EBSCO Outbound Search](https://connect.ebsco.com/s/article/Stacks-Outbound-Searches-to-the-New-EDS?language=en_US)
+
+<a id="s144"></a>
+
+### S144 · EBSCO 记录及正文链接
+
+官方资料说明记录和正文链接的来源及订阅机构身份验证条件。 [EBSCO 用户界面链接](https://connect.ebsco.com/s/article/How-do-I-copy-links-to-content-in-the-new-EBSCO-user-interfaces?language=en_US)

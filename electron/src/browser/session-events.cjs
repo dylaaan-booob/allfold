@@ -2,6 +2,7 @@
 const {BrowserCooldown}=require('./browser-recovery.cjs');
 const {randomBytes,createHmac}=require('node:crypto');
 const {checkCanceled,timeoutFailure}=require('./browser-task.cjs');
+const {withPartitionCookies}=require('./request-cookies.cjs');
 const {BrowserFailure}=require('./browser-errors.cjs');
 
 const sessions=new WeakMap();
@@ -12,12 +13,15 @@ function withoutMarkers(headers={}) {
   return Object.fromEntries(Object.entries(headers).filter(([name])=>!PRIVATE_HEADERS.has(name.toLowerCase())));
 }
 
+const cookiePairs=value=>value.split(';').map(pair=>pair.trim()).filter(Boolean);
+const cookieName=pair=>pair.split('=',1)[0];
+
 // Electron has one listener slot per webRequest event. Only this Session lifetime
 // installs native listeners; consumers receive synchronous, ordered scoped hooks.
 class SharedSessionEvents {
   constructor(session,timing) {
     this.session=session;this.cooldown=new BrowserCooldown(timing);this.handlers=new Map();this.closed=false;
-    this.requests=new Map();this.fetches=new Map();
+    this.requests=new Map();this.fetches=new Map();this.pageRequestGuards=new Map();
     this.cookieContextSecret=randomBytes(32);
     this.downloads=new Set();this.downloadGuards=new Map();this.items=new Set();this.taskPages=new Set();
     this.installed=[];
@@ -25,11 +29,21 @@ class SharedSessionEvents {
       ['onBeforeSendHeaders','beforeSendHeaders',true],['onHeadersReceived','headersReceived',true],
       ['onBeforeRedirect','beforeRedirect'],['onCompleted','completed'],['onErrorOccurred','errorOccurred']]) {
       if(typeof session.webRequest?.[native]!=='function')continue;
-      session.webRequest[native](FILTER,(details,finish)=>this.dispatch(event,details,callback?finish:undefined));
+      session.webRequest[native](FILTER,(details,finish)=>{
+        const guard=event==='beforeRequest' && this.pageRequestGuards.get(details.webContentsId);
+        if(guard)void Promise.resolve().then(()=>guard(details)).then(
+          ()=>this.dispatch(event,details,finish),()=>finish({cancel:true}));
+        else this.dispatch(event,details,callback?finish:undefined);
+      });
       this.installed.push(native);
     }
     this.downloadListener=(event,item,contents,frame)=>this.routeDownload(event,item,contents,frame);
     session.on?.('will-download',this.downloadListener);
+  }
+  guardPageRequests(contents,validate) {
+    const id=contents.id;
+    this.pageRequestGuards.set(id,validate);
+    contents.once('destroyed',()=>this.pageRequestGuards.delete(id));
   }
   subscribe(event,handler,{signal}={}) {
     if(this.closed)throw Error('Browser Session is closed');
@@ -55,7 +69,25 @@ class SharedSessionEvents {
     let state={};
     try {
       const request=this.observe(event,details);
-      if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(details.requestHeaders);
+      if(event==='beforeSendHeaders') {
+        state.requestHeaders=withoutMarkers(details.requestHeaders);
+        if(request?.controlled?.partitionCookies)
+          state.requestHeaders=withPartitionCookies(state.requestHeaders,details.url,
+            request.controlled.initialURL,request.controlled.partitionCookies);
+        const controlled=request?.controlled;
+        if(controlled?.partitionOrigin)for(const name of Object.keys(state.requestHeaders))
+          if(name.toLowerCase()==='origin')delete state.requestHeaders[name];
+        if(controlled?.navigationCookies && controlled.initialURL===details.url && details.method==='GET') {
+          // This was the Chromium-selected header for this exact top-level
+          // GET in the same Session. Consume it before any redirect can reuse it.
+          const key=Object.keys(state.requestHeaders).find(name=>name.toLowerCase()==='cookie') || 'Cookie';
+          const original=cookiePairs(state.requestHeaders[key] || '');
+          const names=new Set(original.map(cookieName));
+          const missing=controlled.navigationCookies.filter(pair=>!names.has(cookieName(pair)));
+          if(missing.length)state.requestHeaders[key]=[...original,...missing].join('; ');
+          delete controlled.navigationCookies;
+        }
+      }
       if(event==='headersReceived')state.responseHeaders=details.responseHeaders;
       if(event==='headersReceived') {
         for(const entry of this.downloads)if(entry.request?.id===details.id && this.matchesDownload(entry,entry.contents,details.frame))
@@ -65,7 +97,13 @@ class SharedSessionEvents {
       }
       // Private association tokens never reach consumers, diagnostics or the wire.
       this.emit(event,event==='beforeSendHeaders'?{...details,requestHeaders:state.requestHeaders}:details,state);
-      if(event==='beforeSendHeaders')state.requestHeaders=withoutMarkers(state.requestHeaders);
+      if(event==='beforeSendHeaders') {
+        state.requestHeaders=withoutMarkers(state.requestHeaders);
+        if(request?.controlled?.observeCookies) {
+          const cookie=Object.entries(state.requestHeaders).find(([name])=>name.toLowerCase()==='cookie')?.[1] || '';
+          request.cookieKey=this.cookieKey(cookie);
+        }
+      }
       request?.controlled?.validate(details);
     } catch(_){state={cancel:true};}
     finally {
@@ -104,13 +142,17 @@ class SharedSessionEvents {
     const request=this.requests.get(id);
     if(request && !request.identity)request.identity=Object.freeze({...identity});
   }
+  cookieKey(value) {
+    // Compare scoped access observations without exposing guessable credential hashes.
+    return createHmac('sha256',this.cookieContextSecret).update(value).digest('hex');
+  }
   async cookieContext(url) {
     const cookies=JSON.stringify((await this.session.cookies.get({url}))
       .map(({domain,path,name,value})=>[domain,path,name,value])
       .sort((a,b)=>JSON.stringify(a.slice(0,3)).localeCompare(JSON.stringify(b.slice(0,3)))));
     // Equality across owned Reader/stream operations, without sending Cookie
     // values or a guessable credential digest to Python. Never persisted/logged.
-    return createHmac('sha256',this.cookieContextSecret).update(cookies).digest('hex');
+    return this.cookieKey(cookies);
   }
   async fetch(url,options={},context={}) {
     const {owner,attemptId,document,deadline,validate=()=>{}}=context;
@@ -120,17 +162,38 @@ class SharedSessionEvents {
     const check=()=>{if(this.closed)throw Error('Browser Session is closed');checkCanceled(signal);
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');validate();};
     check();await this.cooldown.wait(url,{signal,deadline,validate:check});check();
+    let navigationCookies;
+    if(typeof context.navigationCookie==='string' && !/[\r\n]/.test(context.navigationCookie)) {
+      // The Page may have drained or a cooldown elapsed. Match only values
+      // still in this Session for the observed URL at dispatch time.
+      const current=await this.session.cookies.get({url});check();
+      const active=new Set(current.map(({name,value})=>name+'='+value));
+      navigationCookies=cookiePairs(context.navigationCookie).filter(pair=>active.has(pair));
+    }
     const token=randomBytes(24).toString('hex'),requests=[];
     const identity=Object.freeze({...owner.association || owner,attempt_id:attemptId,
       page_id:document?.pageId,document_id:document?.documentId});
-    const controlled={identity,requests,validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
+    const controlled={identity,requests,initialURL:url,partitionCookies:context.partitionCookies,navigationCookies,
+      observeCookies:context.observeCookies,
+      validate:details=>{check();context.validateRequest?.(details);}};this.fetches.set(token,controlled);
     const headers=new Headers(options.headers);headers.set(MARKER,token);
+    // Electron's URLLoader uses Origin as its native initiator. Chromium
+    // computes Sec-Fetch-Site from it using the real registry rules. Remove
+    // the internal input in beforeSendHeaders, preserving HTTP Referer policy.
+    if(context.partitionCookies?.cookies.length && context.partitionCookies.origin && !headers.has('Origin')) {
+      headers.set('Origin',context.partitionCookies.origin);controlled.partitionOrigin=true;
+    }
     // The deadline belongs to this physical request, including its response body.
     const bounded=Number.isFinite(deadline)?AbortSignal.timeout(Math.max(1,Math.ceil(deadline-Date.now()))):null;
     const signals=[signal,bounded].filter(Boolean);
     const requestSignal=signals.length?AbortSignal.any(signals):undefined;
     try {
-      const response=await this.session.fetch(url,{...options,headers,signal:requestSignal});check();
+      const response=await this.session.fetch(url,{...options,headers,
+        ...(controlled.partitionOrigin && {mode:'no-cors'}),signal:requestSignal});
+      try{check();}catch(error) {
+        try{await response.body?.cancel();}catch(_){}
+        throw error;
+      }
       return {response,requests,signal:requestSignal};
     } finally {
       this.fetches.delete(token);
@@ -273,6 +336,7 @@ class SharedSessionEvents {
   }
   dispose() {
     if(this.closed)return;this.closed=true;
+    this.pageRequestGuards.clear();
     for(const name of this.installed)this.session.webRequest[name](null);
     this.session.removeListener?.('will-download',this.downloadListener);
     for(const guard of this.downloadGuards.values())guard.remove();
