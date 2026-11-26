@@ -108,7 +108,8 @@ its current P3/P4 clues, these may qualify previously unavailable templates befo
 P5, still bound to the original Paper.
 
 For a journal article with a DOI and one assigned Service with an opened EBSCO
-target, ordinary Download starts with the EBSCO DOI search. A source-local failure
+target, ordinary Download starts with the EBSCO DOI search. A saved Journal ISSN
+assignment remains usable when the publication type is missing. A source-local failure
 or missing eligible body returns to the existing order within the same attempt.
 Without that opened target, Download starts in the existing order. A deferred
 publisher challenge can give a Service that has since opened a turn before

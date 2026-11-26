@@ -124,14 +124,14 @@ def _access_operation(reservation, repository, authority=None):
 
 
 def _consume_access(reservation, repository, files, candidate, progress):
-    from allfold.application.collection_runtime import BodyAccessRevoked
+    from allfold.application.collection_runtime import BodyAccessBusy, BodyAccessRevoked
     try:
         with _access_operation(reservation, repository, candidate.access) as operation:
             value = _consume(operation, repository, files, candidate, progress)
             if not (value[0].pdf_type and value[0].transfer_complete) and value[0].kind != 'local_failure':
                 reservation.registry._guard(operation, repository)
             return value
-    except BodyAccessRevoked:
+    except (BodyAccessBusy, BodyAccessRevoked) as error:
         # Recheck only the parent: user cancel/expiry/stale Paper must still end
         # the whole attempt. Service loss ends just this already settled access.
         reservation.registry._guard(reservation, repository)
@@ -139,6 +139,8 @@ def _consume_access(reservation, repository, files, candidate, progress):
             files.cleanup(reservation.output)
             repository.record_download_output(reservation.download_token, None)
             reservation.output = None
+        if isinstance(error, BodyAccessBusy):
+            return CandidateResult('skipped', diagnostic='condition-unavailable'), None, ''
         return CandidateResult.failed('service-invalidated'), None, ''
 
 
@@ -342,7 +344,7 @@ class _BodyDiscoveryIO:
 
     def ebsco_candidates(self, target):
         request = self.reservation.body_request
-        if not request.service_id or not target.identity_doi or target.content_type != 'journal-article':
+        if not request.service_id or not target.identity_doi or target.content_type not in {'journal-article', 'unknown'}:
             return None
         from allfold.application.task_authority import ServiceAccessUnavailable
         try:
@@ -429,7 +431,7 @@ class _BodyDiscoveryIO:
         return parsed
 
     def _read(self, read, authority=None):
-        from allfold.application.collection_runtime import BodyAccessRevoked, _CleanupUnconfirmed
+        from allfold.application.collection_runtime import BodyAccessBusy, BodyAccessRevoked, _CleanupUnconfirmed
         from allfold.application.pdf_discovery import PdfDiscoveryContext
         from allfold.pdf_http import PdfDiscoveryIO
         try:
@@ -456,9 +458,10 @@ class _BodyDiscoveryIO:
                         self.reservation.registry.fail_reservation(self.reservation, phase='body-reader-cleanup', error=error,
                             unconfirmed=isinstance(error, _CleanupUnconfirmed))
                         raise
-        except BodyAccessRevoked:
+        except (BodyAccessBusy, BodyAccessRevoked) as error:
             self.reservation.registry._guard(self.reservation, self.repository)
-            raise PdfSourceReadError('Institutional Reader access changed', diagnostic='service-invalidated',
+            diagnostic = 'condition-unavailable' if isinstance(error, BodyAccessBusy) else 'service-invalidated'
+            raise PdfSourceReadError('Institutional Reader access is unavailable', diagnostic=diagnostic,
                 service_id=authority.service_id if authority else None) from None
 
     def close(self):

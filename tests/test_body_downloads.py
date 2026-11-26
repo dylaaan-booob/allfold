@@ -274,14 +274,14 @@ def test_download_revisits_a_challenge_only_when_the_request_context_advances(tm
         host.join()
 
 
-@pytest.mark.parametrize(('institutional_referer', 'ready', 'direct', 'publisher_available'), [
-    ('record', True, None, False), (None, True, None, False), (None, False, None, False),
-    (None, True, 'available', False), (None, True, 'authorization', False),
-    (None, True, 'challenge', False), (None, True, None, True), (None, False, None, True),
-    (None, None, None, True),
+@pytest.mark.parametrize(('institutional_referer', 'ebsco', 'direct', 'publisher_available'), [
+    ('record', 'body', None, False), (None, 'body', None, False), (None, 'no-body', None, False),
+    (None, 'body', 'available', False), (None, 'body', 'authorization', False),
+    (None, 'body', 'challenge', False), (None, 'body', None, True), (None, 'no-body', None, True),
+    (None, 'closed', None, True), (None, 'busy', None, True), (None, 'unknown-type', None, True),
 ])
 def test_public_download_tries_prepared_ebsco_before_other_sources(
-        tmp_path, institutional_referer, ready, direct, publisher_available):
+        tmp_path, institutional_referer, ebsco, direct, publisher_available):
     from concurrent.futures import Future
     from datetime import datetime, timezone
     from pathlib import Path
@@ -308,12 +308,17 @@ def test_public_download_tries_prepared_ebsco_before_other_sources(
             observed_at=now, target_doi=doi,
             candidates=(PdfCandidateFact(stage='P5', rule_id='OPENALEX', url=preprint),)),
     )
-    metadata = PaperMetadata(title='Same title', publication_type='journal', journal_issns=(A,),
-        discovery_facts=facts)
+    has_licensed_body = ebsco in {'body', 'unknown-type'}
+    metadata = PaperMetadata(title='Same title', publication_type=None if ebsco == 'unknown-type' else 'journal',
+        journal_issns=(A,), discovery_facts=facts)
     host, workspace, paper, bridge, bound = prepared_application_host(tmp_path, metadata=metadata,
         service_updates={'name': 'Licensed Library', 'access_url': 'https://proxy.example.org/library'}, pdf_source='ebsco')
-    if ready is None:
+    if ebsco == 'closed':
         host.login.invalidate_pages((17,))
+    owner = None
+    if ebsco == 'busy':
+        owner = host.browser_lock.acquire('login', scopes=(bound.access.service_scope,))
+        assert owner is not None
 
     def execute(action, data, progress=None, **kwargs):
         bridge.calls.append((action, data))
@@ -327,7 +332,7 @@ def test_public_download_tries_prepared_ebsco_before_other_sources(
                 assert data['identity']['doi'] == doi and data['target_title'] == metadata.title
                 if source == 'ebsco-viewer':
                     assert data['prepared_record'] == record
-                if not ready:
+                if not has_licensed_body:
                     result.set_result(dict(outcome='no_result',
                         diagnostic={'kind': 'navigation', 'reason': 'content_access_blocked'}))
                     return result
@@ -370,7 +375,7 @@ def test_public_download_tries_prepared_ebsco_before_other_sources(
         task = service.start(paper.id, paper.workspace_id, qualification=qualification)
         result = task.future.result(3)
         assert result.status == 'completed'
-        if ready:
+        if has_licensed_body:
             expected = b'%PDF-licensed'
         elif publisher_available:
             expected = b'%PDF-publisher'
@@ -378,20 +383,26 @@ def test_public_download_tries_prepared_ebsco_before_other_sources(
             expected = b'%PDF-preprint'
         assert (workspace / result.paper.body.relative_path).read_bytes() == expected
         assert result.paper.id == paper.id
-        assert result.paper.body.pdf_source == ('P4' if ready or publisher_available else 'P5')
+        assert result.paper.body.pdf_source == ('P4' if has_licensed_body or publisher_available else 'P5')
+        if ebsco == 'no-body':
+            assert result.paper.body.fallback_used
+        if ebsco in {'closed', 'busy'}:
+            assert not result.paper.body.fallback_used
         document_sources = [data.get('prepared_source') for action, data in bridge.calls if action == 'extract_paper_pdf_clues']
-        if ready is None:
+        if ebsco in {'closed', 'busy'}:
             assert document_sources == []
         else:
             first_action, first_request = bridge.calls[0]
             assert first_action == 'extract_paper_pdf_clues' and first_request['prepared_source'] == 'ebsco'
             expected_sources = ['ebsco', 'ebsco-viewer'] if blocked_direct else ['ebsco']
-            assert document_sources == (expected_sources if ready or publisher_available else ['ebsco', None])
+            assert document_sources == (expected_sources if has_licensed_body or publisher_available else ['ebsco', None])
         assert not any(data.get('recover_access') for _, data in bridge.calls)
-        assert any(data.get('url') == denied for _, data in bridge.calls) is not ready
-        assert any(data.get('url') == preprint for _, data in bridge.calls) is (not ready and not publisher_available)
-        assert not host.browser_lock.owners
+        assert any(data.get('url') == denied for _, data in bridge.calls) is (not has_licensed_body)
+        assert any(data.get('url') == preprint for _, data in bridge.calls) is (not has_licensed_body and not publisher_available)
+        assert len(host.browser_lock.owners) == int(owner is not None)
     finally:
+        if owner is not None:
+            host.browser_lock.release(owner)
         host.shutdown()
         host.join()
 

@@ -19,6 +19,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const viewerPath='/c/test-profile/viewer/pdf/record',viewerQuery='?intent=download%20now';
   const recordDetails='/api/viewer/v6/details/record',downloadLink='/record-access/record';
   const requestPDF='<script>fetch('+JSON.stringify(ebscoPdf)+').catch(()=>{});</script>';
+  const requestDeniedPDF='<script>fetch('+JSON.stringify(ebscoPdf)+',{headers:{Accept:"application/pdf"}}).catch(()=>{});</script>';
   const previews=['/cds/retrieve?Signature=preview-first','/cds/retrieve?Signature=preview-second'].map(path=>
     new URL(path,ebscoPdf).href);
   const serve=(request,response)=>{requests.push({url:request.url,referer:request.headers.referer,method:request.method});
@@ -36,6 +37,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       +(subframePost?'form.target="follow-up";':'')
       +'form.submit();}</script>';
     if(request.headers.host==='content.ebscohost.com') {
+      if(ebscoMode==='viewer-denied') {
+        response.writeHead(403,{'content-type':'text/html','cache-control':'no-store'});
+        response.end('Access required');return;
+      }
       response.writeHead(200,{'content-type':'application/pdf','cache-control':'no-store'});
       response.end('%PDF-fixture');return;
     }
@@ -104,6 +109,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     if(current.pathname===recordPath && ebscoMode==='unsafe') {
       response.writeHead(302,{location:'http://127.0.0.1:'+server.address().port+'/ebsco-forbidden'});response.end();return;
     }
+    const viewerRequest=ebscoMode==='viewer-denied'?requestDeniedPDF:requestPDF;
     const ebscoPages={
       '/Community.aspx':'<main><h1>Institution library</h1>'+(ebscoMode.startsWith('profile-postback')?ebPostback:ebscoHub+ebscoHub)+'</main>',
       '/c/test-profile/search':'<main><h1>Search the library</h1><p>All databases</p></main>',
@@ -120,7 +126,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
             ?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'+JSON.stringify(recordMetadata)+'),900);</script>'
             :ebscoMode==='late-viewer'?'<script>setTimeout(()=>document.querySelector("main").insertAdjacentHTML("beforeend",'
               +JSON.stringify('<a href="'+viewerPath+viewerQuery+'">PDF Full Text</a>')+'),900);</script>':''),
-      [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?requestPDF:'')
+      [viewerPath]:'<main><h1>Full text</h1><p>Institution viewer</p></main>'+(current.search===viewerQuery?viewerRequest:'')
         +(ebscoMode==='record-in-app'?pendingImage:''),
     };
     if(Object.hasOwn(ebscoPages,current.pathname)) {
@@ -477,6 +483,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.equal(sameRecord.pdf_clues?.candidates[0]?.url,ebscoPdf);
     assert.ok(!requests.some(request=>request.url==='/Community.aspx' || request.url.startsWith(resultsPath)
       || request.url===recordPath),'fallback uses the captured Viewer without repeating preparation or search');
+    ebscoMode='viewer-denied';
+    const deniedViewer=await invoke('extract_paper_pdf_clues',{...fixedViewer,prepared_record:'https://research.ebsco.com'+recordPath});
+    assert.equal(deniedViewer.diagnostic?.code,'content_access_blocked');
+    assert.ok(!deniedViewer.pdf_clues && requests.some(request=>request.url.startsWith('/files/licensed')));
     ebscoMode='search-direct';
     const fromResults=await invoke('extract_paper_pdf_clues',licensed);
     assert.equal(fromResults.pdf_clues?.landing_url,'https://research.ebsco.com'+recordPath);

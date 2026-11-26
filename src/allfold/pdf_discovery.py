@@ -398,6 +398,10 @@ class PdfDiscovery:
             candidates = self._call(self.io.ebsco_candidates, self.target)
         except PdfSourceReadError as error:
             self._note('P4', 'R073', error.diagnostic, service_id=error.service_id)
+            if error.diagnostic == 'condition-unavailable':
+                candidates = None
+            elif error.diagnostic != 'service-invalidated':
+                self._failed = True
         self._ebsco_attempted = candidates is not None or not defer_unprepared
         return candidates or ()
 
