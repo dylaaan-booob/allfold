@@ -54,6 +54,47 @@ unavailable.
 
 ### F23 first-transfer status
 
+Production `31c9c15548dfe39f905bc5e59feb408070e59a34` tries an already opened
+EBSCO Service first for a journal Paper with a DOI and a unique saved Service
+binding. When that route yields no body, ordinary Download continues through
+the existing sources. The DOI results request still follows EBSCO's HTTP 302
+to the search URL with the site-supplied `db` parameter. The earlier isolated
+test that supplied `db` up front skipped the redirect without a measured
+improvement in total search time.
+
+The 26 November retest kept Allfold and Chrome access independent. The
+ordinary Allfold clicks followed product body removal and Restore. Chrome's
+Zotero Save began at the exact EBSCO article detail page. All times below
+include discovery in the click-to-association interval.
+
+| Product | Click to correct PDF association | Click to delivery GET | Delivery GET to first byte | First to last body byte |
+| --- | ---: | ---: | ---: | ---: |
+| Allfold Download, profile established after click | 37.179–37.784 s | 30.677–30.767 s | 1.099 s | 5.488 s |
+| Zotero Save from article details | 9.786–10.255 s | 2.737–2.776 s | 1.236 s | 6.053 s |
+| Allfold Download, same run with profile reused | 30.854–31.409 s | 18.783–18.885 s | 0.960 s | 11.445 s |
+
+The three HTTP 200 deliveries each read 2,996,661 decoded network body bytes
+with zero cache body reads. The licensed 29-page PDFs were byte-identical.
+Allfold saved to the original Paper on attempts 3 and 4 through P4 and issued
+no publisher or DOI resolver request before the body. Zotero created a new
+matching journal article and PDF attachment in the acceptance collection.
+The Connector's desktop attachment upload returned 201. A Zotero Save before
+the initial Allfold trial also saved the same PDF in 8.215–8.557 s. Its
+Chrome capture had ended before the click, so its network phase is unverified.
+
+With the EBSCO Service already open, attempt 3 reached its search profile
+about 14 s after the click. Attempt 4 reused that profile. Its DOI search POST
+took 11.094 s to receive response headers, and the article details GET took
+another 3.421 s. Attempt 4 exceeded the captured Zotero wait by
+**20.599–21.623 s**, including a longer body-reception interval. This run
+confirms the selected source and bounds the remaining waits. Request and
+body durations varied across runs, so the earlier baseline does not isolate
+the effect of source ordering on total time. F23 remains outside the existing
+roughly five-second allowance. The measured files and raw traces are archived
+outside Workspace. Workspace retains F23, F19 and F18 and awaits product Reset.
+
+#### Paired baseline before EBSCO priority
+
 The 26 November Zotero → Allfold rerun used production
 `7144cba8c12e76b7238df6e63bdacc9d61ccfded`, Chrome 158.0.8127.88,
 Connector 5.0.218 and Zotero Desktop 10.0.9. Chrome restored the exact EBSCO
