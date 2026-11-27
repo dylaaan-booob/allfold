@@ -32,6 +32,25 @@ test('Prepare sends the selected CARSI Services only',async()=>{
   assert.deepEqual([...calls[0][1].service_ids],['two']);
 });
 
+test('Login progress counts the current batch and leaves previously opened Services out',async()=>{
+  const services=[
+    {id:'selected',name:'Selected',access_method:'carsi',preparation:{status:'Not prepared'}},
+    {id:'previous',name:'Previously opened',access_method:'carsi',
+      preparation:{status:'Opened',workflow_id:'earlier'}},
+    {id:'manual',name:'Manual',access_method:'manual',preparation:{status:'Opened',workflow_id:'earlier'}},
+  ];
+  const idle={active:false,phase:'completed',workflow_id:'earlier',services};
+  const running={active:true,phase:'preparing',workflow_id:'current',services:[
+    {...services[0],preparation:{status:'Preparing',workflow_id:'current',waiting_for_user:true}},
+    ...services.slice(1),
+  ]};
+  const ui=await taskUI('login.js',{page:'login',request:async route=>route.endsWith('/start')?running:idle});
+  const checkbox=ui.get('login-services').children[1].children[0].children[0];
+  checkbox.checked=false;await checkbox.emit('change');
+  await ui.get('login-start').emit('click');
+  assert.equal(ui.get('login-status').textContent,'正在准备 Services · 0 / 1 Services opened');
+});
+
 test('Login reads the active task after an ambiguous start response without replaying',async()=>{
   const idle={active:false,phase:'idle',services:[{id:'service-a',name:'Service A',access_method:'carsi'}]};
   let state=idle;

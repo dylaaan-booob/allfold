@@ -110,9 +110,10 @@ session, site-facing RPC or credential interface is added.
 
 Saved Service and captured access dependencies determine access authority;
 configuration revisions also serve compare-and-write and diagnostic purposes.
-Access cleanup carries captured old keys, waits outside configuration write locks
-and cannot close a new context. Retained-page destruction revokes that page's
-preparation; a late Login result cannot restore a closed page. Covers final saves
+Access cleanup reserves the affected configuration scope and Service UUIDs
+through native settlement outside configuration write locks. Retained-page
+destruction drops the page handle and preserves the last observed Prepare result.
+Late Login results respect pages already closed. Covers final saves
 protect the captured Journal and managed asset while allowing unrelated edits.
 Download Service changes revoke and drain only the currently dependent access
 operation. Its captured binding follows dependent continuations and is released

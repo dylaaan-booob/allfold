@@ -55,8 +55,9 @@ function render() {
   if(!state)return;
   const phase=cancelRequested?'正在取消':({preparing:'正在准备 Services',completed:'准备结束',failed:'Login 失败',
    interrupted:'Browser 连接已中断',canceled:'Login 已取消'})[state.phase] || '';
-  const opened=state.services.filter(service=>service.preparation?.status==='Opened').length;
-  $('login-status').textContent=state.services.length?[phase,`${opened} / ${state.services.length} Services opened`].filter(Boolean).join(' · '):
+  const batch=state.workflow_id?state.services.filter(service=>service.preparation?.workflow_id===state.workflow_id):[];
+  const opened=batch.filter(service=>service.preparation.status==='Opened').length;
+  $('login-status').textContent=state.services.length?[phase,batch.length && `${opened} / ${batch.length} Services opened`].filter(Boolean).join(' · '):
     '请先在 Journals 的 Access 中保存 Service。';
   const focused=document.activeElement,action=focused?.dataset.loginAction;
   const focusedKey=focused?.closest('[data-login-key]')?.dataset.loginKey;
