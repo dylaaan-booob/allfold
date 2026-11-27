@@ -1220,6 +1220,7 @@ class BrowserRuntime {
   }
   async closePage(tab,reason='task_complete') {
     if(tab.closing)return tab.closing;
+    if(tab.destroyedCleanup)return tab.destroyedCleanup;
     const contents=tab.view.webContents;
     const challengeCleanup=tab.challenge?.close();
     tab.closing=(async()=>{

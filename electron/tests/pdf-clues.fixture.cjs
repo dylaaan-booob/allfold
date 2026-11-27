@@ -51,6 +51,11 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       +'<a href="/c/test-profile/viewer/pdf/related">Related PDF</a>'
       +'<a aria-label="Access now (PDF) Licensed fixture" href="'+viewerPath+viewerQuery+'">View PDF</a>';
     const signIn='<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>';
+    if(ebscoMode==='profile-postback-viewer-login' && request.url===viewerPath+viewerQuery
+      && requests.filter(item=>item.url===request.url).length===1) {
+      response.writeHead(200,{'content-type':'text/html','cache-control':'no-store'});
+      response.end(signIn);return;
+    }
     const resultLink='<h2><a href="'+recordPath+'">Licensed fixture</a></h2>';
     const pendingImage='<img src="/ebsco-pending-image">';
     let results='<main><h1>Search results</h1>'+resultLink+'</main>';
@@ -586,7 +591,21 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const unsafeEbsco=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(unsafeEbsco.diagnostic && !unsafeEbsco.pdf_clues);
     assert.ok(!requests.some(request=>request.url==='/ebsco-forbidden'),'private redirect is refused before sending');
-    await browser.closePage(retained);
+    ebscoDOI='10.5555/fixture';ebscoMode='profile-postback-viewer-login';await freshProfile();
+    const signal=new AbortController().signal;
+    const entry='https://search.ebscohost.com/Community.aspx';
+    const recoverable={workspace_identity:data.workspace_identity,paper_id:data.paper_id,...licensed,deadline_ms:Date.now()+6000,
+      service_entry:{wayfless_url:entry,landing_hosts:['search.ebscohost.com'],resource_name:'EBSCO'}};
+    requests=[];
+    const recovered=await browser.runTask(signal,{...recoverable,request_id:randomUUID()},()=>
+      browser.extractPaperPdfClues(recoverable,{signal,deadline:recoverable.deadline_ms}));
+    assert.equal(recovered.pdf_clues?.candidates[0]?.url,ebscoPdf);
+    assert.deepEqual(requests.filter(request=>request.method==='POST').map(request=>request.url),['/webauth/Community.aspx']);
+    assert.equal(requests.filter(request=>request.url.startsWith(resultsPath)).length,1);
+    assert.deepEqual(requests.filter(request=>request.url===viewerPath+viewerQuery).map(request=>request.referer),
+      [ebscoProfile+'/search/details/record',ebscoProfile+'/search/details/record']);
+    assert.notEqual(browser.serviceContext(scoped).tab.id,retained.id);
+    await browser.closePage(browser.serviceContext(scoped).tab);
   }
   try {
     await browser.ready;

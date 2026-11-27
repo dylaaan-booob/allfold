@@ -109,6 +109,9 @@ The native access context is indexed by configuration scope and Service UUID.
 The actual Page ID is sent to Python when a retained page closes. This releases
 the displayed handle and preserves the Service's last observed Prepare result.
 WoS Export validates its exact workflow results Document and supported overlay.
+Before a native export is issued, a recognized authentication block can restore
+the same results route. The workflow checks the original result count, loans the
+new Document and uses its current Page ID in later batches.
 A scoped Service edit drains affected uses before `invalidate_access` can close
 that Service's target.
 

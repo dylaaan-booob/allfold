@@ -302,7 +302,18 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
   const entry=context.ebscoEntry;
   if(!doi || typeof title!=='string' || !entry)throw refusal('prepared');
   checkCanceled(signal);
-  let tab;
+  const openTab=async()=>{
+    const page=await browser.newTaskPage({signal,deadline,managed:true});
+    browser.associatePage(page,{role:'pdf-reader'});
+    const guard=browser.sessionEvents.subscribe('beforeRequest',details=>{
+      if(details.webContentsId!==page.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
+      verify();
+      if(signal?.aborted || Date.now()>=deadline || !httpsURL(details.url))return {cancel:true};
+    });
+    page.view.webContents.once('destroyed',guard.dispose);
+    return page;
+  };
+  let tab=await openTab();
   const onAccessWaiting=(waiting,diagnostic,current)=>{
     if(!waiting)return;
     if(!data.service_entry && (current?.markers.login || current?.markers.mfa))throw new BrowserFailure('navigation','content_access_blocked');
@@ -311,17 +322,7 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
   const options={signal,deadline,verify,onWaiting:onAccessWaiting,doi};
   const navigate=async (url,{referer,watch}={})=>{
     verify();
-    if(!tab || tab.view.webContents.isDestroyed()) {
-      tab=await browser.newTaskPage({signal,deadline,managed:true});
-      browser.associatePage(tab,{role:'pdf-reader'});
-      const page=tab;
-      const guard=browser.sessionEvents.subscribe('beforeRequest',details=>{
-        if(details.webContentsId!==page.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
-        verify();
-        if(signal?.aborted || Date.now()>=deadline || !httpsURL(details.url))return {cancel:true};
-      });
-      page.view.webContents.once('destroyed',guard.dispose);
-    }
+    if(browser.tabs.get(tab.id)!==tab)tab=await openTab();
     const observation=watch?.(tab);
     try {
       const doc=await browser.navigateServiceTarget(data,url.href,{tab,signal,deadline,documentOnly:true,
