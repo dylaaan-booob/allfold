@@ -241,7 +241,7 @@ function serviceLanding(entry,value) {
   if(entry.wayfless_url) {
     const initiator=new URL(entry.wayfless_url);
     if(initiator.origin===url.origin && initiator.pathname===url.pathname
-      && [...url.searchParams.keys()].some(key=>/^(?:auth|entityid|idp|state|targeturl)$/i.test(key)))return false;
+      && [...url.searchParams.keys()].some(key=>/^(?:auth|eid|entity|entityid|idp|partneridpid|state|targeturl)$/i.test(key)))return false;
   }
   const host=url.hostname.replace(/^www\./,'');
   return entry.landing_hosts.some(expected=>expected.replace(/^www\./,'')===host)

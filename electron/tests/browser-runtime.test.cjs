@@ -841,7 +841,9 @@ test('an unredirected WAYFless initiator cannot settle Prepare',async t=>{
   const {prepareService}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
   t.after(()=>browser.close());await browser.ready;
-  const entry='https://publisher.example/action/ssostart?idp=https%3A%2F%2Fidp.example%2Fidp%2Fshibboleth';
+  const idp='https%3A%2F%2Fidp.example%2Fidp%2Fshibboleth';
+  const entries=['/action/ssostart?idp=', '/sp/startSSO.ping?PartnerIdpId=', '/wayf?eid=', '/openathens.cfm?entity=']
+    .map(path=>'https://publisher.example'+path+idp);
   const portal='https://ds.carsi.edu.cn/resource/resource.php';
   const opened=[];
   browser.events.on('tab-created',(_event,tab)=>{
@@ -855,13 +857,15 @@ test('an unredirected WAYFless initiator cannot settle Prepare',async t=>{
       return {step:'none',waiting:false};
     };
   });
-  const data={request_id:'entry-refused',service_id:serviceId,service_scope:serviceScope,first_entry:true,
-    service_entry:{wayfless_url:entry,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
   const signal=new AbortController().signal;
-  const result=await browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
-  assert.equal(result.outcome,'Needs attention');
-  assert.deepEqual(opened,[entry,portal]);
-  assert.equal(browser.serviceContext(data),null);
+  for(const entry of entries) {
+    const data={request_id:'entry-refused',service_id:serviceId,service_scope:serviceScope,first_entry:true,
+      service_entry:{wayfless_url:entry,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+    const result=await browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
+    assert.equal(result.outcome,'Needs attention');
+    assert.equal(browser.serviceContext(data),null);
+  }
+  assert.deepEqual(opened,entries.flatMap(entry=>[entry,portal]));
 });
 
 test('Service recovery keeps a live follower when the leading Paper is canceled',async t=>{
