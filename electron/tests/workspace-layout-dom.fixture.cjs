@@ -469,13 +469,16 @@ app.whenReady().then(async()=>{
     await js(`(()=>{if(!document.getElementById('paper-collection-retry').disabled || !document.getElementById('paper-collection-retry').title.includes('访问条件'))throw Error('Retry ignored unavailable access');})()`);
     // Prepare changes access qualification without changing Paper/Workspace content revisions.
     const preparedWorkspaceRevision=workspace.revision;
-    loginState={active:true,phase:'preparing',workflow_id:'wf08-prepare-retry',services:[
-      {id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:'',preparation:{status:'Preparing'}}]};
+    const loginWorkflow='wf08-prepare-retry';
+    loginState={active:true,phase:'preparing',workflow_id:loginWorkflow,services:[
+      {id:'svc_fixture',name:'Synthetic Service',access_method:'manual',access_url:'',
+        preparation:{status:'Preparing',workflow_id:loginWorkflow}}]};
     await navigate('login');
     await ready("!document.getElementById('login-cancel').hidden");
     await ready("window.inboxRun.available()");
     Object.assign(records[0].papers[0].collection,{retry_available:true,retry_reason:null,reason:'storage-error'});
-    loginState={...loginState,active:false,phase:'completed',services:loginState.services.map(service=>({...service,preparation:{status:'Opened'}}))};
+    loginState={...loginState,active:false,phase:'completed',services:loginState.services.map(service=>
+      ({...service,preparation:{...service.preparation,status:'Opened'}}))};
     await ready("document.getElementById('login-status').textContent.includes('1 / 1 Services opened')");
     await navigate('workspace');
     await ready("!document.getElementById('paper-collection-retry').disabled");

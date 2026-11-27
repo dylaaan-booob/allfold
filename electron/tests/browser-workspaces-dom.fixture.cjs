@@ -32,9 +32,15 @@ const server=http.createServer(async(req,res)=>{
   if(route==='/background-layout'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<iframe style="width:100%;border:0" src="/checkbox-frame"></iframe>');return;}
   if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
-    let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
-    if(route==='/api/login/start')loginState={...loginState,phase:'completed',
-      services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'first_service_incomplete'}}))};
+    let body='';for await(const chunk of req)body+=chunk;
+    const submitted=body?JSON.parse(body):null;requests.push({route,body:submitted});
+    if(route==='/api/login/start'){
+      const workflow_id='login-a', selected=new Set(submitted.service_ids || [submitted.service_id]);
+      loginState={...loginState,phase:'completed',workflow_id,
+        services:loginState.services.map(service=>selected.has(service.id)
+          ? {...service,preparation:{status:'Needs attention',workflow_id,reason:'first_service_incomplete'}}
+          : service)};
+    }
     const data=route.startsWith('/api/login/')?loginState:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
