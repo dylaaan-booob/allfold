@@ -837,6 +837,122 @@ test('mixed Service entries stagger at native dispatch while previous loads rema
   } finally {controller.abort();for(const release of finish.values())release();await Promise.allSettled(pending);}
 });
 
+test('an unredirected WAYFless initiator cannot settle Prepare',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  const entry='https://publisher.example/action/ssostart?idp=https%3A%2F%2Fidp.example%2Fidp%2Fshibboleth';
+  const portal='https://ds.carsi.edu.cn/resource/resource.php';
+  const opened=[];
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    wc.loadURL=url=>{opened.push(url);return load(url);};
+    wc.runAuth=async code=>{
+      const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+      if(action==='ready')return {status:'ready',checked:false};
+      if(action==='search')return {status:'pending'};
+      if(action==='poll')return {status:'complete',selection:{status:'missing'}};
+      return {step:'none',waiting:false};
+    };
+  });
+  const data={request_id:'entry-refused',service_id:serviceId,service_scope:serviceScope,first_entry:true,
+    service_entry:{wayfless_url:entry,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+  const signal=new AbortController().signal;
+  const result=await browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
+  assert.equal(result.outcome,'Needs attention');
+  assert.deepEqual(opened,[entry,portal]);
+  assert.equal(browser.serviceContext(data),null);
+});
+
+test('Service recovery keeps a live follower when the leading Paper is canceled',async t=>{
+  const {recoverService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  const data={service_id:serviceId,service_scope:serviceScope,
+    service_entry:{wayfless_url:'https://publisher.example/landing',landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+  const leader=new AbortController(),follower=new AbortController(),deadline=Date.now()+3000;
+  let start,joined,loads=0;
+  const started=new Promise(resolve=>{start=resolve;});
+  const following=new Promise(resolve=>{joined=resolve;});
+  browser.events.on('tab-created',()=>{loads++;});
+  const recover=(owner,request_id,validate)=>browser.runTask(owner.signal,{...data,request_id},()=>{
+    browser.operation.validateRecovery=validate;
+    const pending=recoverService(browser,data,{signal:owner.signal,deadline,progress(){}},null);
+    if(owner===follower)joined();
+    return pending;
+  });
+  const first=recover(leader,'leading-paper',({signal})=>new Promise((_,reject)=>{
+    signal.addEventListener('abort',()=>reject(new BrowserFailure('navigation','canceled')),{once:true});start();
+  }));
+  const refused=assert.rejects(first,/canceled/);
+  await started;
+  const second=recover(follower,'following-paper');
+  await following;
+  assert.equal(loads,0);
+  leader.abort();
+  await refused;
+  assert.equal((await second).tab.view.webContents.getURL(),data.service_entry.wayfless_url);
+  assert.equal(loads,1);
+  assert.equal(browser.serviceRecoveries.size,0);
+});
+
+test('OCE Reader settles its blocked page before recovering the same Service and retrying its GET',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime,partition}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  partition.cookies={get:async()=>[]};
+  const entry='https://oce.ovid.com/landing',id='00000000-000000000-00001';
+  const readerURL='https://oce.ovid.com/article/'+id+'/HTML';
+  const selection='https://ds.carsi.edu.cn/login/index.html';
+  const identity={doi:'10.5555/fixture'},signal=new AbortController().signal,loads=[];
+  let blocked;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',identity,
+    service_id:serviceId,service_scope:serviceScope,
+    service_entry:{wayfless_url:entry,landing_hosts:['oce.ovid.com'],resource_name:'Fixture'},
+    reader:{rule_id:'R060',platform:'oce',identifier:id,source_url:readerURL,url:readerURL,stage:'P4',target:identity}};
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    wc.loadURL=url=>{
+      loads.push(url);
+      if(url===readerURL && !blocked){blocked=wc;return load(selection);}
+      if(url===entry && blocked)assert.equal(blocked.isDestroyed(),true);
+      return load(url);
+    };
+  });
+  const readDocument=browser.readDocument.bind(browser);
+  browser.readDocument=async (tab,action,options)=>{
+    if(action!=='pdf')return readDocument(tab,action,options);
+    assert.equal(tab.view.webContents.getURL(),readerURL);
+    return {clues:{candidates:[],status:'complete'}};
+  };
+  const before=await browser.runTask(signal,{...data,request_id:'oce-prepare'},()=>prepareService(browser,data,{signal,progress(){}}));
+  const result=await browser.runTask(signal,{...data,request_id:'oce-reader'},()=>
+    browser.extractPaperPdfClues(data,{signal,deadline:Date.now()+2500}));
+  assert.equal(result.outcome,'retrieved');
+  assert.deepEqual(loads,[entry,readerURL,entry,readerURL]);
+  assert.notEqual(browser.serviceContext(data).tab.id,before.target_page_id);
+});
+
+test('Session Reset waits for a previously destroyed page to finish cleanup',async t=>{
+  const {BrowserRuntime,partition}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  let cleared=false,settle;
+  partition.closeAllConnections=async()=>{};
+  partition.clearData=async()=>{cleared=true;};
+  partition.clearAuthCache=async()=>{};
+  const tab=browser.createTab({user:true});
+  tab.challenge.active={controller:new AbortController(),done:new Promise(resolve=>{settle=resolve;})};
+  tab.view.webContents.destroy();
+  assert.equal(browser.tabs.size,0);
+  const reset=browser.resetSession();
+  try {
+    await new Promise(setImmediate);
+    assert.equal(cleared,false);
+  } finally {settle();}
+  assert.equal((await reset).ok,true);
+  assert.equal(cleared,true);
+});
+
 test('initial Paper loading allows two delayed refreshes before replacing only the failed page',async t=>{
   const {BrowserRuntime,partition}=fixture(t);
   const waits=[],recovery=[];

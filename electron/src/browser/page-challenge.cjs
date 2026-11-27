@@ -1,5 +1,6 @@
 'use strict';
 const {checkPage,cloudflareChallenge}=require('./browser-errors.cjs');
+const {isFederatedPage}=require('../workflows/browser-operations.cjs');
 
 // One observer per physical Page. Business waits consume the same access facts,
 // but neither own this observer nor lend it their deadlines or credentials.
@@ -41,8 +42,10 @@ class PageChallenge {
     const cloudflare=cloudflareChallenge(doc);
     if(!cloudflare) {
       this.active?.controller.abort();
+      const context=this.tab.authContext;
+      const school=context?.active && isFederatedPage(context.entry,doc.url);
       if(diagnostic?.code==='verification_page' || doc.markers.login || doc.markers.mfa)this.setState('manual',
-        doc.imperva?'imperva':doc.markers.mfa?'mfa':doc.markers.login?(this.tab.authContext?.institution?'institution':'login'):
+        doc.imperva?'imperva':doc.markers.mfa?'mfa':doc.markers.login?(school?'institution':'login'):
           doc.markers.hcaptchaVisible?'hcaptcha':'verification');
       else if(diagnostic)this.setState('failed');
       else if(this.state)this.setState('recovered');

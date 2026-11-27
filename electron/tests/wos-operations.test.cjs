@@ -106,6 +106,8 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
     return null;
   };
   browser.resumeServiceStep=(_data,_options,step)=>step();
+  browser.observeServiceTarget=(_data,_url,options,observe)=>
+    observe({...options,extraWaiting:()=>false,onWaiting:()=>{}});
   browser.waitForServiceTarget=async(_data,{tab:target})=>assert.equal(target,tab);
   browser.reserveTaskPages=async()=>{};
   browser.navigateServiceTarget=async(_data,url,{tab:target})=>{
@@ -123,6 +125,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
         }
       },checkCanceled:signal=>{if(signal.aborted)throw Error('canceled');}}:
       name==='./browser-operations.cjs'?{
+        ...hostRequire(name),
         async newTaskPage(owner,_signal,{role,managed}) {
           assert.equal(owner,browser);assert.equal(role,'wos-query');assert.equal(managed,true);
           assert.equal(browser.tabs.size,0);
@@ -131,6 +134,7 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
       hostRequire(name)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/workflows/wos-operations.cjs'),'utf8'),context);
   return {browser,controller,item,ops,armedTokens,ready,settle:()=>settle(),
+    replacePage(url) {currentURL=url;generation++;documentId='replacement-document';},
     runQuery:(data={})=>context.module.exports.wosQuery(browser,{...preparedIdentity,page_id:71,query:'fixture query',...data},
       {signal:controller.signal,progress:value=>progress.push(value)}),
     progress,run:(data={})=>context.module.exports.wosExport(browser,{...preparedIdentity,page_id:71,download_root:root,filename,first:1,last:1,...data},
@@ -138,6 +142,30 @@ function fixture(t,{attributable=true,hold=false,challenge=false,domError=null,q
         challengeActive=false;setImmediate(()=>settle());
       }}}),filename};
 }
+test('a pre-export sign-in can resume the original verified results route exactly once',async t=>{
+  const f=fixture(t),tab=f.browser.tabs.get(71);
+  tab.wosResultTotal=94;
+  const results=tab.wosDocument.url,login='https://idp.example/idp/profile/SAML2/Redirect/SSO';
+  f.replacePage(login);
+  f.browser.accessState=()=>({markers:{login:tab.view.webContents.getURL()===login}});
+  f.browser.waitForPage=async(_tab,{onWaiting})=>{
+    onWaiting(true,undefined,await f.browser.documentBinding());
+    const returned='https://www.webofscience.com/wos/';
+    f.replacePage(returned);
+    return f.browser.documentBinding();
+  };
+  f.browser.navigateServiceTarget=async(_data,url)=>{
+    assert.equal(url,results);
+    f.ops.push('resume verified results');
+    f.replacePage(url);
+    return f.browser.documentBinding();
+  };
+  const output=await f.run({service_entry:{idp_entity_id:'https://idp.example/idp/shibboleth'}});
+  assert.equal(output.page_id,tab.id);
+  assert.equal(f.ops.filter(step=>step==='resume verified results').length,1);
+  assert.equal(f.ops.filter(step=>step==='export').length,1);
+  assert.ok(f.ops.indexOf('result')<f.ops.indexOf('export'));
+});
 test('WoS accepts only an observed native export URL into its issued file',async t=>{
   const f=fixture(t);assert.equal((await f.run()).filename,f.filename);
   assert.equal(f.controller.signal.aborted,false);

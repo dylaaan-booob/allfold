@@ -4,7 +4,7 @@ const {BrowserFailure}=require('../browser/browser-errors.cjs');
 const {checkCanceled,timeoutFailure,pause,waitFor,withTaskDeadline,waitForLoad}=require('../browser/browser-task.cjs');
 const {ebscoEntry}=require('../browser/ebsco-source.cjs');
 const {xmuLoginContext}=require('../auth/xmu-auth.cjs');
-const {origin}=require('../browser/browser-recovery.cjs');
+const {origin,reusableNavigationURL}=require('../browser/browser-recovery.cjs');
 const {institutionPageAction,resourcePageAction,detailPageAction,imagePageAction}=require('./page-actions.cjs');
 
 async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,deadline=Infinity,beforeDispatch) {
@@ -232,27 +232,40 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
     throw failure;
   }
 }
-async function waitForWayflessLanding(browser,tab,entry,{signal,progress,deadline}) {
+function serviceLanding(entry,value) {
+  if(!reusableNavigationURL(value) || isFederatedPage(entry,value))return false;
+  const url=new URL(value);
+  if(url.origin===origin(CARSI_PORTAL) || url.hostname.startsWith('shibboleth.')
+    || /\/(?:shibboleth\.sso|shibagent\.aspx|wayfless|(?:api|oauth2?)\/authorize|saml2?\/(?:sso|login)|(?:action\/)?ssostart|(?:login|signon)(?:\.aspx)?)(?:\/|$)/i.test(url.pathname))
+    return false;
+  if(entry.wayfless_url) {
+    const initiator=new URL(entry.wayfless_url);
+    if(initiator.origin===url.origin && initiator.pathname===url.pathname
+      && [...url.searchParams.keys()].some(key=>/^(?:auth|entityid|idp|state|targeturl)$/i.test(key)))return false;
+  }
+  const host=url.hostname.replace(/^www\./,'');
+  return entry.landing_hosts.some(expected=>expected.replace(/^www\./,'')===host)
+    || entry.landing_hosts.includes('search.ebscohost.com') && !!ebscoEntry(value);
+}
+
+async function waitForServiceLanding(browser,tab,entry,{signal,progress,deadline}) {
   while(true) {
     checkCanceled(signal);
-    const pages=authenticationPages(browser,tab);
+    const context=tab.authContext;
+    const pages=[...browser.tabs.values()].filter(page=>{
+      if(page.authContext!==context || !browser.ownsPage(context.owner,page.id))return false;
+      for(let opener=page;opener;opener=opener.opener)if(opener===tab)return true;
+      return false;
+    });
     for(const page of pages.reverse()) {
       browser.bindTaskPage(page,signal);
       const observed=await browser.inspectPage(page,{signal,deadline});
       if(observed.loading)continue;
-      const doc=observed.doc,url=new URL(doc.url);
+      const doc=observed.doc;
       if(!observed.waiting && doc.status>=200 && doc.status<300) {
         if(isFederatedPage(entry,doc.url))continue;
-        const entryURL=new URL(entry.wayfless_url);
-        // Some entries are also the product URL, for example the Gale menu.
-        // An initiator or callback page alone cannot establish the landing.
-        const initiator=url.hostname.startsWith('shibboleth.') || /\/(?:shibboleth\.sso|idp\/profile|api\/authorize|saml2?\/sso)(?:\/|$)/i.test(url.pathname)
-          || url.pathname===entryURL.pathname && /login|authenticate|federation|authorize|signon/i.test(entryURL.pathname);
-        const expectedHost=entry.landing_hosts.some(host=>url.hostname===host || url.hostname===host.replace(/^www\./,'')
-          || url.hostname==='www.'+host);
-        const ebsco=entry.landing_hosts.includes('search.ebscohost.com') && ebscoEntry(doc.url);
-        if(!initiator && url.origin!=='https://ds.carsi.edu.cn' && (expectedHost || ebsco))return page;
-        if(pages.length===1)throw new BrowserFailure('preparation','service_entry_unavailable');
+        if(serviceLanding(entry,doc.url))return page;
+        if(pages.length===1 && origin(doc.url))throw new BrowserFailure('preparation','service_entry_unavailable');
       }
     }
     progress({waiting_for_user:true});
@@ -276,7 +289,7 @@ async function prepareServiceWithinDeadline(browser,data,{signal,progress,first=
       options.signal=context.signal;
       if(wayfless) {
         await browser.navigate(entry.wayfless_url,{tab,signal:options.signal,deadline,afterLoad:true,serviceEntry:firstEntry?'first':true});
-        tab=await waitForWayflessLanding(browser,tab,entry,options);
+        tab=await waitForServiceLanding(browser,tab,entry,options);
         browser.associatePage(tab,{role:'service-target'});
         progress({waiting_for_user:false});
         browser.finishPageLoad(tab);
@@ -336,24 +349,34 @@ async function recoverService(browser,data,{signal,deadline,progress},previous) 
   if(!entry || entry.unavailable_reason)throw new BrowserFailure('preparation','service_unavailable');
   assertServiceScope(browser,data);
   const key=browser.accessKey(data);
-  let pending=browser.serviceRecoveries.get(key);
-  if(!pending) {
+  while(true) {
+    checkCanceled(signal);
+    if(Date.now()>=deadline)throw timeoutFailure('authentication','request');
+    const pending=browser.serviceRecoveries.get(key);
+    if(pending) {
+      try {return await waitFor(()=>pending.settlement,signal,deadline,'authentication','request');}
+      catch(error) {
+        checkCanceled(signal);
+        const parentEnded=pending.signal.aborted || Date.now()>=pending.deadline;
+        if(!parentEnded || !['canceled','timeout'].includes(error.diagnostic?.code))throw error;
+        continue;
+      }
+    }
     const current=browser.serviceContext(data);
     if(current && current!==previous)return current;
-    pending=(async()=>{
+    const recovery={signal,deadline,settlement:(async()=>{
       await owner.validateRecovery?.({signal,deadline,stage:'authentication'});
       while(browser.serviceContext(data)?.pins.size)
         await waitFor(()=>pause(signal),signal,deadline,'authentication','request');
       const result=await prepareServiceWithinDeadline(browser,data,{signal,deadline,progress});
       if(result.outcome!=='Opened')throw new BrowserFailure('authentication','service_authentication_required');
       return browser.serviceContext(data);
-    })();
-    browser.serviceRecoveries.set(key,pending);
+    })()};
+    browser.serviceRecoveries.set(key,recovery);
     // Keep the shared result through actual Prepare settlement.
-    try {return await pending;}
-    finally {if(browser.serviceRecoveries.get(key)===pending)browser.serviceRecoveries.delete(key);}
+    try {return await recovery.settlement;}
+    finally {browser.serviceRecoveries.delete(key);}
   }
-  return waitFor(()=>pending,signal,deadline,'authentication','request');
 }
 
 async function visitCARSIResource(browser,portal,data,{signal,progress,attempt},requestDeadline) {
@@ -441,7 +464,7 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt},
     target=tab;
     target.refreshGuard=async options=>{
       if(!await waitFor(()=>confirmed,options.signal,options.deadline,'preparation','visit_target')
-        || attempt.ambiguous || attempt.manual)
+        || attempt.ambiguous)
         throw new BrowserFailure('preparation','unverified_official_page');
     };
     browser.runInOperation(owner,()=>browser.beginPageLoad(tab,signal,requestDeadline,{
@@ -477,33 +500,31 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt},
     }
     while(!target && !attempt.ambiguous)await waitFor(()=>pause(signal),signal,visitDeadline,'preparation','visit_target');
     if(attempt.ambiguous)return {outcome:'Needs attention',reason:'unverified_official_page'};
-    attempt.visitConfirmed=clickReturned;
     if(!clickReturned)target.navigation.blockReplay();
     settleClick(clickReturned);
     target.managed=true;
     browser.associatePage(target,{role:'service-target',source:target===detail?portal:detail});
     browser.bindTaskPage(target,signal);
-    const doc=await browser.waitForPage(target,{signal,deadline:requestDeadline,
-      onWaiting:waiting=>progress({waiting_for_user:waiting})});
-    checkCARSISession([target],signal);
-    if(attempt.ambiguous || !browser.documentCurrent(doc) || (target===detail && doc.url===sourceDocument.url))
+    let landed;
+    try {
+      landed=await waitForServiceLanding(browser,target,portal.authContext.entry,{signal,deadline:requestDeadline,progress});
+    } catch(error) {
+      if(error.diagnostic?.code==='service_entry_unavailable')
+        return {outcome:'Needs attention',reason:'unverified_official_page'};
+      throw error;
+    }
+    if(attempt.ambiguous || (landed===detail && landed.view.webContents.getURL()===sourceDocument.url))
       return {outcome:'Needs attention',reason:'unverified_official_page'};
+    browser.associatePage(landed,{role:'service-target',source:target===detail?portal:detail});
+    browser.finishPageLoad(landed);
     progress({waiting_for_user:false});
-    if(official(doc.url,'/resource/resource.php') || official(doc.url,'/resource/resourceDetail.php'))
-      return {outcome:'Needs attention',reason:'unverified_official_page'};
-    return {outcome:'Opened',target_page_id:target.id};
+    if(browser.carsiVisitOrigins.size>=128)browser.carsiVisitOrigins.delete(browser.carsiVisitOrigins.keys().next().value);
+    browser.carsiVisitOrigins.set(detailURL,origin(landed.view.webContents.getURL()));
+    return {outcome:'Opened',target_page_id:landed.id};
   } finally {
     settleClick(false);
     if(target)delete target.refreshGuard;
     browser.finishPageLoad(detail);
-    if(attempt.visitConfirmed && !attempt.ambiguous) {
-      const targetOrigin=origin(target?.navigation.current?.url);
-      if(targetOrigin && targetOrigin!==origin(CARSI_PORTAL) && !isFederatedPage(portal.authContext?.entry,target?.navigation.current?.url)) {
-        attempt.targetOrigin=targetOrigin;
-        if(browser.carsiVisitOrigins.size>=128)browser.carsiVisitOrigins.delete(browser.carsiVisitOrigins.keys().next().value);
-        browser.carsiVisitOrigins.set(detailURL,targetOrigin);
-      }
-    }
     wc.removeListener('did-start-navigation',ownNav);browser.events.removeListener('tab-created',popup);
     for(const [contents,listener] of popupListeners)contents.removeListener('did-start-navigation',listener);
   }

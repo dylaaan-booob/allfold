@@ -41,8 +41,9 @@ attempt. Foreground Run cancellation and reader selection do not own the body.
 
 Download admission does not require a mapped or prepared Service. Ordinary URLs,
 stable cached candidates and public Reader/native entries use the normal shared
-Session, with its ordinary Cookie behavior. No OA preflight, candidate partition,
-Cookie copying or automatic Login/Prepare is introduced.
+Session and Chromium's Cookie lifecycle. A recognized authentication block on a
+qualified, Service-bound GET can recover that saved Service within the original
+attempt, then resume the blocked GET.
 
 Only an operation that actually consumes a retained institutional capability
 captures the Paper's unambiguous saved Service and prepared context. The OCE
@@ -107,18 +108,19 @@ It retains the current Document's observed content URL and identifiers. After
 its current P3/P4 clues, these may qualify previously unavailable templates before
 P5, still bound to the original Paper.
 
-For a journal article with a DOI and one assigned Service with an opened EBSCO
-target, ordinary Download starts with the EBSCO DOI search. A saved Journal ISSN
+For a journal article with a DOI and one assigned EBSCO Service, ordinary
+Download starts with the EBSCO DOI search. A saved Journal ISSN
 assignment remains usable when the publication type is missing. A source-local failure
 or missing eligible body returns to the existing order within the same attempt.
-Without that opened target, Download starts in the existing order. A deferred
-publisher challenge can give a Service that has since opened a turn before
-opening another publisher page. Independent sources keep their own authority.
+The native search requires a verified EBSCO target and can reacquire it through
+the assigned CARSI Service. A deferred publisher challenge can give EBSCO a turn
+before opening another publisher page. Independent sources keep their own authority.
 
 A verified profile can be reused by the same Service in its current Session.
 When the retained entry is still needed, follow its actual Community link or
-submit its visible native form once. DOI search resolves records within the
-current profile. Repeated links for one record count once. The main record DOI
+submit its visible native form once. An authentication block on the Viewer GET
+can resume at the same Viewer with the verified record as its Referer. DOI search
+resolves records within the current profile. Repeated links for one record count once. The main record DOI
 or a previously confirmed record establishes identity. Titles help distinguish
 results when stronger evidence is absent. A real identity conflict or different
 plausible records remain explicit failures. The existing authorized details

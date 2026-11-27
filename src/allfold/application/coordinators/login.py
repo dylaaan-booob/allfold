@@ -1,6 +1,6 @@
 """Prepare the selected Services in the shared Browser Session."""
 
-from concurrent.futures import as_completed
+from concurrent.futures import as_completed, wait
 from dataclasses import dataclass, replace
 from pathlib import Path
 import threading
@@ -106,7 +106,7 @@ class LoginCoordinator:
             entries = {}
         else:
             available = tuple(s for s in saved.services if s.access_method == 'carsi')
-            chosen = set(service_ids) if service_ids is not None else {s.id for s in available}
+            chosen = set(service_ids or ())
             services = tuple(s for s in available if s.id in chosen)
             if not services or chosen != {s.id for s in services}:
                 raise ValueError('Choose saved CARSI Services to prepare')
@@ -201,7 +201,7 @@ class LoginCoordinator:
                 recovery=normalize_recovery(data.get('recovery')) or None,
                 page_id=target if opened and not stopped and target not in self._closed_pages else None,
                 pdf_source='ebsco' if opened and data.get('pdf_source') == 'ebsco' else None,
-                reason=diagnostic['code'] if diagnostic else data.get('reason'))
+                reason=(diagnostic or {}).get('code') or data.get('reason'))
             return opened and not stopped
 
     def _run(self, saved, services, entries, owner):
@@ -221,8 +221,11 @@ class LoginCoordinator:
             finally:
                 # Registration and cancellation both use the coordinator mutex.
                 # Each submitted operation keeps its owner through native settlement.
-                for future in as_completed(pending):
-                    self._settle(saved, pending[future], future)
+                try:
+                    for future in as_completed(pending):
+                        self._settle(saved, pending[future], future)
+                finally:
+                    wait(pending)
         except ElectronDisconnected:
             phase = 'interrupted'
         except (OSError, RuntimeError, ValueError):

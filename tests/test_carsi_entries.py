@@ -72,3 +72,19 @@ def test_selected_templates_preserve_fixed_bytes_and_apply_only_required_paramet
         name = next(name for name, row in rows.items() if source in (row.entry_note or ''))
         assert entry(name, idp_entity_id=idp)['wayfless_url'] is None
         assert 'https://' in rows[name].entry_note
+
+
+def test_refresh_keeps_conflicting_catalog_identity_evidence_without_using_it(tmp_path):
+    path = tmp_path / 'resources.sqlite'
+    original = read_snapshot(path, CATALOG_KEY)
+    assert original is None
+    row = asdict(next(row for row in get_carsi_catalog(path).resources if row.wayfless_url_template))
+    changed = {key: row[key] for key in ('production', 'url', 'sptype')} | {'searchStr': 'Different vendor and product'}
+    write_snapshot(path, CATALOG_KEY, {'resources': [changed]})
+    assert get_carsi_catalog(path).resources[0].wayfless_url_template is None
+    html = '<script>var SPList=' + json.dumps([changed]) + ';</script>'
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, text=html, headers={'content-type': 'text/html'}))
+    refreshed = get_carsi_catalog(path, refresh=True, transport=transport)
+    assert refreshed.resources[0].wayfless_url_template is None
+    assert any(item['production'] == row['production'] and item['entry_sources'] == list(row['entry_sources'])
+               for item in read_snapshot(path, CATALOG_KEY).payload['retired_resources'])

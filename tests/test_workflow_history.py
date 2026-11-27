@@ -129,7 +129,7 @@ def test_login_history_requires_observed_target_evidence(tmp_path, observed, exp
     store = DiagnosticStore(config, root=tmp_path / 'logs')
     bridge, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(bridge, lock, diagnostics=store)
-    started = login.start(config)
+    started = login.start(config, service_ids=(service.id,))
     action, request, future = bridge.operations.get(timeout=2)
     assert action == 'prepare_service' and request['workflow_id'] == started['workflow_id']
     recovery = [{'recovery_action': 'resource_reentry', 'count': 1, 'outcome': 'recovered',

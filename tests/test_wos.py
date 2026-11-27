@@ -202,7 +202,9 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
                 assert action == 'wos_export'
                 Path(data['filename']).write_text(tagged([record(doi=f"10.1234/{data['first']}",
                     ut=f"WOS:{data['first']}", PD='JAN')]))
-                result = dict(filename=data['filename'])
+                if data['first'] == 2:
+                    assert data['page_id'] == 73
+                result = dict(filename=data['filename'], page_id=73)
             future.set_result(result)
             return future
 
@@ -224,7 +226,8 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
     assert bridge.calls[-1][1] == {'workflow_id': start['snapshot']['task_id'], 'task_id': start['snapshot']['task_id']}
     query = bridge.calls[0][1]
     assert query['service_entry']['resource_name'] == 'Web of Science'
-    assert all(data['page_id'] == (72 if change_after_query == 'prepared' else 71) for _, data in bridge.calls[1:-1])
+    assert [data['page_id'] for _, data in bridge.calls[1:-1]] == (
+        [] if refused else [72 if change_after_query == 'prepared' else 71, 73])
     assert all(data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
                and data['service_scope'] == saved.scope for _, data in bridge.calls[:-1])
     assert len({data['task_id'] for _, data in bridge.calls}) == 1

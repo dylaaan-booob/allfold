@@ -200,7 +200,7 @@ def _changes(previous, current):
     for old in previous:
         same = by_name.get(old.production)
         if same is not None:
-            if (same.url.strip(), same.sptype) != (old.url.strip(), old.sptype):
+            if _identity(same) != _identity(old) or not _same_search_label(old, same):
                 changes.append(CatalogChange("changed", old.production, (same.production,)))
             continue
         # Same exact destination is evidence of a possible rename, never proof
@@ -222,16 +222,25 @@ def _identity(resource):
     return resource.production, resource.url.strip(), resource.sptype
 
 
+def _same_search_label(previous, current):
+    before, after = previous.searchStr.strip(), current.searchStr.strip()
+    return after == before or after.startswith(before + " ")
+
+
 def _merge_entries(official, previous, retired, *, importing=False):
-    def key(resource):
-        identity = _identity(resource)
-        return (*identity, resource.searchStr.strip()) if importing else identity
+    def key(row):
+        return (*_identity(row), row.searchStr.strip())
 
     evidence = {key(row): row for row in (*retired, *previous) if row.entry_sources or row.unavailable_reason}
+    active = {_identity(row): row for row in previous if key(row) in evidence}
     unavailable = {row.production: row for row in evidence.values() if row.unavailable_reason}
     resources = []
     for row in official:
         match = evidence.pop(key(row), None)
+        if match is None and not importing:
+            previous_row = active.get(_identity(row))
+            if previous_row and _same_search_label(previous_row, row):
+                match = evidence.pop(key(previous_row), None)
         if match is None and row.production in unavailable:
             # Keep the known stopped product and its history under its old identity.
             resources.append(unavailable[row.production])

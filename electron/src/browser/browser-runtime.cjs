@@ -86,6 +86,7 @@ class BrowserRuntime {
     this.authenticationRevision=0;
     this.schoolSubmission=null;
     this.failedCreations=new Set();
+    this.closedPages=new Set();
     this.carsiVisitOrigins=new Map();
     this.documents=new DocumentRuntime(this);
     this.bodyActions=new BodyActionRuntime(this,{ipc:ipcMain});
@@ -234,7 +235,10 @@ class BrowserRuntime {
       const access=tab.resourceOwner?.kind==='access'?tab.resourceOwner:null;
       if(access){access.valid=false;if(this.accessContexts.get(access.key)===access)this.accessContexts.delete(access.key);
         this.cleanupStep(()=>this.events.emit('access-pages-closed',[tab.id]),tab.taskOwner);}
-      tab.destroyedCleanup=Promise.all([this.sessionEvents.waitForDownloads(contents),tab.challenge?.close()]).then(()=>resource.release());
+      const cleanup=Promise.all([this.sessionEvents.waitForDownloads(contents),tab.challenge?.close()]).then(()=>resource.release());
+      tab.destroyedCleanup=cleanup;
+      this.closedPages.add(cleanup);
+      cleanup.then(()=>this.closedPages.delete(cleanup),()=>{});
       if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
       if (tab.taskOwner?.taskTab === tab)tab.taskOwner.taskTab=null;
       for(const page of this.tabs.values()) {
@@ -272,7 +276,7 @@ class BrowserRuntime {
     signal=AbortSignal.any([controller.signal,...(signal?[signal]:[])]);
     if(preparing && (this.authenticationPaused || owner.authenticationRevision!==this.authenticationRevision))
       throw new BrowserFailure('authentication','configuration_changed');
-        const context={owner,signal,controller,entry,active:true,preparing,revision:owner.authenticationRevision,
+    const context={owner,signal,controller,entry,active:true,preparing,revision:owner.authenticationRevision,
       loginSubmitted:false,failure:null};
     context.fatal=new Promise((_,reject)=>{context.reject=reject;});
     context.fatal.catch(()=>{});
@@ -348,10 +352,9 @@ class BrowserRuntime {
         return;
       }
       if(!confirmation && (!school || !['account','login'].includes(state.step)))return;
-      if(!tab.authDocument || tab.authDocument.context!==context
-        || tab.authDocument.documentId!==state.binding.documentId
+      if(!tab.authDocument || tab.authDocument.documentId!==state.binding.documentId
         || tab.authDocument.frameToken!==state.binding.frameToken)
-        tab.authDocument={...state.binding,context,attempted:new Set()};
+        tab.authDocument={...state.binding,attempted:new Set()};
       const attempted=tab.authDocument.attempted;
       if(attempted.has(state.step) || state.step==='login' && context.loginSubmitted)return;
       const authorized=()=>current() && context.revision===this.authenticationRevision && !this.authenticationPaused;
@@ -767,6 +770,7 @@ class BrowserRuntime {
       const owner=this.operation,tab=owner.taskTab;
       if(tab && this.ownsPage(owner,tab.id) && (tab.resourceOwner===owner || closeBlockedPage
         && tab.resourceOwner===previous && !previous.pins.size && !previous.loan))await this.closePage(tab,'service_recovery');
+      previous?.pins.delete(owner);
       this.pageBudget.releaseUnused(owner);
       await recoverService(this,data,{signal,deadline,
         progress:value=>{if(value.waiting_for_user)onWaiting?.(undefined,undefined);}},previous);
@@ -963,16 +967,22 @@ class BrowserRuntime {
       || !Number.isSafeInteger(data.deadline_ms)
       || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))
       throw new BrowserFailure('navigation','document_operation_failed');
-    return this.resumeServiceStep(data,options,async()=>{
+    let access,verify;
+    const withAccess=step=>this.resumeServiceStep(data,options,async()=>{
       const context=this.serviceContext(data);
       if(!context?.ebscoEntry)throw new BrowserFailure('authentication','service_page_required');
-      const verify=this.pinPreparedPaperAccess(data,'ebsco');
-      try {
-        return await readEbscoSource(this,data,context,{...options,verify});
-      } finally {
-        context.pins.delete(this.operation);
+      if(access!==context || !context.pins.has(this.operation)) {
+        verify=this.pinPreparedPaperAccess(data,'ebsco');
+        access=context;
       }
+      return step(context);
     });
+    try {
+      const context=await withAccess(value=>value);
+      return await readEbscoSource(this,data,context,{...options,verify:()=>verify(),withAccess});
+    } finally {
+      access?.pins.delete(this.operation);
+    }
   }
   async extractPaperDocument(data,options={}) {
     const bounded={...options,deadline:options.deadline ?? Date.now()+TASK_DEADLINE_MS};
@@ -1170,7 +1180,7 @@ class BrowserRuntime {
     try {
       if(this.operations.size)throw new BrowserFailure('navigation','navigation_active');
       await Promise.all([...this.tabs.values()].map(tab=>this.closePage(tab,'session_reset')));
-      await Promise.all(this.failedCreations);
+      await Promise.all([...this.failedCreations,...this.closedPages]);
       await this.sessionEvents.waitForDownloads();
       await this.partition.closeAllConnections();
       await this.partition.clearData();
@@ -1273,7 +1283,7 @@ class BrowserRuntime {
       await Promise.all([...this.operations].map(owner=>this.releaseOperation(owner)));
       for(const context of this.accessContexts.values()){context.valid=false;context.loan=null;context.pins.clear();}
       await Promise.all([...this.tabs.values()].map(tab=>this.closePage(tab,'app_exit')));
-      await Promise.all(this.failedCreations);
+      await Promise.all([...this.failedCreations,...this.closedPages]);
       await this.sessionEvents.waitForDownloads();
       await this.ready.catch(()=>{});
       this.presentation.dispose();this.selected=null;

@@ -88,10 +88,10 @@ def test_selected_services_wait_for_first_real_completion_then_dispatch_independ
 
 @pytest.mark.parametrize('cancel', [False, True])
 def test_incomplete_first_service_does_not_dispatch_the_rest(tmp_path, cancel):
-    path, _ = login_fixture(tmp_path, count=3)
+    path, services = login_fixture(tmp_path, count=3)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
-    workflow_id = login.start(path)['workflow_id']
+    workflow_id = login.start(path, service_ids=[service.id for service in services[:-1]])['workflow_id']
     _, _, first = native.operations.get(timeout=2)
     try:
         if cancel:
@@ -124,16 +124,16 @@ def test_unavailable_service_is_reported_before_first_executable_entry(tmp_path)
 
 
 def test_cancel_keeps_submitted_prepares_owned_until_all_native_results(tmp_path):
-    path, _ = login_fixture(tmp_path, count=4)
+    path, services = login_fixture(tmp_path, count=4)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
-    workflow_id = login.start(path)['workflow_id']
+    workflow_id = login.start(path, service_ids=[service.id for service in services[:-1]])['workflow_id']
     native.operations.get(timeout=2)[2].set_result(opened(17))
     pending = [native.operations.get(timeout=2)[2] for _ in range(3)]
     try:
         assert login.cancel(workflow_id)
         assert login.running and lock.owner and native.cancelled_workflows == [workflow_id]
-        pending[0].set_result({})
+        pending[0].set_result({'diagnostic': {'stage': 'authentication', 'code': 'configuration_changed'}})
         assert login.running and lock.owner
     finally:
         for future in pending:
@@ -147,7 +147,7 @@ def test_prepare_refuses_changed_target_at_recovery(tmp_path):
     path, services = login_fixture(tmp_path, count=2)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
-    login.start(path)
+    login.start(path, service_ids=(services[0].id,))
     _, data, future = native.operations.get(timeout=2)
     try:
         verify = native.authority[data['task_id']]
@@ -161,6 +161,16 @@ def test_prepare_refuses_changed_target_at_recovery(tmp_path):
         future.set_result(opened(42))
         login.join()
     assert native.operations.empty()
+
+
+def test_prepare_without_a_selection_does_not_start_saved_services(tmp_path):
+    path, _services = login_fixture(tmp_path)
+    native, lock = Native(), BrowserTaskLock()
+    login = LoginCoordinator(native, lock)
+    for selection in (None, ()):
+        with pytest.raises(ValueError, match='Choose saved CARSI Services'):
+            login.start(path, service_ids=selection)
+    assert native.operations.empty() and not lock.owners
 
 
 def test_manual_visit_has_its_own_action_and_page_closure_only_drops_the_handle(tmp_path):

@@ -305,7 +305,7 @@ The same internal `extract_paper_pdf_clues` action accepts the fixed
 `reader_access_only: true` mode instead of a reader. It returns
 `{outcome:"retrieved", reader_access:{oce:boolean}}`, without opening a page,
 reading content or exporting a URL, handle or secret. The bit describes only the
-captured Service/key/retained target's actual `oce.ovid.com` Host; a CARSI entry
+captured Service's retained target's actual `oce.ovid.com` host; a CARSI entry
 URL or Service name is not the decision. It is operation-local and grants no
 authority by itself. An OCE read subsequently requires that same live prepared
 target again, the original Paper binding and a qualified AN. Only the fixed
@@ -313,7 +313,9 @@ target again, the original Paper binding and a qualified AN. Only the fixed
 `/pdfviewer/web/viewer.html?file=...` carrier are accepted; the file value must
 point to `assets.ovid.com` and retains its complete signature. An empty LWW
 viewer can reach this conditional alternative, keeping its original discovery
-phase and recording a fallback. Missing OCE access skips it. The OCE reader itself does not bootstrap access or receive PDF bytes.
+phase and recording a fallback. Missing OCE access skips it. If the qualified
+Reader GET encounters an authentication block, its owned page settles before
+reopening the same CARSI Service and retrying that GET within the attempt.
 
 ### Shared extraction scope
 

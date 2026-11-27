@@ -85,9 +85,9 @@ def prepare_settings_effects(app, effects, invalidation, before, after):
     auth_scope = 'authentication:' + browser_scope_id(app.state.config_path)
     cancel_login = school_changed and any(owner.kind == 'login' and auth_scope in owner.scopes
                                          for owner in app.state.browser_task_lock.owners)
+    effects.update(change=change, control=control, slot=slot, school_changed=school_changed, cancel_login=cancel_login)
     if cancel_login:
         app.state.login.shutdown()
-    effects.update(change=change, control=control, slot=slot, school_changed=school_changed, cancel_login=cancel_login)
 
 
 def drain_settings_effects(app, effects):

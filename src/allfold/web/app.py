@@ -288,7 +288,7 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
         try:
             with app.state.settings_write_lock:
-                if body.service_id is not None and body.service_ids is not None:
+                if (body.service_id is None) == (body.service_ids is None):
                     raise ValueError('Choose Manual Visit or select CARSI Services')
                 result = app.state.login.start(resolved_config_path, manual_service_id=body.service_id, service_ids=body.service_ids)
             return JSONResponse(jsonable_encoder(result))
@@ -335,10 +335,12 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return settings_error(str(error), 409)
         finally:
             with admission_lock:
-                if change is not None:
-                    app.state.workspace_tasks.finish_change(change)
-                if control is not None:
-                    app.state.browser_task_lock.release_control(control)
+                try:
+                    if change is not None:
+                        app.state.workspace_tasks.finish_change(change)
+                finally:
+                    if control is not None:
+                        app.state.browser_task_lock.release_control(control)
 
     app.add_middleware(
         TrustedHostMiddleware,

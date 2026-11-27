@@ -133,7 +133,8 @@ async function execute(message) {
         else if(message.action==='pause_authentication') {
           if(browser.authenticationPaused)throw new BrowserFailure('authentication','navigation_active');
           browser.authenticationPaused=true;
-          await browser.revokeAuthentication();
+          try {await browser.revokeAuthentication();}
+          catch(error){browser.authenticationPaused=false;throw error;}
           data={ok:true};
         } else {
           browser.authenticationPaused=false;
@@ -195,7 +196,7 @@ async function executeOperation(message,current) {
           catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
-        if(['prepare_service','wos_query','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action)
+        if(['prepare_service','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action)
           || message.action==='stream_paper_body' && (message.data?.recover_access===true || message.data?.service_entry))
           browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'native_paper_body') {

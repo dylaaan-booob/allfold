@@ -42,7 +42,7 @@ def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change
     config.write_text(config.read_text() + 'institution:\n  name: Test University\n')
     bridge, lock = PendingBridge(), BrowserTaskLock()
     login = LoginCoordinator(bridge, lock)
-    login.start(config)
+    login.start(config, service_ids=(service.id,))
     assert bridge.dispatched.wait(2)
     action, request = bridge.calls[0]
     assert action == 'prepare_service'

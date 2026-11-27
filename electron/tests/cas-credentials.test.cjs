@@ -44,6 +44,18 @@ test('concurrent replacements cannot both consume the same displayed revision',a
   assert.equal(results[0].status,'fulfilled');assert.equal(results[1].reason.code,'cas_revision_conflict');
   assert.equal((await api.casStatus()).username,'first');
 });
+test('credential changes recheck the revision after waiting for authentication to stop',async t=>{
+  for(const action of ['save','clear']) {
+    const api=fixture(t);
+    const saved=await api.saveCASCredentials({username:'fixture',password:'synthetic',expected_revision:'missing'});
+    const stopAuthentication=async()=>fs.writeFileSync(path.join(api.directory,'xmu-cas-credentials.bin'),
+      JSON.stringify({username:'external',password:'external-fixture'}));
+    const change=action==='save'?api.saveCASCredentials:api.clearCASCredentials;
+    await assert.rejects(change({username:'fixture',password:'replacement',expected_revision:saved.revision},stopAuthentication),
+      error=>error.code==='cas_revision_conflict');
+    assert.equal((await api.casStatus()).username,'external');
+  }
+});
 test('unreadable ciphertext reports its revision for an explicit complete replacement',async t=>{
   for(const cause of ['invalid-json','decryption-failed']){
     const api=fixture(t),target=path.join(api.directory,'xmu-cas-credentials.bin');

@@ -65,8 +65,8 @@ async function saveCredentials(value,beforeWrite) {
     const file=await fs.open(temporary,'wx',0o600);
     created=true;
     try {await file.writeFile(encrypted);} finally {await file.close();}
-    verifyRevision(value.expected_revision,await encryptedStore());
     await beforeWrite?.();
+    verifyRevision(value.expected_revision,await encryptedStore());
     await fs.rename(temporary,target);
   } catch (error) {if(error.code==='cas_revision_conflict')throw error;throw failure('cas_store_write_failed');}
   finally {if(created)await fs.unlink(temporary).catch(()=>{});}
@@ -76,6 +76,7 @@ function clearCASCredentials(value,beforeWrite) {return mutate(()=>clearCredenti
 async function clearCredentials(value,beforeWrite) {
   verifyRevision(value?.expected_revision,await encryptedStore());
   await beforeWrite?.();
+  verifyRevision(value?.expected_revision,await encryptedStore());
   try {await fs.unlink(filename());}
   catch(error) {if(error.code!=='ENOENT')throw failure('cas_store_clear_failed');}
   return {ok:true,configured:false,username:'',revision:'missing'};

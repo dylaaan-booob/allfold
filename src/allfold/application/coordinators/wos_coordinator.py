@@ -442,6 +442,10 @@ class WoSCoordinator:
                         first=first, last=last, download_root=str(root), filename=str(filename)))
                     if result.get('filename') != str(filename):
                         raise ValueError('Export path did not match the issued batch')
+                    page = result.get('page_id')
+                    if type(page) is not int or page <= 0:
+                        raise ValueError('Unattributable WoS export')
+                    task['page_id'] = page
                     task['download_root'] = root
                     previous = len(task['evidence'])
                     batch['issues'] = self._consume_export(task, batch, str(filename))
