@@ -118,12 +118,12 @@ def read_snapshot(path: Path, key: str) -> CachedResource | None:
         return CachedResource(payload, fetched_at)
 
 
-def write_snapshot(path: Path, key: str, payload: dict) -> CachedResource:
+def write_snapshot(path: Path, key: str, payload: dict, *, fetched_at: float | None = None) -> CachedResource:
     """Atomically publish one already-validated, complete external snapshot."""
     encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     if len(encoded.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
         raise ResourceCacheError("Resource cache snapshot exceeds size limit")
-    fetched_at = time()
+    fetched_at = time() if fetched_at is None else fetched_at
     with _database(path, create=True) as connection:
         with connection:
             connection.execute("INSERT INTO snapshots(key, payload, fetched_at) VALUES(?, ?, ?) "

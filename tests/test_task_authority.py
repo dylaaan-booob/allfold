@@ -28,8 +28,7 @@ def test_api_authority_ignores_unrelated_inputs_and_provider_credentials(tmp_pat
     assert 'synthetic-pubmed' not in repr(pubmed)
 
 
-@pytest.mark.parametrize('revoke', ['service', 'page', 'credential'])
-def test_prepared_service_authority_is_narrow_and_retired_context_never_renews(tmp_path, revoke):
+def test_business_authority_survives_page_loss_and_tracks_the_saved_target(tmp_path):
     config, services = login_fixture(tmp_path, count=2)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
@@ -46,29 +45,27 @@ def test_prepared_service_authority_is_narrow_and_retired_context_never_renews(t
         item.model_copy(update={'name': 'Unrelated renamed Service'}) if item.id == other.id else item
         for item in saved.state.access_services)), saved.revision)
     authority.verify()
-    if revoke == 'service':
-        saved = load_user_state(config)
-        compare_write_user_state(config, replace(saved.state, access_services=tuple(
-            item.model_copy(update={'access_url': 'https://changed.example/'}) if item.id == service.id else item
-            for item in saved.state.access_services)), saved.revision)
-    elif revoke == 'page':
-        login.invalidate_pages([17])
-    else:
-        login.invalidate_credentials()
-    with pytest.raises((ContentChangedError, ValueError)):
+    login.invalidate_pages([17])
+    authority.verify()
+    assert authority.native_access().payload()['service_id'] == service.id
+    saved = load_user_state(config)
+    compare_write_user_state(config, replace(saved.state, access_services=tuple(
+        item.model_copy(update={'access_url': 'https://changed.example/'}) if item.id == service.id else item
+        for item in saved.state.access_services)), saved.revision)
+    with pytest.raises(ContentChangedError):
         authority.verify()
 
 
 def test_unprepared_or_unsaved_service_is_not_background_authority(tmp_path):
     config, services = login_fixture(tmp_path, count=2)
     login = LoginCoordinator(Native(), BrowserTaskLock())
-    with pytest.raises(ValueError, match='prepared'):
+    with pytest.raises(ValueError, match='Manual Service'):
         TaskAuthority.capture(config, login, services[-1].id, ())
     with pytest.raises(ValueError, match='saved'):
         TaskAuthority.capture(config, login, 'svc_' + '0' * 32, ())
 
 
-def test_native_projection_uses_original_prepared_scope_and_never_loads_public_config(tmp_path):
+def test_native_projection_has_stable_service_identity_but_no_page_authority(tmp_path):
     # API/public work has no unrelated saved-Service configuration requirement.
     public = TaskAuthority.capture(tmp_path / 'missing.yaml', None, None, ())
     assert public.native_access().payload() == {}
@@ -83,12 +80,10 @@ def test_native_projection_uses_original_prepared_scope_and_never_loads_public_c
     authority = TaskAuthority.capture(config, login, service.id, ())
     payload = authority.native_access().payload()
     assert payload['service_id'] == service.id
-    assert payload['target_page_id'] == 17
-    assert len(payload['preparation_key']) == 64
+    assert payload['service_entry'] is None
     assert set(payload['service_scope']) == {'scope_id', 'config_revision', 'user_state_revision'}
     payload['service_scope']['scope_id'] = 'changed'
     assert authority.native_access().payload()['service_scope']['scope_id'] != 'changed'
     login.invalidate_pages([17])
-    with pytest.raises(ContentChangedError):
-        authority.verify()
-    assert authority.native_access().payload()['target_page_id'] == 17
+    authority.verify()
+    assert authority.native_access().payload() == payload | {'service_scope': authority.native_access().payload()['service_scope']}

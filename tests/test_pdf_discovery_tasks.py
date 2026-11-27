@@ -238,7 +238,7 @@ def test_lww_empty_viewer_uses_only_independent_captured_oce_preparation(tmp_pat
         assert len(seen) == (2 if oce_access else 1)
         assert (result.status, result.pdf_source, result.fallback_used) == (
             ('transferred', 'P4', True) if oce_access else ('exhausted', None, False))
-        assert all(data['service_id'] == service_id and data['target_page_id'] == 17
+        assert all(data['service_id'] == service_id
             for action, data in bridge.calls if action != 'release_workflow_pages')
     finally:
         host.shutdown();host.join()

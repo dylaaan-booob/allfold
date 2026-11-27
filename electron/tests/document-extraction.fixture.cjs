@@ -241,7 +241,7 @@ app.whenReady().then(async()=>{
     await extract(article('<p>2020-01-02</p>'),false);
     assert.equal(browser.tabs.get(publicPage.id),publicPage,'normal cleanup preserves unrelated user page');
     await browser.closePage(publicPage);
-    const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32),preparation_key:'f'.repeat(64)};
+    const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32)};
     let retained;
     page=article('<p>Prepared target</p>');
     await browser.runTask(signal,{...scoped,request_id:randomUUID()},async()=>{
@@ -249,25 +249,15 @@ app.whenReady().then(async()=>{
       await browser.navigate(url,{tab:retained,signal,deadline});
       browser.retainAccessPage(retained,scoped);
     });
-    const oldExtract=browser.extractPaperMetadata.bind(browser);let sawPin=false;
-    browser.extractPaperMetadata=async(payload,options)=>{
-      const read=browser.readDocument.bind(browser);
-      browser.readDocument=async(...args)=>{
-        if(args[1]==='extract')sawPin=retained.resourceOwner.pins.has(browser.operation);
-        return read(...args);
-      };
-      try{return await oldExtract(payload,options);}finally{browser.readDocument=originalRead;}
-    };
     const invokeScoped=async fields=>{
       const id=randomUUID();page=article('<p>2020-01-02</p>');
-      await native.execute({id,action:'extract_paper_metadata',data:{...data,...scoped,target_page_id:retained.id,...fields,deadline_ms:deadline}});
+      await native.execute({id,action:'extract_paper_metadata',data:{...data,...scoped,...fields,deadline_ms:deadline}});
       return nativeMessages.find(message=>message.type==='result' && message.id===id).data;
     };
-    assert.equal((await invokeScoped({})).outcome,'retrieved');assert.equal(sawPin,true,'retained preparation is pinned while separate work page reads');
-    assert.equal(browser.tabs.get(retained.id),retained);assert.equal(retained.resourceOwner.pins.size,0,'pin releases only after work-page cleanup');
-    assert.equal((await invokeScoped({preparation_key:'0'.repeat(64)})).diagnostic.code,'document_changed');
-    browser.extractPaperMetadata=oldExtract;
+    assert.equal((await invokeScoped({})).outcome,'retrieved');
+    assert.equal(browser.tabs.get(retained.id),retained);
     await browser.closePage(retained);
+    assert.equal((await invokeScoped({})).outcome,'retrieved','ordinary extraction survives loss of the prepared page');
     if(process.argv[3])fs.writeFileSync(process.argv[3],JSON.stringify(actual));
     console.log('DOCUMENT EXTRACTION PASS');
   }finally {await browser.close();host.destroy();await new Promise(resolve=>server.close(resolve));}

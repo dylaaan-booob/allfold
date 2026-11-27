@@ -1138,13 +1138,14 @@ class WorkspaceRegistry:
         self.signal_cancel_targets(targets)
         return bool(targets)
 
-    def prepare_cancel_services(self, service_ids, *, all_access=False, providers=()):
+    def prepare_cancel_services(self, service_ids, *, all_access=False, providers=(), browser=False):
         selected = frozenset(service_ids)
         providers = frozenset(providers)
         with self._gate:
             def affected(task):
                 return (all_access and task.service_id is not None or task.service_id in selected
-                        or bool(providers.intersection(task.providers)))
+                        or bool(providers.intersection(task.providers))
+                        or browser and task.browser_owner is not None)
             targets = [reservation for reservation in self._reservations.values() if affected(reservation)]
             targets.extend(reservation.access_operation for reservation in self._reservations.values()
                 if reservation.access_operation is not None and affected(reservation.access_operation))

@@ -923,7 +923,9 @@ def test_api_work_acquires_browser_owner_only_when_it_actually_dispatches_native
         assert bridge.started.wait(2)
         assert task.browser_owner is not None
         assert task.browser_owner.scopes == frozenset()
-        assert lock.acquire('credentials') is None
+        control = lock.reserve_control('credentials', scopes={'authentication:scope'})
+        assert control is not None
+        lock.release_control(control)
         bridge.operation.set_result({'ok': True})
         assert task.future.result(3).collection_status == 'completed'
         assert not lock.owners

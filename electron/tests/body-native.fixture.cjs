@@ -215,13 +215,14 @@ app.whenReady().then(async()=>{
     if(message.type==='result')sentResults.add(message.id);
     const kind=nativeCases.get(message.id);
     const bound=boundTransfers.get(message.id);
-    if(bound) {
-      const access=browser.accessContexts.get(bound.service_scope.scope_id+':'+bound.service_id);
-      if(message.type==='progress'&&message.data.received_bytes>0) {
-        assert.ok([...access.pins].some(owner=>owner.association.task_id===bound.task_id),'actual stream pins its own prepared context');
-      }
-      if(message.type==='result')assert.equal(access.pins.size,0,'Main releases the actual pin before its terminal DTO');
+    if(bound && message.type==='progress' && message.data.received_bytes>0) {
+      const association=browser.operation?.association;
+      assert.equal(association?.service_id,bound.service_id);
+      assert.equal(association.service_scope.scope_id,bound.service_scope.scope_id);
+      assert.equal(association.task_id,bound.task_id);
     }
+    if(bound && message.type==='result')
+      assert.ok(![...browser.operations].some(owner=>owner.association.request_id===message.id));
     if(message.type==='progress'&&message.data.native_output_file&&['iframe-background','popup-background','iframe-replaced','popup-source-replaced'].includes(kind)) {
       activeBodies.add(kind);childBarriers.get(kind)?.end('go');
     }

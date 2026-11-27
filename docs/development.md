@@ -10,9 +10,15 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary and builds the UI. Existing ignored vendor/Runtime directories are untouched. Translation-only assembly and Local API saving are retired; remaining Browser/Document/Prepare/Cloudflare helpers have no generated Runtime dependency.
 
-Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution settings and Service selection. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
-Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
+Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests.
+The shipped `src/allfold/application/carsi_defaults.json` initializes or updates
+the existing CARSI catalog snapshot with 180 WAYFless entries, 181 Portal defaults
+and one unavailable product. To regenerate the seed from the reviewed
+handoff, run `uv run --locked python tools/import_carsi_defaults.py HANDOFF src/allfold/application/carsi_defaults.json`.
+The converter resolves source references during import. Prepare and recovery
+read the SQLite snapshot. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
@@ -39,10 +45,9 @@ Pass an absolute `--config` path. The example expands `$PWD` from the project ro
 
 Normal exit stops admission and waits for foreground Run, Workspace branches
 and native operations to settle. Main then closes the Browser pages and drains
-the shared Session's work. Restart fails
-interrupted attempts without replaying the queue or opening pages. The new
-Browser Session starts with fresh site state and reclaims retired storage as
-described in [Shared Browser Session](browser-session.md).
+the shared Session's work. Restart fails interrupted attempts without replaying
+the queue or opening old pages. Chromium reopens the stable business Session.
+See [Shared Browser Session](browser-session.md).
 
 ### Isolated source-startup smoke
 

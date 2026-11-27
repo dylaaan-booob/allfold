@@ -130,16 +130,13 @@ def test_login_history_requires_observed_target_evidence(tmp_path, observed, exp
     bridge, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(bridge, lock, diagnostics=store)
     started = login.start(config)
-    action, _, future = bridge.operations.get(timeout=2)
-    assert action == 'login_carsi'
-    future.set_result({'outcome': 'Opened', 'portal_page_id': 9})
     action, request, future = bridge.operations.get(timeout=2)
     assert action == 'prepare_service' and request['workflow_id'] == started['workflow_id']
     recovery = [{'recovery_action': 'resource_reentry', 'count': 1, 'outcome': 'recovered',
         'first': {'code': 'load_failed', 'net_code': -100, 'source_page_id': 11},
         'last': {'page_id': 17}}]
     future.set_result({'outcome':'Opened',
-        'evidence':{'visit_action_observed':observed, 'navigation_observed':True, 'target_page_id':17},
+        'target_page_id':17 if observed else None,
         'recovery': recovery})
     login.join()
     assert len(store.history()['records']) == 1

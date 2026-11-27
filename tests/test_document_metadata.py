@@ -1,3 +1,4 @@
+from dataclasses import replace
 """Fixed native task adapter, captured authority and actual worker settlement."""
 from concurrent.futures import Future
 from threading import Event
@@ -92,7 +93,7 @@ def test_real_registry_native_payload_and_normal_page_close_preserve_verified_re
         assert payload['workspace_identity'] != str(task.workspace_id)
         assert payload['wantAbstract'] is True
         assert 0 < payload['deadline_ms'] - int(time.time() * 1000) <= 6000
-        assert not set(payload) & {'service_scope', 'service_id', 'preparation_key', 'target_page_id'}
+        assert not set(payload) & {'service_scope', 'service_id', 'service_entry'}
         options['verify_recovery']()
         # Main returns this small evidence only after its actual work-page close.
         assert not task.future.done() and registry.active
@@ -224,12 +225,13 @@ def test_reject_restore_refuses_old_native_result_and_recovery_without_reopening
         settle(registry, bridge)
 
 
-def test_host_forwards_captured_service_binding_and_revokes_original_access(tmp_path):
+def test_host_keeps_service_identity_and_revokes_a_changed_target(tmp_path):
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.coordinators.login import LoginCoordinator
     from allfold.application.workspace_tasks import WorkspaceTaskHost
     from allfold.persistence.paper_repository import StaleWriteError
     from test_login import login_fixture, Native, opened
+    from allfold.persistence.user_state import load_user_state, compare_write_user_state
 
     config, services = login_fixture(tmp_path, count=2)
     service, login_native = services[-1], Native()
@@ -249,9 +251,14 @@ def test_host_forwards_captured_service_binding_and_revokes_original_access(tmp_
             metadata=PaperMetadata(title='Scoped'), branches=(document_metadata_branch(),), service_id=service.id)
         assert bridge.started.wait(2)
         payload = bridge.calls[0][1]
-        assert payload['service_id'] == service.id and payload['target_page_id'] == 17
-        assert len(payload['preparation_key']) == 64 and len(payload['service_scope']['scope_id']) == 64
+        assert payload['service_id'] == service.id
+        assert payload['service_entry'] is None and len(payload['service_scope']['scope_id']) == 64
         login.invalidate_pages([17])
+        bridge.calls[0][2]['verify_recovery']()
+        current = load_user_state(config)
+        compare_write_user_state(config, replace(current.state, access_services=tuple(
+            row.model_copy(update={'access_url': 'https://changed.example/'}) if row.id == service.id else row
+            for row in current.state.access_services)), current.revision)
         with pytest.raises(StaleWriteError):
             bridge.calls[0][2]['verify_recovery']()
         bridge.operation.set_result(envelope())

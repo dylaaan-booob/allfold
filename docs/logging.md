@@ -203,8 +203,7 @@ Provider error payload is added to persistent History diagnostics.
 
 Fixed binding/access probes retain `page_probe_unconfirmed` and native lifecycle
 errors. Snapshot parsing reports bounded local metadata/PDF diagnostics and keeps
-successful channels. Whole-page article reauthentication codes are retired;
-HTTP/access failures still describe actual pre-read availability. The reading
+successful channels. Service recovery diagnostics describe actual login barriers and the affected operation. The reading
 contract is owned by [Document access](browser-documents.md).
 Internal evidence values, HTML, scripts and URL query parameters are not diagnostic
 fields. Imperva continues to emit only strictly validated `imperva_edet` and
@@ -215,8 +214,7 @@ Configuration/User State revision fields are bounded correlation facts;
 these whole-document revisions no longer by themselves revoke independent Browser
 access. Workflow/task/request IDs remain captured operation identities. Exact
 cancellation and access-context cleanup preserve unrelated owners and their
-records. Authentication/preparation keys and native Page-close events are private
-authority transport, not additional diagnostic export fields.
+records. Native Page-close notifications transport the exact closed handle.
 
 Native maintenance retains fixed `invalidate_access`/`release_workflow_pages` action names and
 the `page_capacity` failure code. The retained `page_capacity_changed` diagnostic
@@ -224,8 +222,7 @@ value describes historical records; current limit updates preserve granted ticke
 `page_admission`/`child_page`
 identify bounded capacity waits or refusals. Page-close reasons distinguish normal
 task completion, retired attempts, context replacement/eviction/invalidation and
-credential cleanup. Authentication/preparation keys, private headers and page
-contents are never diagnostic fields. Closed-page history does not imply that a
+Session Reset. Diagnostics record fixed outcome codes and operation identities. Closed-page history does not imply that a
 live task or prepared context still owns that Page.
 
 Collection emits bounded `workflow_started` admission events with

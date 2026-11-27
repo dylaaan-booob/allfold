@@ -73,11 +73,10 @@ Directory identity and symlink checks apply before deletion. Logs Reset removes
 only owned history/diagnostics, preserving library, configuration, Session and
 credentials. Neither operation silently resets corrupt data.
 
-The shared Browser Session stores cookies, website data and HTTP cache files
-under Electron's Session data directory during the run. Each new run opens a
-fresh directory. Managed directories from normal or interrupted exits are
-eligible for reclamation on later startup once the owning process has exited.
-Session reclamation leaves Workspace, saved credentials and Logs in place.
+The Browser Session stores site data in a stable Electron profile directory.
+Its explicit Reset cancels and drains Browser work before clearing native site
+data and caches. Electron keeps Workspace files, business databases, ordinary
+configuration and saved school credentials outside its target.
 
 ## Native requests and access
 
@@ -85,7 +84,10 @@ IPC messages and native responses stay associated with the actual request, targe
 frame and resource owner. Selecting a Browser tab never retargets a task. Remote
 pages have no Node or host IPC capability. Trusted UI sender checks and the
 sandboxed, isolated Document preload remain in use. CARSI credential authority
-applies only to the saved institution and attributable authentication chain.
+requires a current Service operation, the selected Xiamen University identity
+and a recognized HTTPS school login page. Credential writes pause and revoke
+in-flight school submissions through the authenticated bridge. Supported terms
+and attribute release use the current native Document's own form data.
 
 [Document access](browser-documents.md) owns page reading and Solver behavior.
 Fixed page extraction captures rendered HTML, URL and the necessary runtime PDF

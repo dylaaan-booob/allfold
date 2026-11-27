@@ -48,6 +48,12 @@ function origin(value) {
   } catch (_) { /* Non-HTTP pages have no cooldown. */ }
   return null;
 }
+function reusableNavigationURL(value) {
+  if(!origin(value))return false;
+  const url=new URL(value);
+  return !/\/(?:shibboleth\.sso\/saml2?|idp\/profile|saml2?\/sso)(?:\/|$)/i.test(url.pathname)
+    && ![...url.searchParams.keys()].some(key=>/^(?:code|ticket|samlrequest|samlresponse|relaystate|execution)$/i.test(key));
+}
 function retryAfterTime(value,now) {
   const text=typeof value==='string'?value.trim():'';
   if(/^\d+$/.test(text))return now+Number(text)*1000;
@@ -119,5 +125,5 @@ class BrowserCooldown {
     }
   }
 }
-module.exports={BrowserCooldown,REFRESH_LIMIT,REFRESH_DELAY_MS,loadFailure,transientLoad,
+module.exports={reusableNavigationURL,BrowserCooldown,REFRESH_LIMIT,REFRESH_DELAY_MS,loadFailure,transientLoad,
   reportRecovery,recoveryStop,pageRecoveryDetails,origin};

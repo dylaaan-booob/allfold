@@ -22,11 +22,11 @@ from allfold.recovery_diagnostics import normalize_recovery, normalize_recovery_
 from allfold.integrations.cloudflare_solver import solve_cloudflare
 
 
-_CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials"}
-_RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages"}
+_CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials", "browser_session_reset"}
+_RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages", "pause_authentication", "resume_authentication"}
 _PAPER_ACTIONS = {"extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
-_BUSINESS_ACTIONS = {"login_carsi", "prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "invalidate_access", "release_workflow_pages", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
-_RECOVERY_ACTIONS = {"prepare_service", "extract_paper_metadata", "extract_paper_pdf_clues",
+_BUSINESS_ACTIONS = _RESOURCE_ACTIONS | {"prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
+_RECOVERY_ACTIONS = {"prepare_service", "wos_query", "extract_paper_metadata", "extract_paper_pdf_clues",
     "stream_paper_body", "native_paper_body", "local_paper_body"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
@@ -41,6 +41,7 @@ class _Operation:
     progress: Callable | None
     context: dict
     verify_recovery: Callable[[], None] | None
+    school: tuple | None = None
     stop: threading.Event = field(default_factory=threading.Event)
     recovery_check: asyncio.Task | None = None
 
@@ -84,6 +85,7 @@ class ElectronBridge:
         self.solver_drained = None
         self.access_pages_closed = None
         self.page_limits = None
+        self.current_school = None
 
     @property
     def connected(self) -> bool:
@@ -176,7 +178,8 @@ class ElectronBridge:
                     raise ValueError("Invalid Electron data")
                 if kind == "verify_recovery_authority":
                     check_id = message.get("check_id")
-                    if (pending.action not in _RECOVERY_ACTIONS or data
+                    if (pending.action not in _RECOVERY_ACTIONS
+                            or data not in ({}, {"authentication": True})
                             or not isinstance(check_id, str) or not re.fullmatch(r"[a-f0-9]{32}", check_id)):
                         raise ValueError("Invalid recovery authority request")
                     if not pending.stop.is_set():
@@ -184,7 +187,7 @@ class ElectronBridge:
                             await self._callback(socket, pending, pending.stop, pending.envelope(
                                 "verify_recovery_authority_result", check_id=check_id, data={"allowed": False}))
                         else:
-                            pending.recovery_check = start_worker(self._verify_recovery(socket, pending, check_id))
+                            pending.recovery_check = start_worker(self._verify_recovery(socket, pending, check_id, bool(data)))
                 elif kind == "progress":
                     if pending.progress:
                         if "recovery_action" in data:
@@ -261,12 +264,13 @@ class ElectronBridge:
         except _SOCKET_ERRORS:
             pass
 
-    async def _verify_recovery(self, socket, pending: _Operation, check_id: str) -> None:
+    async def _verify_recovery(self, socket, pending: _Operation, check_id: str, authentication=False) -> None:
         allowed = False
         try:
             if pending.verify_recovery is not None and not pending.stop.is_set():
                 await asyncio.to_thread(pending.verify_recovery)
-                allowed = True
+                allowed = (not authentication or self.current_school is not None and pending.school is not None
+                           and await asyncio.to_thread(self.current_school) == pending.school)
         except Exception:
             pass
         pending.recovery_check = None
@@ -352,7 +356,9 @@ class ElectronBridge:
         if isinstance(scope, dict):
             context.update({key: scope[key] for key in ("config_revision", "user_state_revision") if key in scope})
         context.update(request_id=request_id, action=action)
-        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, verify_recovery)
+        entry = data.get('service_entry')
+        school = (entry.get('institution_name'), entry.get('idp_entity_id')) if isinstance(entry, dict) else None
+        pending = self._pending[request_id] = _Operation(request_id, action, result, progress, context, verify_recovery, school)
         if action not in _CONTROL_ACTIONS:
             data = {**data, "log_level": getattr(self.diagnostics, "level", "info")}
             observe(self.diagnostics, "event", "task_started", context)

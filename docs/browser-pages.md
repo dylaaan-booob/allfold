@@ -17,11 +17,12 @@ and its tracked native download cleanup has finished, exactly once.
 
 Python workflow admission distinguishes shared data use from exclusive controls.
 Every data owner keeps its trusted saved-Service scope and explicitly requests
-shared admission. Multiple Papers may use the same valid Prepare authority within
-the task scheduler's global/Service limits. Login/Prepare, confirmation and captured
-access cleanup exclude overlapping data owners through their real cleanup;
-credential and Workspace/Logs Reset controls remain globally exclusive. Unrelated
-Services can continue independently. Known physical Page claims remain exclusive,
+shared admission. Multiple Papers may use the same saved Service within the
+task scheduler's global and Service limits. Explicit Prepare and access cleanup
+exclude overlapping data owners through their real cleanup. Credential
+replacement reserves the school scope. Browser Session, Workspace and Logs
+Reset reserve global Browser admission. Unrelated Services can continue during
+scoped maintenance. Known physical Page claims remain exclusive,
 even between different Services; native Page/Document navigation and workflow
 loans retain their exact checks. Shared Service admission never grants concurrent
 navigation of a single physical page.
@@ -41,7 +42,7 @@ removes the native limits below.
 | Resource | Ownership and counting | End of use |
 | --- | --- | --- |
 | Task page | Work pages, helpers, popups, intermediate pages and retained download sources count against both managed limits | The captured task resource owner closes them on success, failure and cancellation |
-| Access context | One Portal per configuration/authentication context and one prepared target per saved Service; these use the same managed limits | Replacement, exact-key invalidation, idle eviction, physical close or Session shutdown |
+| Access context | One retained target per saved Service; these use the same managed limits | Replacement, scoped invalidation, idle eviction, physical close or Session shutdown |
 | User page | Explicit user creation has its own fixed limit of 16; a task cannot relabel its residue as user-owned | Explicit user close or shutdown |
 | Manual wait | Keeps the original task/access resource owner and its existing slots | The original parent deadline/cancellation and cleanup still apply |
 
@@ -57,8 +58,7 @@ At the default limits there can be at most 16 managed Browser WebContents plus
 Session. Frames and the Document preload do not create additional page entries.
 Borrowing or transferring one WebContents never creates a second count. Borrowed
 user pages keep user resource ownership; current production prepared access paths
-require the saved Service/preparation key, rather than adopting an arbitrary user
-tab.
+use the saved Service identity and the native resource owner.
 
 The page ledger jointly reserves global and scoped capacity **before** creating
 WebContents. A queued task creates no page. Cancellation/deadline removes the
@@ -67,36 +67,29 @@ Failed adoption of an already created native WebContents retains the slot and ta
 cleanup until that contents is actually destroyed. Background
 pages retain a nonzero viewport and do not select, present or focus Browser.
 
-Prepare reserves three managed slots for its resource/search page, detail page
-and possible Visit target. With global minimum 4 and Service minimum 3, one
-retained CARSI Portal and this complete tree fit together. Login and Manual
-Service entry reserve bounded popup headroom too. A synchronous popup handler
-consumes a dedicated reservation; it denies an absent, expired or retired owner,
-invalid source, or unavailable capacity. Child capacity is checked before Visit.
+Prepare reserves capacity for its entry and possible native popups. Portal flows
+also use their own detail page. Resource acquisition finishes before entry jitter.
+A synchronous popup handler consumes a dedicated reservation and validates the
+opener and current operation. Child capacity is checked before Visit.
 A denied popup has a finite failure result and never authorizes replaying an
 unknown click or POST. An idle retained managed page has no execution authority
 to open a new child. Explicit user popup creation uses the separate user limit.
 
 Managed popups set `outlivesOpener: true`. This prevents closing a temporary Login
-entry or Prepare detail page from destroying a successfully transferred Portal or
-target. Every child that was not explicitly transferred still closes with its
+entry or Prepare detail page from destroying a successfully transferred target. Every child that was not explicitly transferred still closes with its
 captured task owner.
 
 ## Retention and authorization
 
-Successful Login transfers only the actual CARSI Portal. Successful Prepare or
-Manual Visit transfers only the actual target. Resource/search/detail/IdP pages
-remain temporary. The Portal has explicit shared read-only pins while dependent
-Prepare work uses it; a mutable target has one execution borrower. Replacing an
-in-use context is refused. An idle old context closes before its replacement is
-admitted, including repeated Prepare/Login at minimum capacity.
+Successful Prepare and Manual Visit may retain the actual Service target. Search,
+detail and IdP pages close at settlement. Service targets that a business step
+needs can be borrowed or pinned for that step. Regular readers and reusable
+streams use the Session independently of retained tabs.
 
-Idle contexts form a bounded cache within the same physical limits. Under page
-pressure, unused targets are evicted before unused Portals; pinned prerequisites,
-active borrowers and current WoS workflow loans are protected. Actual destruction
-rechecks queued admission, so a newly idle target can make room for the next
-Prepare tree. Multi-batch temporary work falls back to the retained access
-contexts and explicit user pages, rather than growing with completed Papers.
+Idle targets form a bounded cache in the physical page ledger. The ledger can
+evict the least recently used eligible target to admit work. Actual destruction
+releases its slot. An active borrower, an EBSCO record context in use and a WoS
+results loan keep their required pages until settlement.
 
 Internal article pages are reused only inside the active operation. They close
 on every terminal outcome; no completed-Paper cache remains. Eligible recovery
@@ -112,22 +105,17 @@ An export action that ends without receiving an item instead invalidates and
 closes its retained source at operation cleanup. No timer can make that ambiguous
 source reusable; its owner-free late-item guard leaves only on actual destruction.
 
-Retained access validity uses scope and captured authentication/preparation keys.
-Unrelated configuration/UserState revision changes do not invalidate it. Native
-Prepare still checks its original Portal/frame and actual CARSI route. WoS retains
-the same native Query→Export Document binding and supported overlay checks;
-YAML formatting and unrelated saved revisions do not revoke that binding. The
-`invalidate_access` maintenance action matches **old captured keys**, so a late
-cleanup cannot close a new-key context. Actual retained-page destruction sends
-only its exact Page ID to Python; Login clears matching preparation state and
-refuses a late result for an already closed page. Credential mutation remains an
-exclusive control and waits for retained access cleanup before success returns.
+The native access context is indexed by configuration scope and Service UUID.
+The actual Page ID is sent to Python when a retained page closes. This releases
+the displayed handle and preserves the Service's last observed Prepare result.
+WoS Export validates its exact workflow results Document and supported overlay.
+A scoped Service edit drains affected uses before `invalidate_access` can close
+that Service's target.
 
 ## Configuration and effect timing
 
 | `workflow` field | Default | Legal range | Meaning |
 | --- | ---: | ---: | --- |
-| `prepare_service_concurrency` | 5 | 1–5 | Prepare workers, separately constrained by physical capacity |
 | `managed_page_global_limit` | 16 | 4–64 | All managed task and access-context pages together |
 | `managed_page_service_limit` | 4 | 3–16 | Managed pages in one trusted Service/public bucket |
 
@@ -151,20 +139,11 @@ grant.
 ## Native evidence and limits
 
 `page-resources.test.cjs` runs fixed Electron 45.0.0 with a temporary profile,
-local HTTP and a controlled CARSI HTTPS protocol. It proves actual business
-Session WebContents counts at global 4/Service 3, real popup transfer surviving
-opener destruction, six temporary batches returning to Portal/target baseline,
-queued cancellation without creation, previously granted popup/page tickets
-surviving a live limit decrease while new work waits, original slow-download
-source retention to actual `done`, user limit 16, and final close to zero before Session disposal.
-The fixture also tests two simultaneous same-Service Paper owners,
-independent navigated work pages and a shared Portal pin at the same minimum
-capacity. Actual cleanup destroys A's page while B remains live, then returns to
-the retained baseline. This is native component evidence; production
-orchestration additionally uses this same ledger, not a per-Run page budget.
-It also calls production `prepareLoggedInService` using the same real Portal with
-changed unrelated revisions/workflow and unchanged access keys; controlled resource
-search terminates explicitly while preserving that Portal.
+local HTTP and a controlled CARSI HTTPS protocol. It verifies native capacity and popup transfer, queued cancellation, live limit
+decreases, original-download source retention through actual `done`, user-page
+bounds and cleanup to zero. The fixture also exercises a Portal search with no
+matching product and simultaneous Paper pages scoped to the same Service.
+
 
 The slow source-retention case uses one same-Document `<a download>` original GET.
 A separate regression records BrowserRuntime's current main-frame form POST
@@ -210,4 +189,7 @@ the currently selected Browser/Reader page.
 
 ## Body service
 
-Pure Session streams reserve no blank WebContents. They retain captured Prepare pins through actual native settlement and use the existing shared host/Service admission. Reader/challenge continuations retain their existing physical page and solver limits; this internal direct-stream entry returns current bounded access/HTML results and does not install a page recovery loop. See [the complete contract](body-downloads.md).
+Pure Session streams reserve no blank WebContents. Reader and challenge
+continuations retain their physical page and Solver limits. A recognized
+institutional block can recover the saved Service before one retry of a
+reusable GET. A completed transfer retains its original Paper and output. See [the complete contract](body-downloads.md).

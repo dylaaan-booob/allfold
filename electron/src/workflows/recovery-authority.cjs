@@ -15,7 +15,7 @@ async function validateRecovery(current,send,{signal,deadline=Infinity,stage='na
     const allowed=await waitFor(()=>new Promise(resolve=>{
       current.authority={checkId,resolve};
       try {send({type:'verify_recovery_authority',id:current.id,action:current.action,
-        check_id:checkId,data:{}});}
+        check_id:checkId,data:stage==='authentication'?{authentication:true}:{}});}
       catch (_) {resolve(false);}
     }),stop,limit,stage,'recovery_authority');
     checkCanceled(stop,stage);

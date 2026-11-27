@@ -17,14 +17,15 @@ function fixture(){
  const context=vm.createContext({operations:new Map(),exiting:false,bridgeReady:true,randomBytes,setTimeout,clearTimeout,
   ...require('../src/shared/logging.cjs'),...require('../src/shared/recovery-summary.cjs'),...require('../src/workflows/recovery-authority.cjs'),
   require:require('node:module').createRequire(require.resolve('../src/main.cjs')),
+  matchesXmuSchool:require('../src/auth/xmu-auth.cjs').matchesXmuSchool,
   operationAssociation:require('../src/browser/page-association.cjs').operationAssociation,
   log:(level,event,details)=>logs.push({level,event,...details}),AbortController,BrowserFailure,diagnosticFor,readerDiagnosticFields,
   send:message=>{messages.push(JSON.parse(JSON.stringify(message)));context.onSend?.(message);},
-  browser:{tabs:new Map(),documentCurrent:()=>true,publish(){},async invalidateAllAccess(){},stopAdmission(){},
+  browser:{tabs:new Map(),documentCurrent:()=>true,publish(){},async revokeAuthentication(){},stopAdmission(){},
    get operation(){return taskContext.getStore();},get taskTab(){return this.operation?.taskTab;},
    async runTask(signal,association,run){try{return await taskContext.run({signal,association,taskTab:{id:++pageId}},run);}finally{calls.end++;}},
    async navigate(){return {pageId:this.taskTab.id,url:'https://example.test/preparation'};}},
-  prepareLoggedInService:async browser=>browser.navigate('https://example.test/preparation'),
+  prepareService:async browser=>browser.navigate('https://example.test/preparation'),
  });
  vm.runInContext(execute,context);
  return {context,messages,logs,calls,run:(id='current')=>context.execute({id,action:'prepare_service',data:{workflow_id:'fixture'}})};
@@ -53,7 +54,8 @@ test('native diagnostics reset bypasses browser task and document authority and 
   assert.equal(data.operation,'preview');assert.equal(f.calls.end,0);assert.equal(f.calls.save,0);assert.equal(f.logs.length,0);
   assert.equal(f.messages[0].data.token,'preview');
   f.context.operations.set('browser',{action:'prepare_service'});
-  await assert.rejects(f.context.execute({id:'reset_busy',action:'diagnostics_reset',data:{operation:'preview'}}),/active/);
+  await f.context.execute({id:'reset_busy',action:'diagnostics_reset',data:{operation:'preview'}});
+  assert.equal(f.messages.at(-1).data.error,'busy');
 });
 
 test('normal exit still settles captured resource cleanup without starting business work',{timeout:2000},async()=>{
@@ -77,14 +79,14 @@ test('explicit credential writes settle through bridge ownership without browser
   const f=fixture(),started=deferred(),settled=deferred();
   f.context.saveCASCredentials=async value=>{assert.equal(value.expected_revision,'missing');started.resolve();return settled.promise;};
   f.context.casErrorCode=error=>error.code;
-  f.context.browser.runTask=()=>{throw Error('credentials must not enter Browser');};
-  const pending=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save',expected_revision:'missing'}});
+  const pending=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save',expected_revision:'missing',institution_name:'厦门大学'}});
   await started.promise;
   assert.equal(f.context.operations.size,1);
-  await assert.rejects(f.run(),/Concurrent/);
+  await f.run();
+  assert.equal(f.context.operations.get('credentials').controller.signal.aborted,false);
   settled.resolve({ok:true,revision:'new'});await pending;
-  assert.equal(f.context.operations.size,0);assert.equal(f.calls.end,0);assert.equal(f.logs.length,0);
-  assert.equal(f.messages[0].data.revision,'new');
+  assert.equal(f.context.operations.size,0);assert.equal(f.calls.end,1);
+  assert.equal(f.messages.at(-1).data.revision,'new');
 });
 
 test('quit confirmation occurs before aborting an active task and cancelling leaves the task running',async()=>{
@@ -153,7 +155,7 @@ test('retired Paper Import Enrich and Local API actions cannot enter native Brow
 });
 test('shutdown revokes native operations and drains their real settlement before stopping Python',async()=>{
  const f=fixture(),started=deferred(),settled=deferred();let quitHandler,quitCalls=0;
- f.context.prepareLoggedInService=async()=>{started.resolve();return settled.promise;};
+ f.context.prepareService=async()=>{started.resolve();return settled.promise;};
  const pending=f.run();await started.promise;
  Object.assign(f.context,{readyToExit:false,exitApproved:false,exitCheck:null,window:null,bridgeReady:false,python:null,
   app:{on(_name,handler){quitHandler=handler;},quit(){quitCalls++;}}});
@@ -169,18 +171,18 @@ test('scoped access cleanup and old workflow release dispatch without creating a
   const f=fixture(),calls=[];
   f.context.browser.invalidateAccess=async data=>{calls.push(['invalidate',data.scope_id]);return {closed:1};};
   f.context.browser.releaseWorkflowPages=data=>{calls.push(['release',data.workflow_id,data.task_id]);return {released:false};};
-  await f.context.execute({id:'invalidate',action:'invalidate_access',data:{scope_id:'a'.repeat(64),preparation_keys:{},authentication_key:'b'.repeat(64)}});
+  await f.context.execute({id:'invalidate',action:'invalidate_access',data:{scope_id:'a'.repeat(64),service_ids:['svc_'+'b'.repeat(32)]}});
   await f.context.execute({id:'release',action:'release_workflow_pages',data:{workflow_id:'old',task_id:'old'}});
   assert.deepEqual(calls,[['invalidate','a'.repeat(64)],['release','old','old']]);assert.equal(f.calls.end,0);
   assert.equal(f.messages[0].data.closed,1);assert.equal(f.messages[1].data.released,false);
 });
 
 
-test('successful credential replacement waits retained access destruction before returning success',async()=>{
+test('credential replacement waits for in-flight school actions before writing',async()=>{
   const f=fixture(),cleaned=deferred();let started=false;
-  f.context.saveCASCredentials=async()=>({ok:true,revision:'new'});
-  f.context.browser.invalidateAllAccess=()=>{started=true;return cleaned.promise;};
-  const result=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save'}});
+  f.context.saveCASCredentials=async(_value,beforeWrite)=>{await beforeWrite();return {ok:true,revision:'new'};};
+  f.context.browser.revokeAuthentication=()=>{started=true;return cleaned.promise;};
+  const result=f.context.execute({id:'credentials',action:'cas_credentials',data:{operation:'save',institution_name:'厦门大学'}});
   await new Promise(setImmediate);assert.equal(started,true);assert.equal(f.messages.length,0);assert.equal(f.context.operations.size,1);
   cleaned.resolve();await result;assert.equal(f.messages[0].data.ok,true);assert.equal(f.context.operations.size,0);
 });

@@ -764,10 +764,12 @@ app.whenReady().then(async()=>{
       if($('login-sidebar').hidden || $('login-page').dataset.sidebarMode!=='overlay')throw Error('Login Access sidebar did not overlay at 600x480');
       const institution=document.querySelector('#login-access-settings [data-monitor="institutionName"]');
       if(!institution || institution.getBoundingClientRect().width<120)throw Error('Institution input not operable');
-      document.querySelector('#login-page [data-sidebar-view=workflow]').click();
-      if(document.querySelectorAll('#login-workflow-settings [data-monitor="prepareServiceConcurrency"]').length!==1)throw Error('Login concurrency missing');
+      for(const key of ['productTenant','galeLocation','institutionResource']) {
+        if(!$('login-access-settings').querySelector(`[data-monitor="${key}"]`)?.getClientRects().length)
+          throw Error('Institution parameter is unavailable: '+key);
+      }
     });
-    await capture('login-workflow-small');
+    await capture('login-access-small');
 
     await check(async navigate=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};

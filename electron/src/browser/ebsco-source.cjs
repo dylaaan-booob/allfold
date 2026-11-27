@@ -305,13 +305,13 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
   browser.associatePage(tab,{role:'pdf-reader'});
   const onAccessWaiting=(waiting,diagnostic,current)=>{
     if(!waiting)return;
-    if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
+    if(!data.service_entry && (current?.markers.login || current?.markers.mfa))throw new BrowserFailure('navigation','content_access_blocked');
     onWaiting?.(diagnostic);
   };
   const options={signal,deadline,verify,onWaiting:onAccessWaiting,doi};
   const visit=async (url,{referer}={})=>{
     verify();
-    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly:true,
+    const doc=await browser.navigateServiceTarget(data,url.href,{tab,signal,deadline,documentOnly:true,
       httpReferrer:referer?{url:referer,policy:'strict-origin-when-cross-origin'}:undefined,
       onWaiting:(diagnostic,current)=>onAccessWaiting(true,diagnostic,current)});
     browser.finishPageLoad(tab);

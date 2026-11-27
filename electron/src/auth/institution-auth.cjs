@@ -142,10 +142,18 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
     }
     const state={step,waiting:step!=='none'};
     if(action!=='act')return state;
-    if(!institution || step==='none' || step!==expectedStep)return {...state,acted:false};
+    const consent=step==='terms' || step==='release';
+    if(step==='none' || step!==expectedStep || (consent?mode!=='confirmation':!institution))
+      return {...state,acted:false};
     if(!visible(target))return {step:'manual',waiting:true,acted:false};
     if(step==='login') {
-      if(!credentials)return {...state,acted:false};
+      const form=password.form;
+      if(!credentials || !form || username.form!==form || target.form!==form || target.tagName==='A')
+        return {...state,acted:false};
+      const actionURL=new URL(target.hasAttribute('formaction')?target.formAction:form.action,document.baseURI);
+      if(url.protocol!=='https:' || actionURL.origin!==url.origin || actionURL.username || actionURL.password
+        || (target.hasAttribute('formmethod')?target.formMethod:form.method).toLowerCase()!=='post')
+        return {...state,acted:false};
       const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
       for(const [input,value] of [[username,credentials.username],[password,credentials.password]]) {
         if(!usable(input))return {step:'manual',waiting:true};

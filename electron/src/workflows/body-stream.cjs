@@ -1,4 +1,6 @@
 'use strict';
+const {recoverService,isFederatedPage,isCarsiSelection}=require('./browser-operations.cjs');
+const {reusableNavigationURL}=require('../browser/browser-recovery.cjs');
 // Only authenticated application dispatch can supply this attempt capability.
 // PDF bytes remain in Main: Web stream -> Node pipeline -> verified file fd.
 const fs=require('node:fs'),path=require('node:path'),dns=require('node:dns/promises');
@@ -254,6 +256,11 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     const owner=browser.operation;
     const validate=()=>{if(completed)return;checkCanceled(stop);verify();if(Date.now()>=data.deadline_ms)throw Error('expired');};
     if(referer && !publicClueURL(referer))throw Error('unsafe-referer');
+    if(data.recover_service===true) {
+      if(!data.service_entry || data.pdf_credential || !reusableNavigationURL(url))
+        throw new BrowserFailure('authentication','service_authentication_required');
+      await recoverService(browser,data,{signal:stop,deadline:data.deadline_ms,progress},browser.serviceContext(data));
+    }
     const priorCookies=await waitFor(()=>browser.sessionEvents.cookieContext(url),stop,data.deadline_ms);
     if(data.recover_access===true) {
       if(data.pdf_credential!==undefined)throw Error('credential-scope');
@@ -286,7 +293,7 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     }
     if(data.recover_access!==true) {
       const source=data.cookie_source || referer;
-      const prepared=data.service_id && data.target_page_id?browser.accessContexts.get(browser.accessKey(data))?.tab:null;
+      const prepared=browser.serviceContext(data)?.tab;
       partitionCookies=await readPartitionCookies(browser,url,source,{signal:stop,validate,
         page:prepared && (!source || prepared.view.webContents.mainFrame.origin===new URL(source).origin)?prepared:undefined});
     }
@@ -344,12 +351,15 @@ async function executeBodyStream(browser,data,{signal,progress=()=>{},observe=()
     // Stop before an origin/credential-scope escape. Return that actual HTTP
     // redirect to the same candidate chain; the next Session request repeats
     // URL/DNS validation and uses destination cookies without source API keys.
-    if(redirect)return {outcome:'response',kind:'redirect',response:redirect};
-    const diagnostic=error instanceof BrowserFailure?error.diagnostic:undefined;
+    const authRedirect=!data.pdf_credential && redirect && reusableNavigationURL(data.url)
+      && (isCarsiSelection(redirect.location) || isFederatedPage(data.service_entry,redirect.location));
+    if(redirect && !authRedirect)return {outcome:'response',kind:'redirect',response:redirect};
+    const diagnostic=authRedirect?{stage:'authentication',code:'service_authentication_required'}:
+      error instanceof BrowserFailure?error.diagnostic:undefined;
     const reason=diagnostic?.code==='http_error' && [401,403,407,418,429].includes(diagnostic.status)?'access-blocked':
       ({pdf_target_refused:'unsafe-target',pdf_dns_failed:'dns-failed',pdf_get_unobserved:'reader-unavailable',
       verification_page:'access-challenge',content_access_blocked:'access-blocked',site_restricted:'access-blocked',
-      document_changed:'service-invalidated',page_closed:'page-access-failed',timeout:'page-access-failed'})[diagnostic?.code];
+      service_authentication_required:'access-login',document_changed:'service-invalidated',page_closed:'page-access-failed',timeout:'page-access-failed'})[diagnostic?.code];
     return {outcome:'failed',kind:'failed',diagnostic_code:reason || (diagnostic?'page-access-failed':
       ['credential-scope','redirect-scope','unsafe-referer','missing-native-response'].includes(error.message)
         ?error.message:'transport-failed'),...(diagnostic && {diagnostic})};

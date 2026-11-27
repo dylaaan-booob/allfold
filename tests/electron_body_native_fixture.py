@@ -85,9 +85,9 @@ async def main():
         'institution-revoked': '22222222-222222222-22222', 'institution-unprepared': '33333333-333333333-33333'}
     async def invalidate_prepared(access, prepared):
         cleanup = bridge.execute('invalidate_access', dict(scope_id=access.scope['scope_id'],
-            preparation_keys={service.id: prepared.key}, authentication_key=None))
-        await asyncio.to_thread(cleanup.result, 5)
-        application.state.login.invalidate_pages([prepared.page_id])
+            service_ids=[service.id]))
+        assert (await asyncio.to_thread(cleanup.result, 5))['closed'] == 1
+        application.state.login.forget_services(access.scope_id, [service.id])
     try:
         for index, kind in enumerate(('attachment', 'inline', 'url-doi-form', 'microbiology-redirect', 'interrupted', 'iframe', 'iframe-many', 'predeclared-iframe', 'predeclared-target-changed', 'predeclared-popup-guard', 'existing-iframe', 'existing-target-changed', 'iframe-background', 'popup-background', 'iframe-replaced', 'popup-source-replaced', 'popup', 'named-popup', 'current-form', 'get-form', 'get-changed', 'sciencedirect', 'blocked',
                                       'action-blocked', 'action-challenge', 'action-challenge-iframe', 'action-challenge-popup', 'action-html',
@@ -150,13 +150,13 @@ async def main():
             if institutional:
                 async with asyncio.timeout(8):
                     while task.progress['received_bytes'] == 0:
-                        assert not task.future.done(), (kind, task.future.result(), current.body_observations) if task.future.done() else None
+                        assert not task.future.done(), (kind, task.future.result(), current.body_observations[-5:]) if task.future.done() else None
                         await asyncio.sleep(.005)
                 operation = task.access_operation
                 assert operation is not None and not task.cancel_event.is_set()
                 if prepared is not None:
                     assert operation.service_id == service.id
-                    assert operation.authority.native_access().target_page_id == prepared.page_id
+                    assert operation.authority.native_access().payload()['service_scope']['scope_id'] == access.scope_id
                 else:
                     assert operation.service_id is None
                 if kind == 'institution-revoked':

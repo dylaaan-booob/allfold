@@ -201,13 +201,12 @@ The payload carries the existing workflow/task/Paper association,
 the SQLite Workspace UUID), `identity:{doi?,confirmed_article_url?}`, a strictly
 boolean `wantAbstract`, and absolute integer `deadline_ms`. It currently opens/recovers
 through `openPaperPage` and uses the owning operation's recovery-authority callback.
-It does not borrow a foreground Run snapshot. A Service call additionally carries the captured
-`service_scope`, `service_id`, `preparation_key` and `target_page_id`. A retained
-target must match the actual native access context/key/Page; it is pinned through
-actual work-page cleanup without being navigated or closed. A captured explicitly
-manual preparation with no target instead requires `manually_confirmed:true` and
-the same captured key; Python's task authority and recovery check retain that
-policy. No Service fields are needed for public access.
+A Service call carries `service_scope`, the saved `service_id` and the current
+entry parameters. Ordinary extraction can acquire its own article page in the
+shared Session. A recognized authentication barrier can prepare that Service
+once and continue the original Paper within its remaining deadline. EBSCO
+record operations and the OCE Reader still verify their live platform context
+when they use it. Public access sends only Paper and operation authority.
 
 The runtime action is `extract` with exactly `{wantAbstract:boolean}`. Other args,
 unknown actions and non-booleans fail before dispatch; the sandboxed preload

@@ -3,55 +3,22 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {randomBytes}=require('node:crypto');
 const {pageStep,SELECTORS}=require('./page-actions.cjs');
-const {navigate,newTaskPage}=require('./browser-operations.cjs');
+const {newTaskPage}=require('./browser-operations.cjs');
 const {pause,checkCanceled,waitFor,withTaskDeadline,timeoutFailure}=require('../browser/browser-task.cjs');
 const {BrowserFailure}=require('../browser/browser-errors.cjs');
 
 const ADVANCED_SEARCH='https://www.webofscience.com/wos/woscc/advanced-search';
-const SCOPE_FIELDS=['scope_id','config_revision','user_state_revision'];
-
-function requireScope(data) {
-  if(!data.service_id
-    || !SCOPE_FIELDS.every(key=>typeof data.service_scope?.[key]==='string' && /^[a-f0-9]{64}$/.test(data.service_scope[key]))
-    || typeof data.preparation_key!=='string' || !/^[a-f0-9]{64}$/.test(data.preparation_key))
+function taskPage(browser,data,signal) {
+  const tab=browser.serviceContext(data)?.tab;
+  const association=tab && browser.pageAssociation(tab.id);
+  if(!tab || tab.id!==data.page_id || !association || association.service_id!==data.service_id
+    || association.service_scope?.scope_id!==data.service_scope?.scope_id)
     throw new BrowserFailure('navigation','document_changed');
-  return data.service_scope;
-}
-
-function taskPage(browser,data,signal,{exporting=false}={}) {
-  const scope=requireScope(data);
-  const tab=browser.tabs.get(data.page_id);
-  if(!tab)throw Error('wos_target_lost');
-  const association=browser.pageAssociation(tab.id);
-  if(association?.service_id!==data.service_id || association.service_scope?.scope_id!==scope.scope_id
-    || tab.preparationKey!==data.preparation_key
-    || (exporting && !SCOPE_FIELDS.every(key=>tab.wosServiceScope?.[key]===scope[key])))
-    throw new BrowserFailure('navigation','document_changed');
-  browser.associatePage(tab,{role:exporting?'wos-export':'wos-query',
-    source:browser.tabs.get(association.source_page_id)});
-  if(tab.carsiOwned && !tab.authContext?.active)browser.beginAuthentication(tab,signal,{institution:false});
-  tab.taskSignal=signal;
+  browser.associatePage(tab,{role:'wos-export'});
   browser.bindTaskPage(tab,signal);
   return tab;
 }
 
-async function manualQueryPage(browser,data,signal,progress,deadline) {
-  const scope=requireScope(data);
-  const previous=browser.servicePages(scope.scope_id,data.service_id).find(({page_id})=>{
-    const tab=browser.tabs.get(page_id);
-    return tab?.manualWoSPage && tab.preparationKey===data.preparation_key;
-  });
-  let tab;
-  if(previous) {
-    tab=taskPage(browser,{...data,page_id:previous.page_id},signal);
-  } else {
-    tab=await newTaskPage(browser,signal,{role:'wos-query',managed:true});
-    tab.preparationKey=data.preparation_key;
-    tab.manualWoSPage=true;
-  }
-  await navigate(browser,tab,ADVANCED_SEARCH,signal,progress,deadline);
-  return tab;
-}
 function resultsRoute(value) {
   const url=new URL(value);
   if(url.origin!=='https://www.webofscience.com' || !url.pathname.startsWith('/wos/woscc/summary/'))return null;
@@ -161,20 +128,29 @@ async function wosQuery(browser,data,{signal,progress}) {
     wosQueryWithinDeadline(browser,data,{signal:bounded,progress},deadline));
 }
 async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
-  const tab=data.manually_confirmed===true && !browser.pageAssociation(data.page_id)
-    ? await manualQueryPage(browser,data,signal,progress,deadline)
-    : taskPage(browser,data,signal);
-  browser.beginPageLoad(tab,signal,deadline);
+  const tab=await browser.resumeServiceStep(data,{signal,deadline,closeBlockedPage:true,
+    onWaiting:()=>progress({waiting_for_user:true})},async()=>{
+    let page=browser.serviceContext(data)?.tab;
+    const onWaiting=()=>progress({waiting_for_user:true});
+    if(page) {
+      browser.associatePage(page,{role:'wos-query'});
+      browser.beginPageLoad(page,signal,deadline);
+      await browser.waitForServiceTarget(data,{tab:page,signal,deadline,onWaiting});
+    } else {
+      if(!data.service_entry)throw new BrowserFailure('preparation','document_changed');
+      await browser.reserveTaskPages(3,{signal,deadline});
+      page=await newTaskPage(browser,signal,{role:'wos-query',managed:true,deadline});
+    }
+    if(page.view.webContents.getURL()!==ADVANCED_SEARCH)
+      await browser.navigateServiceTarget(data,ADVANCED_SEARCH,{tab:page,signal,deadline,onWaiting});
+    browser.finishPageLoad(page);
+    return page;
+  });
   tab.wosDocument=null;
-  tab.wosServiceScope=null;
   tab.wosWorkflowId=browser.operation?.association.workflow_id;
-  const run=(op,args={},timeout=10000)=>step(browser,tab,op,args,signal,progress,timeout,deadline);
-  // Let CARSI/SSO finish in the existing page before starting another navigation.
-  await run('verification',{},85000);
-  browser.finishPageLoad(tab);
   progress({waiting_for_user:false});
-  if(new URL(tab.view.webContents.getURL()).pathname!=='/wos/woscc/advanced-search')
-    await navigate(browser,tab,ADVANCED_SEARCH,signal,progress,deadline);
+  const run=(op,args={},timeout=10000)=>step(browser,tab,op,args,signal,progress,timeout,deadline);
+  await run('verification',{},85000);
   await run('ready',{},85000);
   browser.enterBusiness();
   await run('search',{query:data.query});
@@ -191,7 +167,6 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
   }
   tab.wosDocument=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline,'wos_dom','result');
   if(!browser.documentCurrent(tab.wosDocument))throw new BrowserFailure('navigation','document_changed');
-  tab.wosServiceScope=Object.freeze({...data.service_scope});
   if(tab.resourceOwner?.kind!=='access')browser.retainAccessPage(tab,data);
   browser.loanWorkflowPage(tab,tab.wosDocument);
   return {total:result.total,batch_limit:batchLimit,page_id:tab.id};
@@ -200,7 +175,7 @@ async function wosExport(browser,data,{signal,progress}) {
   return withTaskDeadline(signal,'wos_download',(bounded,deadline)=>wosExportWithinDeadline(browser,data,{signal:bounded,progress},deadline));
 }
 async function wosExportWithinDeadline(browser,data,{signal,progress},deadline) {
-  const tab=taskPage(browser,data,signal,{exporting:true});
+  const tab=taskPage(browser,data,signal);
   if(browser.sessionEvents.downloadSourceUnsafe(tab.view.webContents))throw new BrowserFailure('wos_download','download_not_attributable');
   let doc=tab.wosDocument;
   browser.enterBusiness();

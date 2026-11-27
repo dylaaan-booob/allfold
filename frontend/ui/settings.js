@@ -56,13 +56,24 @@ markup.innerHTML=`<header class="s-header">
 </label>
 <label class="s-setting-row s-check s-field-wide" data-field="useShibboleth">
 <input type="checkbox" data-monitor="useShibboleth">
-<span class="s-setting-label">Use Shibboleth Login</span>
+<span class="s-setting-label">Preselect institution in CARSI Portal</span>
 </label>
-<p class="s-help s-field-wide">默认使用 CARSI 机构检索；勾选后优先使用 Shibboleth，失败时回退机构检索一次。</p>
+<label class="s-setting-row s-field-wide" data-field="productTenant">
+<span class="s-setting-label">智通达 tenant</span>
+<input type="text" data-monitor="productTenant" autocomplete="off">
+</label>
+<label class="s-setting-row s-field-wide" data-field="galeLocation">
+<span class="s-setting-label">Gale Location ID</span>
+<input type="text" data-monitor="galeLocation" autocomplete="off">
+</label>
+<label class="s-setting-row s-field-wide" data-field="institutionResource">
+<span class="s-setting-label">龙源机构资源 URL</span>
+<input type="text" data-monitor="institutionResource" autocomplete="off">
+</label>
 <p id="s-institution-help" class="s-help s-field-wide" role="status">正在加载本地机构名录。</p>
 </fieldset>
 <fieldset id="s-institution-auth" class="s-setting-group" hidden>
-<legend>机构认证自动登录</legend>
+<legend>厦门大学自动登录</legend>
 <label class="s-setting-row s-field-wide">
 <span class="s-setting-label">用户名</span>
 <input id="s-cas-username" type="text" autocomplete="off" spellcheck="false">
@@ -128,6 +139,7 @@ markup.innerHTML=`<header class="s-header">
 <div class="s-reset-confirm">
 <label>范围<select id="s-reset-scope"><option value="workspace">Workspace</option><option value="logs">Logs</option></select></label>
 <div class="s-actions">
+<button id="s-browser-session-reset" type="button" class="s-button">Browser Session Reset</button>
 <button id="s-reset-cancel" class="s-button">Cancel</button>
 <button id="s-reset-workspace" class="s-button s-primary" disabled>CONFIRM RESET ↗</button>
 </div>
@@ -307,13 +319,12 @@ runPanel.prepend(rail('Run navigation',`<button class="rail-button" id="s-run-ov
 runPanel.append(runSidebar,rail('Run tools',`<button class="rail-button" data-sidebar-view="configuration" aria-label="Provider configuration" title="Provider configuration">${icon('M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6')}</button>`,true));
 const monitorName=settingsPage.querySelector('[data-field="name"]');$('s-run-overview').querySelector('fieldset').prepend(monitorName);
 const workflowSettings=document.createElement('div');workflowSettings.id='s-workflow-configuration-bridge';workflowSettings.hidden=true;document.body.append(workflowSettings);
-const concurrencyFields=[
-  ['prepare_service_concurrency','prepareServiceConcurrency','Service preparation',5,1],
+const pageLimitFields=[
   ['managed_page_service_limit','managedPageServiceLimit','Pages per Service',16,3],
   ['managed_page_global_limit','managedPageGlobalLimit','Managed pages total',64,4],
-  ['pdf_concurrency','pdfConcurrency','PDF downloads',8,1],
 ];
-function concurrencyGroup(fields,legend='Concurrency') {
+const concurrencyFields=[...pageLimitFields,['pdf_concurrency','pdfConcurrency','PDF downloads',8,1]];
+function concurrencyGroup(fields,legend) {
   const group=document.createElement('fieldset');
   group.className='s-setting-group';
   group.innerHTML=`<legend>${legend}</legend>`+fields.map(([,key,label,max,min])=>
@@ -321,12 +332,11 @@ function concurrencyGroup(fields,legend='Concurrency') {
       <input type="number" data-monitor="${key}" min="${min}" max="${max}" step="1"></label>`).join('');
   return group;
 }
-const loginLimits=concurrencyGroup(concurrencyFields.slice(0,1));
-workflowSettings.append(loginLimits,$('s-institution'),$('s-institution-auth'));
+workflowSettings.append($('s-institution'),$('s-institution-auth'));
 settingsPage.querySelector('.s-settings-main').querySelector('fieldset').remove();
 const applicationGroup=settingsPage.querySelector('.s-settings-main fieldset');applicationGroup.querySelector('legend').textContent='Application';applicationGroup.dataset.settingsSection='application';
 const workspaceApply=document.createElement('button');workspaceApply.id='s-workspace-apply';workspaceApply.className='s-button';workspaceApply.textContent='Review Workspace change';applicationGroup.append(workspaceApply);
-const pageLimitsGroup=concurrencyGroup(concurrencyFields.slice(1,3),'Browser pages');pageLimitsGroup.dataset.settingsSection='application';settingsPage.querySelector('.s-settings-main').append(pageLimitsGroup);
+const pageLimitsGroup=concurrencyGroup(pageLimitFields,'Browser pages');pageLimitsGroup.dataset.settingsSection='application';settingsPage.querySelector('.s-settings-main').append(pageLimitsGroup);
 const appearanceGroup=document.createElement('fieldset');appearanceGroup.className='s-setting-group';appearanceGroup.dataset.settingsSection='appearance';appearanceGroup.innerHTML='<legend>Appearance</legend>';
 const developerGroup=document.createElement('fieldset');developerGroup.className='s-setting-group';developerGroup.dataset.settingsSection='developer';developerGroup.innerHTML='<legend>Developer</legend>';
 for(const [id,group] of [['s-disable-archive',appearanceGroup],['s-disable-fullscreen',appearanceGroup],['s-developer-mode',developerGroup]]){const label=$(id).closest('label'),help=label.nextElementSibling;group.append(label);if(help?.matches('.s-help'))group.append(help);}
@@ -342,12 +352,10 @@ settingsPage.prepend(rail('Settings navigation',settingsButtons));
 const settingsFlyout=document.createElement('aside');settingsFlyout.className='navigation-flyout';settingsFlyout.hidden=true;settingsFlyout.innerHTML='<button data-flyout-close aria-label="Close Settings directory">×</button>';settingsPage.append(settingsFlyout,settingsSidebar,rail('Settings tools',`<button class="rail-button" data-sidebar-view="system" title="System / Diagnostics" aria-label="System / Diagnostics">${icon('M4 4h16v16H4zM12 10v7M12 7v1')}</button>`,true));
 for(const button of settingsPage.querySelectorAll('[data-settings-open]'))button.addEventListener('click',()=>{for(const node of settingsPage.querySelectorAll('[data-settings-section]'))node.hidden=node.dataset.settingsSection!==button.dataset.settingsOpen;for(const entry of settingsPage.querySelectorAll('[data-settings-open]'))entry.setAttribute('aria-pressed',String(entry===button));});
 settingsPage.querySelector('[data-settings-open="application"]').setAttribute('aria-pressed','true');
-for(const host of [runMain.querySelector('.s-run-body'),settingsMain,loginLimits,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
+for(const host of [runMain.querySelector('.s-run-body'),settingsMain,$('s-institution')]){const status=document.createElement('p');status.className='s-help s-domain-save-status';status.dataset.autosaveStatus='';host.append(status);}
 function mountWorkflowSettings() {
   const access=$('login-access-settings');
-  const login=$('login-workflow-settings');
   if(access)for(const node of [$('s-institution'),$('s-institution-auth')])if(node.parentElement!==access)access.append(node);
-  if(login && loginLimits.parentElement!==login)login.append(loginLimits);
 }
 for(const name of ['login-settings-mount','workspace-navigation-state'])
   window.addEventListener(name,mountWorkflowSettings);
@@ -420,13 +428,13 @@ document.addEventListener('focusout',event=>{if(event.target.matches('#s-provide
 function changed({immediate=false}={}) {revision++;if(autosave && !loading)autosave.edit(ordinaryValues(),{immediate});updateDirty();renderRun();}
 function setOperationPending(value) {
   operationPending=value;root.dataset.busy=String(value);
-  root.querySelector('.s-content').inert=value || loading;for(const id of ['login-access-settings','login-workflow-settings'])if($(id))$(id).inert=value || loading;updateDirty();
+  root.querySelector('.s-content').inert=value || loading;$('login-access-settings').inert=value || loading;updateDirty();
 }
 function casErrorText(code) {
   return ({cas_encryption_unavailable:'系统安全存储不可用，未保存或自动填写凭据。',
     cas_store_unreadable:'机构登录凭据无法读取或解密；请重新填写用户名和密码以替换。',
     cas_store_write_failed:'机构登录凭据保存失败，原有密文保留。',cas_store_clear_failed:'机构登录凭据未能清除。',
-    cas_revision_conflict:'机构凭据已改变，请重新读取状态后核对。',cas_store_busy:'机构凭据正在提交，请稍候。',cas_task_active:'活动任务正在使用机构凭据，草稿保留。',cas_credentials_required:'首次配置必须同时填写用户名和密码。',cas_invalid_credentials:'请填写有效的用户名和密码。'})[code]
+    cas_revision_conflict:'机构凭据已改变，请重新读取状态后核对。',cas_store_busy:'机构凭据正在提交，请稍候。',cas_school_unsupported:'请选择厦门大学后再保存自动登录凭据。',cas_task_active:'活动任务正在使用机构凭据，草稿保留。',cas_credentials_required:'首次配置必须同时填写用户名和密码。',cas_invalid_credentials:'请填写有效的用户名和密码。'})[code]
     || '机构登录凭据操作未完成，草稿保留，请确认 Electron 仍在运行后重试。';
 }
 function renderCAS() {
@@ -715,7 +723,15 @@ $('s-institution-query').addEventListener('input',()=>{
   const current=institutions.find(item=>item.idp_entity_id===draft.monitor.idp);
   const unchanged=text===(current?institutionLabel(current):draft.monitor.institutionName || draft.monitor.idp || '');
   institutionInputInvalid=!!text && !row && !unchanged;
-  if(!text || row){draft.monitor.institutionName=row?.name || '';draft.monitor.idp=row?.idp_entity_id || '';}
+  if(!text || row){
+    if((row?.idp_entity_id || '')!==draft.monitor.idp || (row?.name || '')!==draft.monitor.institutionName){
+      for(const key of ['productTenant','galeLocation','institutionResource']){
+        draft.monitor[key]='';
+        document.querySelector('[data-monitor="'+key+'"]').value='';
+      }
+    }
+    draft.monitor.institutionName=row?.name || '';draft.monitor.idp=row?.idp_entity_id || '';
+  }
   document.querySelector('[data-monitor="idp"]').value=draft.monitor.idp;
   input.setCustomValidity(institutionInputInvalid?'请从候选列表选择机构，或清空选择。':'');
   $('s-institution-help').textContent=institutionInputInvalid?input.validationMessage:institutionCatalogMessage;
@@ -1286,7 +1302,9 @@ function project(data) {
   return {monitor:{name:v.name,expression:v.keyword_expression,enabledProviders:[...(v.enabled_providers || [])],aliases:{...(v.provider_aliases || {})},providerOrder:[...order],crossrefMailto:v.crossref_mailto || "",pubmedKeyAction:"keep",pubmedKey:v.pubmed_key_configured?keyMask:"",openalexKeyAction:"keep",openalexKey:v.openalex_key_configured?keyMask:"",from:v.from_month,to:v.to_month,
     workspace:v.output_dir,log:v.log_level,
     ...Object.fromEntries(concurrencyFields.map(([name,key])=>[key,v[name]])),institutionName:v.institution_name,
-    idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false},
+    idp:v.institution_idp_entity_id,useShibboleth:v.institution_use_shibboleth ?? false,
+    productTenant:v.institution_product_tenant_id || '',galeLocation:v.institution_gale_location_id || '',
+    institutionResource:v.institution_resource_url || ''},
     revisions:{pubmed_key_revision:v.pubmed_key_revision || "missing",openalex_key_revision:v.openalex_key_revision || "missing",monitor_revision_exists:v.monitor_revision_exists,monitor_revision_digest:v.monitor_revision_digest,
       journal_revision_exists:v.journal_revision_exists,journal_revision_digest:v.journal_revision_digest},
     list:{journals:v.journals.map(j=>({id:j.issn || j.eissn,name:j.name,issn:j.issn || null,eissn:j.eissn || null,
@@ -1306,7 +1324,7 @@ function applyCoverDetails(data) {
   for(const [id,detail] of Object.entries(data.covers || {}))setCoverDetail(id,detail);
   for(const id of covers.keys())if(!Object.hasOwn(data.covers || {},id))covers.delete(id);
 }
-const ordinaryMonitorFields={name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth'};
+const ordinaryMonitorFields={name:'name',keyword_expression:'expression',from_month:'from',to_month:'to',log_level:'log',enabled_providers:'enabledProviders',crossref_mailto:'crossrefMailto',provider_aliases:'aliases',provider_order:'providerOrder',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),institution_name:'institutionName',institution_idp_entity_id:'idp',institution_use_shibboleth:'useShibboleth',institution_product_tenant_id:'productTenant',institution_gale_location_id:'galeLocation',institution_resource_url:'institutionResource'};
 function ordinaryValues(source=draft) {
   const values=Object.fromEntries(Object.entries(ordinaryMonitorFields).map(([field,key])=>[field,copy(source.monitor[key])]));
   values.groups=source.list.groups.map(group=>group.name);values.custom_labels=source.list.labels.map(label=>label.name);
@@ -1445,6 +1463,9 @@ function submission(source=draft) {
   for(const id of m.enabledProviders)form.append('enabled_providers',id);
   for(const [id,alias] of Object.entries(m.aliases))form.set('provider_alias_'+id,alias);
   form.set('institution_use_shibboleth',m.useShibboleth?'1':'');
+  form.set('institution_product_tenant_id',m.productTenant);
+  form.set('institution_gale_location_id',m.galeLocation);
+  form.set('institution_resource_url',m.institutionResource);
   for(const [key,value] of Object.entries(source.revisions))form.set(key,value);
   for(const g of source.list.groups)form.append('settings_group',g.name);
   for(const label of source.list.labels)form.append('settings_custom_label',label.name);
@@ -1487,22 +1508,23 @@ function showIssues(data) {
   const fields={pubmed_api_key:'pubmedKey',openalex_api_key:'openalexKey',name:'name',keyword_expression:'expression',crossref_mailto:'crossrefMailto',pubmed_key_action:'pubmedKeyAction',openalex_key_action:'openalexKeyAction',from_month:'from',to_month:'to',output_dir:'workspace',
     log_level:'log',...Object.fromEntries(concurrencyFields.map(([name,key])=>[name,key])),
     'institution.name':'institutionName','institution.idp_entity_id':'institutionName',
-    'institution.use_shibboleth':'useShibboleth','institution':'institutionName',workflow:'managedPageGlobalLimit'};
+    'institution.use_shibboleth':'useShibboleth','institution.product_tenant_id':'productTenant','institution.gale_location_id':'galeLocation','institution.institution_resource_url':'institutionResource','institution':'institutionName',workflow:'managedPageGlobalLimit'};
   clearValidationIssues();
   let first;
-  for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);input.setAttribute('aria-invalid','true');
+  for(const issue of all){const key=fields[issue.field];if(!key)continue;const input=document.querySelector(`[data-monitor="${key}"]`);if(!input)continue;input.setAttribute('aria-invalid','true');
     const hint=document.createElement('span');hint.className='s-field-error s-validation-error';hint.textContent=issue.message;input.parentElement.append(hint);first ||= input;}
   if(all.length){if(preview)closePreview();if(dialog.open)dialog.close();}
   if(!first && all.some(issue=>issue.field?.startsWith('provider_aliases'))){selectedProvider='openalex';openSettings('run',true);renderRun();$('s-provider-alias').focus();}
   if(!first && all.some(issue=>/journal|access_service|groups|custom_labels/.test(issue.field || '')))openSettings('journals-page',true);
   if(first){const key=first.dataset.monitor;
     if(['name','expression','from','to','pubmedKey','openalexKey','crossrefMailto'].includes(key)){selectedProvider=key==='pubmedKey'?'pubmed':key==='openalexKey'?'openalex':key==='crossrefMailto'?'crossref':'overview';openSettings('run',true);renderRun();}
-    else if(['prepareServiceConcurrency','institutionName','idp','useShibboleth'].includes(key)){
+    else if(['institutionName','idp','useShibboleth','productTenant','galeLocation','institutionResource'].includes(key)){
       window.workspaceNavigation.go('login',{instant:true});
-      $('login-page').querySelector(`[data-sidebar-view="${key==='prepareServiceConcurrency'?'workflow':'access'}"]`)?.click();
+      $('login-page').querySelector('[data-sidebar-view="access"]')?.click();
     }
     else if(concurrencyFields.some(([,field])=>field===key)){
       window.workspaceNavigation.go('settings',{instant:true});
+      settingsPage.querySelector('[data-settings-open="application"]')?.click();
     }
     else openSettings('settings',true);first.focus();}
 }
@@ -1531,6 +1553,16 @@ async function refreshDiagnostic(kind) {
   finally {button.disabled=false;}
 }
 root.querySelectorAll('[data-diagnostic]').forEach(button=>button.addEventListener('click',()=>void refreshDiagnostic(button.dataset.diagnostic)));
+$('s-browser-session-reset').addEventListener('click',()=>{
+  confirm('Browser Session Reset','结束正在执行的 Browser 操作，关闭页面并清除 Cookie、站点数据和缓存。',async()=>{
+    try {
+      await uiNext.request('/api/browser/session/reset',{confirmation:'reset'});
+      $('s-reset-result').textContent='Browser Session 已重置。';
+      window.dispatchEvent(new Event('login-state-changed'));
+      return true;
+    }catch(error){uiNext.notice(error.message);return false;}
+  });
+});
 let resetPlan=null,resetVersion=0;
 async function refreshResetPreview() {
   const version=++resetVersion,scope=$('s-reset-scope').value;

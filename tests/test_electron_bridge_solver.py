@@ -198,7 +198,7 @@ def test_access_close_events_and_shared_limits_use_the_authenticated_bridge():
         bridge.refresh_page_limits().result(2)
         assert socket.receive_json() == {'type': 'page_limits', 'page_limits': {'global_limit': 8, 'service_limit': 3}}
         request = bridge.execute('invalidate_access', {'scope_id': 'a' * 64,
-            'preparation_keys': {'publisher': 'b' * 64}, 'authentication_key': None})
+            'service_ids': ['svc_' + 'b' * 32]})
         sent = socket.receive_json()
         socket.send_json({**{key: sent[key] for key in ('id', 'action')}, 'type': 'result', 'data': {'ok': True}})
         assert request.result(2) == {'ok': True} and closed == [17, 29]

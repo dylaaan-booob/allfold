@@ -1,10 +1,10 @@
 """Saved Service identities for one browser invocation, never a second mapping."""
 from dataclasses import dataclass
 import hashlib
-import json
 import os
 from pathlib import Path
 
+from allfold.application.carsi_entry import school_identity
 from allfold.config import AccessService, InstitutionConfig, JournalConfig, load_config
 from allfold.persistence.safe_write import ContentChangedError, read_text_exact
 from allfold.persistence.user_state import ContentRevision, read_user_state
@@ -54,17 +54,6 @@ class BrowserServiceSnapshot:
                     config_revision=hashlib.sha256(self.config_contents.encode()).hexdigest(),
                     user_state_revision=self.revision.digest)
 
-    def authentication_key(self, credential_epoch: str) -> str:
-        institution = self.institution.model_dump(mode='json') if self.institution else None
-        payload = json.dumps([self.scope_id, credential_epoch, institution], sort_keys=True)
-        return hashlib.sha256(payload.encode()).hexdigest()
-
-    def preparation_key(self, service: AccessService, credential_epoch: str) -> str:
-        # Only the saved access record and authentication policy bind retained pages.
-        payload = json.dumps([self.authentication_key(credential_epoch),
-                              service.model_dump(mode='json')], sort_keys=True)
-        return hashlib.sha256(payload.encode()).hexdigest()
-
     def service_scope(self, service_id: str) -> str:
         return f'service:{self.scope_id}:{service_id}'
 
@@ -77,10 +66,21 @@ class BrowserServiceSnapshot:
         selected = {service.id for service in self.services} if service_ids is None else set(service_ids)
         before = {service.id: service for service in self.services if service.id in selected}
         after = {service.id: service for service in current.state.access_services if service.id in selected}
-        if config.institution != self.institution or before != after or set(before) != selected:
+        if before.keys() != selected or after.keys() != selected or any(
+                service_access(before[key]) != service_access(after[key]) for key in selected):
             raise ContentChangedError('Saved Browser access authority changed')
+
+    def verify_school(self):
+        if school_identity(load_config(self.config_path).institution) != school_identity(self.institution):
+            raise ContentChangedError('Selected school changed during authentication')
 
     def verify_snapshot(self):
         if (read_text_exact(self.config_path) != self.config_contents
                 or read_user_state(self.config_path).revision != self.revision):
             raise ContentChangedError('Saved configuration or User State changed during browser workflow')
+
+
+def service_access(service):
+    if service is None:
+        return None
+    return (service.access_method, service.access_url, service.name if service.access_method == 'carsi' else None)

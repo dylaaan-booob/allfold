@@ -51,14 +51,14 @@ class BrowserTaskLock:
         # Only admission waits behind a configuration write. Completion and
         # require() must never wait on writers holding another coordinator lock.
         with self._admission, self._mutex:
-            exclusive = kind in {'credentials', 'workspace-reset', 'logs-reset'}
+            exclusive = kind in {'browser-session-reset', 'workspace-reset', 'logs-reset'}
             scopes = frozenset(scopes)
             pages = frozenset(pages)
             if control is not None:
                 self._require_control(control)
                 if kind != control.kind or scopes != control.scopes:
                     raise ValueError('Control admission must match its captured reservation')
-            if shared and kind in {'login', 'access-cleanup', 'credentials', 'workspace-reset', 'logs-reset'}:
+            if shared and kind in {'login', 'access-cleanup', 'credentials', 'browser-session-reset', 'workspace-reset', 'logs-reset'}:
                 raise ValueError('Browser controls require exclusive admission')
             if self._closed or any(exclusive or current.exclusive or scopes & current.scopes
                                    for current in self._controls.values() if current is not control) or any(exclusive or current.exclusive or pages & current.pages
@@ -83,11 +83,11 @@ class BrowserTaskLock:
         This reservation grants no execution or page authority. The control must
         still acquire its normal owner after affected resources truly settle.
         """
-        if kind not in {'credentials', 'workspace-reset', 'logs-reset', 'access-cleanup'}:
+        if kind not in {'credentials', 'browser-session-reset', 'workspace-reset', 'logs-reset', 'access-cleanup'}:
             raise ValueError('Unknown Browser control reservation')
         with self._admission, self._mutex:
             scopes = frozenset(scopes)
-            exclusive = kind in {'credentials', 'workspace-reset', 'logs-reset'}
+            exclusive = kind in {'browser-session-reset', 'workspace-reset', 'logs-reset'}
             if self._closed or any(exclusive or current.exclusive or scopes & current.scopes
                                    for current in self._controls.values()):
                 return None

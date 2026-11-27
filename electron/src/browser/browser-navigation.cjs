@@ -3,7 +3,7 @@ const {BrowserFailure,checkPage}=require('./browser-errors.cjs');
 const {checkCanceled,timeoutFailure,pause,waitFor,PAGE_LOAD_MS}=require('./browser-task.cjs');
 
 const {REFRESH_LIMIT,REFRESH_DELAY_MS,loadFailure,transientLoad,reportRecovery,recoveryStop,
-  pageRecoveryDetails,origin}=require('./browser-recovery.cjs');
+  pageRecoveryDetails,origin,reusableNavigationURL}=require('./browser-recovery.cjs');
 
 function nativeFrame(event,processId,routingId) {
   processId=event.frame?.processId ?? processId;
@@ -144,7 +144,7 @@ class NavigationRecovery {
   }
   allowed(nav) {
     return this.current===nav && nav.active && nav.automatic && nav.enabled && nav.replayable && !nav.signal?.aborted
-      && !nav.chain.unsafeRequest && nav.valid() && !this.contents.isDestroyed();
+      && !nav.chain.unsafeRequest && reusableNavigationURL(nav.url) && nav.valid() && !this.contents.isDestroyed();
   }
   exhaustedRefreshes(failure) {
     const nav=this.current;

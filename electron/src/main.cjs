@@ -12,7 +12,7 @@ const {BrowserFailure,diagnosticFor}=require('./browser/browser-errors.cjs');
 const {readerDiagnosticFields}=require('./browser/pdf-clues.cjs');
 const {log,errorCode,initializeLogging,withLogContext,associationLogContext,diagnosticsReset,diagnosticsStatus,setLogLevel} = require('./shared/logging.cjs');
 const {operationAssociation}=require('./browser/page-association.cjs');
-const {loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
+const {prepareService,visitManualService,searchJournalCover}=require('./workflows/browser-operations.cjs');
 const {executeBodyStream}=require('./workflows/body-stream.cjs');
 const {executeBodyNative}=require('./workflows/body-native.cjs');
 const {executeLocalBody}=require('./workflows/local-body.cjs');
@@ -40,8 +40,9 @@ function send(message) {
   if (socket?.readyState !== WebSocket.OPEN) throw Error('Electron bridge disconnected');
   socket.send(JSON.stringify(message));
 }
-const CONTROL_ACTIONS=new Set(['cas_credentials','diagnostics_reset']);
-const RESOURCE_ACTIONS=new Set(['invalidate_access','release_workflow_pages']);
+const {matchesXmuSchool}=require('./auth/xmu-auth.cjs');
+const CONTROL_ACTIONS=new Set(['cas_credentials','diagnostics_reset','browser_session_reset']);
+const RESOURCE_ACTIONS=new Set(['invalidate_access','release_workflow_pages','pause_authentication','resume_authentication']);
 function pendingOperation(message) {
   const current=operations.get(message.id);
   return current?.action===message.action?current:null;
@@ -69,17 +70,34 @@ async function executeControl(message,signal) {
   const value=message.data;
   if(message.action==='diagnostics_reset')return diagnosticsReset(value);
   if(message.action==='cas_credentials') {
+    if(browser.authenticationPaused)return {ok:false,error:'cas_store_busy'};
+    browser.authenticationPaused=true;
     try {
       if(!value || !['save','clear'].includes(value.operation))throw Error('Invalid credential operation');
-      const result=await (value.operation==='save'?saveCASCredentials(value):clearCASCredentials(value));
-      if(result.ok)await browser.invalidateAllAccess();
-      return result;
+      if(value.operation==='save' && !matchesXmuSchool(value))return {ok:false,error:'cas_school_unsupported'};
+      const revoke=()=>browser.revokeAuthentication();
+      return await (value.operation==='save'?saveCASCredentials(value,revoke):clearCASCredentials(value,revoke));
     }catch(error){return {ok:false,error:casErrorCode(error)};}
+    finally {browser.authenticationPaused=false;}
+  }
+  if(message.action==='browser_session_reset') {
+    browser.resetting=true;
+    try {
+      const active=[...operations.values()].filter(op=>op.id!==message.id
+        && op.action!=='local_paper_body' && !RESOURCE_ACTIONS.has(op.action));
+      active.forEach(op=>op.controller.abort());
+      await Promise.allSettled(active.map(op=>op.settlement));
+      return await browser.resetSession();
+    } catch(_) {
+      return {ok:false,error:'browser_session_reset_failed'};
+    } finally {
+      browser.resetting=false;
+    }
   }
   return {ok:false,error:'unsupported_operation'};
 }
 async function execute(message) {
-  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['login_carsi','prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body','native_paper_body','local_paper_body'].includes(message.action)){
+  if(!CONTROL_ACTIONS.has(message.action) && !RESOURCE_ACTIONS.has(message.action) && !['prepare_service','visit_manual_service','search_journal_cover','wos_query','wos_export','extract_paper_metadata','extract_paper_pdf_clues','stream_paper_body','native_paper_body','local_paper_body'].includes(message.action)){
     send({type:'result',id:message.id,action:message.action,data:{diagnostic:{stage:'navigation',code:'unsupported_operation'}}});return;
   }
   const control=CONTROL_ACTIONS.has(message.action);
@@ -91,8 +109,13 @@ async function execute(message) {
     return;
   }
   if(operations.has(message.id))throw Error('Duplicate native Request ID');
-  if(operations.size && (control || [...operations.values()].some(value=>CONTROL_ACTIONS.has(value.action))))
-    throw Error('Concurrent dispatch conflicts with an active native control operation');
+  const activeControl=[...operations.values()].find(value=>CONTROL_ACTIONS.has(value.action));
+  if(control && activeControl || message.action==='diagnostics_reset' && operations.size
+    || activeControl && activeControl.action!=='cas_credentials' && !RESOURCE_ACTIONS.has(message.action)) {
+    send({type:'result',id:message.id,action:message.action,
+      data:control?{ok:false,error:'busy'}:{diagnostic:{stage:'navigation',code:'canceled'}}});
+    return;
+  }
   const current={id:message.id,action:message.action,controller:new AbortController()};
   operations.set(current.id,current);
   current.settlement=Promise.resolve().then(async()=>{
@@ -103,7 +126,20 @@ async function execute(message) {
     }
     if(RESOURCE_ACTIONS.has(message.action)) {
       // Captured cleanup is idempotent and must finish even after the caller's cancellation.
-      const data=message.action==='invalidate_access'?await browser.invalidateAccess(message.data):browser.releaseWorkflowPages(message.data);
+      let data;
+      try {
+        if(message.action==='invalidate_access')data=await browser.invalidateAccess(message.data);
+        else if(message.action==='release_workflow_pages')data=browser.releaseWorkflowPages(message.data);
+        else if(message.action==='pause_authentication') {
+          if(browser.authenticationPaused)throw new BrowserFailure('authentication','navigation_active');
+          browser.authenticationPaused=true;
+          await browser.revokeAuthentication();
+          data={ok:true};
+        } else {
+          browser.authenticationPaused=false;
+          data={ok:true};
+        }
+      }catch(error){data={ok:false,diagnostic:diagnosticFor(error,'navigation')};}
       send({type:'result',id:message.id,action:message.action,data});return;
     }
     let association;
@@ -159,19 +195,16 @@ async function executeOperation(message,current) {
           catch (_) {}
         };
         browser.operation.recordRecovery=recordRecovery;
-        if(['prepare_service','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action)
-          || message.action==='stream_paper_body' && message.data?.recover_access===true)
+        if(['prepare_service','wos_query','extract_paper_metadata','extract_paper_pdf_clues','native_paper_body'].includes(message.action)
+          || message.action==='stream_paper_body' && (message.data?.recover_access===true || message.data?.service_entry))
           browser.operation.validateRecovery=verifyRecovery;
         if(message.action === 'native_paper_body') {
           return await executeBodyNative(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'stream_paper_body') {
           return await executeBodyStream(browser,message.data,{signal:controller.signal,progress,observe:value=>{streamTiming=value;}});
-        } else if(message.action === 'login_carsi') {
-          stage='authentication';
-          return await loginInstitution(browser,message.data,{signal:controller.signal,progress});
         } else if(message.action === 'prepare_service' || message.action === 'visit_manual_service') {
           stage='preparation';
-          const prepare=message.action==='visit_manual_service'?visitManualService:prepareLoggedInService;
+          const prepare=message.action==='visit_manual_service'?visitManualService:prepareService;
           return await prepare(browser,message.data,{signal:controller.signal,progress});
         } else if(['extract_paper_metadata','extract_paper_pdf_clues'].includes(message.action)) {
           if(!Number.isSafeInteger(message.data?.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
@@ -350,7 +383,9 @@ async function main() {
   await window.loadURL(base+'/');
   log('info','app_ready',{port:18767});
 }
-app.whenReady().then(main).catch(error=>{
+const ownsProfile=app.requestSingleInstanceLock();
+if(!ownsProfile)app.exit(0);
+else app.whenReady().then(main).catch(error=>{
   log('error','startup_failed',{code:errorCode(error)});
   dialog.showErrorBox('Allfold',error.message);
   app.quit();

@@ -2,7 +2,9 @@
 const {randomBytes}=require('node:crypto');
 const {BrowserFailure}=require('../browser/browser-errors.cjs');
 const {checkCanceled,timeoutFailure,pause,waitFor,withTaskDeadline,waitForLoad}=require('../browser/browser-task.cjs');
-const {origin,reportRecovery,recoveryStop,pageRecoveryDetails}=require('../browser/browser-recovery.cjs');
+const {ebscoEntry}=require('../browser/ebsco-source.cjs');
+const {xmuLoginContext}=require('../auth/xmu-auth.cjs');
+const {origin}=require('../browser/browser-recovery.cjs');
 const {institutionPageAction,resourcePageAction,detailPageAction,imagePageAction}=require('./page-actions.cjs');
 
 async function pageAction(browser,tab,fn,args=[],signal,allowNavigation=false,deadline=Infinity,beforeDispatch) {
@@ -34,7 +36,6 @@ async function navigate(browser,tab,url,signal,progress,deadline) {
 function official(url,path) {
   return origin(url)==='https://ds.carsi.edu.cn' && new URL(url).pathname===path;
 }
-const CARSI_SEARCH='https://ds.carsi.edu.cn/login/index.html';
 const CARSI_PORTAL='https://ds.carsi.edu.cn/resource/resource.php';
 function checkCARSISession(pages,signal) {
   checkCanceled(signal);
@@ -69,56 +70,85 @@ async function searchCARSIInstitution(browser,tab,name,signal,progress,requestDe
     await waitFor(()=>pause(signal),signal,deadline);
   }
 }
-async function loginCARSI(browser,tab,data,signal,progress,deadline) {
-  checkCanceled(signal);
-  const contents=tab.view.webContents;
-  browser.beginAuthentication(tab,signal);
-  let selectionDocument,issue,reportedIssue;
-  if(data.use_shibboleth && data.login_url) {
-    try {await navigate(browser,tab,data.login_url,signal,progress,deadline);}
-    catch(error) {
-      checkCanceled(signal);
-      if(contents.isDestroyed() || error.diagnostic?.stage==='authentication' || error.diagnostic?.code==='timeout')throw error;
-      await navigate(browser,tab,CARSI_SEARCH,signal,progress,deadline);
-    }
-  } else if(!official(contents.getURL(),'/login/index.html')) {
-    await navigate(browser,tab,CARSI_SEARCH,signal,progress,deadline);
-  }
+async function openPortal(browser,tab,entry,signal,progress,deadline,first) {
+  const url=entry.portal_login_url || CARSI_PORTAL;
+  if(entry.portal_login_url && !official(url,'/Shibboleth.sso/Login'))throw Error('Invalid CARSI entry');
+  await browser.navigate(url,{tab,signal,deadline,afterLoad:true,serviceEntry:first?'first':true});
+  let selectionDocument,returnedFromLogin=false;
   while(true) {
     checkCanceled(signal);
-    await waitFor(()=>browser.checkAuthentication(tab),signal,deadline);
-    if(contents.isLoadingMainFrame()){await waitForLoad(tab,signal,deadline);continue;}
-    const portal=[...browser.tabs.values()].find(page=>page.authContext===tab.authContext
-      && !page.view.webContents.isDestroyed() && !page.view.webContents.isLoadingMainFrame()
-      && official(page.view.webContents.getURL(),'/resource/resource.php'));
-    if(portal){browser.authenticationPortal(portal);progress({waiting_for_user:false});return portal;}
-    const url=contents.getURL();
-    if(official(url,'/wxds')){await navigate(browser,tab,CARSI_PORTAL,signal,progress,deadline);continue;}
-    const selection=official(url,'/login/index.html');
-    if(selection) {
-      const doc=await waitFor(()=>browser.documentBinding(tab,{signal,deadline}),signal,deadline);
-      const key=JSON.stringify([doc.pageId,doc.processId,doc.frameToken]);
-      if(browser.documentCurrent(doc) && selectionDocument!==key) {
-        // Reserve the native document before a selection can submit or destroy its context.
-        selectionDocument=key;
-        issue=data.institution_name?'institution_search_failed':'institution_name_required';
-        if(data.institution_name) {
-          try {await searchCARSIInstitution(browser,tab,data.institution_name,signal,progress,deadline);}
-          catch(error) {
-            checkCanceled(signal);
-            if(contents.isDestroyed() || error.diagnostic?.stage==='authentication'
-              || error.diagnostic?.code==='timeout' && Date.now()>=deadline)throw error;
-            // A bounded selection miss stays manual; an unknown submission is never replayed.
-          }
-        }
+    const pages=authenticationPages(browser,tab);
+    const portal=pages.find(page=>official(page.view.webContents.getURL(),'/resource/resource.php'));
+    if(portal) {
+      const doc=await browser.waitForPage(portal,{signal,deadline,onWaiting:waiting=>progress({waiting_for_user:waiting})});
+      if(official(doc.url,'/resource/resource.php'))return portal;
+      continue;
+    }
+    const current=pages.at(-1);
+    if(current) {
+      browser.bindTaskPage(current,signal);
+      const address=current.view.webContents.getURL();
+      if(official(address,'/wxds') && !returnedFromLogin) {
+        returnedFromLogin=true;
+        await browser.navigate(CARSI_PORTAL,{tab:current,signal,deadline,afterLoad:true});
         continue;
       }
+      if(official(address,'/login/index.html')) {
+        const doc=await browser.documentBinding(current,{signal,deadline});
+        if(selectionDocument!==doc.documentId) {
+          selectionDocument=doc.documentId;
+          if(entry.institution_name) {
+            try {await searchCARSIInstitution(browser,current,entry.institution_name,signal,progress,deadline);}
+            catch(error) {
+              checkCanceled(signal);
+              if(Date.now()>=deadline || error.diagnostic?.stage==='authentication' || current.view.webContents.isDestroyed())throw error;
+              // The user can complete the same selector after a missed automatic match.
+            }
+          }
+        }
+      } else {
+        await browser.inspectPage(current,{signal,deadline});
+      }
     }
-    const hint=selection && issue?issue:'';
-    if(reportedIssue!==hint){reportedIssue=hint;progress({waiting_for_user:true,...(hint?{login_issue:hint}:{})});}
-    await waitFor(()=>pause(signal),signal,deadline);
+    progress({waiting_for_user:true});
+    await waitFor(()=>pause(signal),signal,deadline,'authentication','request');
   }
 }
+
+function authenticationPages(browser,tab) {
+  const context=tab.authContext;
+  return [...browser.tabs.values()].filter(page=>page.authContext===context
+    && browser.ownsPage(context.owner,page.id) && !page.view.webContents.isLoadingMainFrame());
+}
+
+function isFederatedPage(entry,url) {
+  if(!entry || !URL.canParse(url))return false;
+  const current=new URL(url);
+  if(xmuLoginContext(entry,url))return true;
+  if(URL.canParse(entry.idp_entity_id)) {
+    const idp=new URL(entry.idp_entity_id);
+    if(current.origin===idp.origin && current.pathname.startsWith(idp.pathname.replace(/[^/]*$/,'')))return true;
+  }
+  return /^\/(?:idp\/profile\/|(?:authserver|cas)\/login(?:\/|$))/i.test(current.pathname);
+}
+
+function isCarsiSelection(url) {
+  return official(url,'/login/index.html');
+}
+
+function assertServiceScope(browser,data) {
+  browser.accessKey(data);
+  const owner=browser.operation;
+  if(owner.association.service_id!==data.service_id
+    || owner.association.service_scope.scope_id!==data.service_scope.scope_id)
+    throw new BrowserFailure('preparation','document_changed');
+}
+
+function retainService(browser,tab,data) {
+  const retained=browser.retainAccessPage(tab,data);
+  return {outcome:'Opened',reason:'target_opened',target_page_id:tab.id,...(retained.ebscoEntry && {pdf_source:'ebsco'})};
+}
+
 async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
   const query=name.includes('&') ? name.slice(name.lastIndexOf('&')+1).trim() : name;
   const navigation=tab.navigation?.current,reloads=navigation?.reloads;
@@ -202,138 +232,131 @@ async function searchCARSIResource(browser,tab,name,signal,requestDeadline) {
     throw failure;
   }
 }
-async function loginInstitution(browser,data,{signal,progress}) {
-  return withTaskDeadline(signal,'authentication',async(bounded,deadline)=>{
-    if(data.login_url && !official(data.login_url,'/Shibboleth.sso/Login'))
-      throw Error('Invalid CARSI entry');
-    await browser.replaceAccess(data,'portal');
-    await browser.reserveTaskPages(3,{signal:bounded,deadline});
-    const entry=await newTaskPage(browser,bounded,{role:'carsi-portal',service:false,managed:true,deadline});
-    const portal=await loginCARSI(browser,entry,data,bounded,progress,deadline);
-    portal.managed=true;
-    browser.associatePage(portal,{role:'carsi-portal',service:false});
-    portal.institutionOrigins=new Set(portal.authContext?.origins || []);
-    portal.carsiSessionReady=true;
-    browser.retainAccessPage(portal,data,'portal');
-    return {outcome:'Opened',portal_page_id:portal.id};
-  });
-}
-
-function requirePreparationKey(data) {
-  if(!data.service_id || !data.service_scope?.scope_id || typeof data.preparation_key!=='string'
-    || !/^[a-f0-9]{64}$/.test(data.preparation_key))
-    throw new BrowserFailure('preparation','document_changed');
-}
-
-async function prepareLoggedInService(browser,data,{signal,progress}) {
-  requirePreparationKey(data);
-  const owner=browser.operation,association=owner.association;
-  const {service_id,preparation_key,portal_page_id,workflow_id,task_id}=data;
-  const scopeFields=['scope_id'];
-  const scope=Object.fromEntries(scopeFields.map(key=>[key,data.service_scope[key]]));
-  return withTaskDeadline(signal,'preparation',async(bounded,requestDeadline)=>{
-    const entry=browser.tabs.get(portal_page_id);
-    browser.pinAccessPage(entry,data);
-    await browser.replaceAccess(data);
-    const frame=entry && !entry.view.webContents.isDestroyed()?entry.view.webContents.mainFrame:null;
-    const binding=frame && {pageId:entry.id,processId:frame.processId,frameToken:frame.frameToken};
-    const verifyPortal=()=>{
-      checkCanceled(bounded);
-      const source=browser.pageAssociation(portal_page_id);
-      if(browser.operation!==owner || !browser.operations.has(owner) || owner.association!==association
-        || association.service_id!==service_id || data.service_id!==service_id
-        || association.workflow_id!==workflow_id || data.workflow_id!==workflow_id
-        || association.task_id!==task_id || data.task_id!==task_id
-        || data.preparation_key!==preparation_key || data.portal_page_id!==portal_page_id
-        || !scopeFields.every(key=>scope[key] && scope[key]===association.service_scope?.[key]
-          && scope[key]===data.service_scope?.[key]))
-        throw new BrowserFailure('preparation','document_changed');
-      if(!entry?.carsiSessionReady || source?.role!=='carsi-portal'
-        || !scopeFields.every(key=>scope[key]===source.service_scope?.[key])
-        || !binding || !browser.documentFrame(binding,null) || entry.view.webContents.isLoadingMainFrame()
-        || !official(entry.view.webContents.getURL(),'/resource/resource.php'))
-        throw new BrowserFailure('authentication','carsi_session_expired');
-    };
-    const verifyRecovery=async(signal,deadline)=>{
-      verifyPortal();
-      await waitFor(()=>owner.validateRecovery?.({signal,deadline,stage:'preparation'}),signal,deadline,'preparation','request');
-      verifyPortal();
-    };
-    let deadline=requestDeadline,firstFailure,sourcePageId,priorTargetOrigin,authentication;
-    const record=(event,error,fields={})=>reportRecovery(owner.recordRecovery,event,pageRecoveryDetails(error,'resource_reentry',{
-      stage:'preparation',source_page_id:sourcePageId,attempt:1,attempt_limit:1,...fields}));
-    for(let index=0;index<2;index++) {
-      const attempt=browser.pageAttempt(bounded);
-      const {signal}=attempt;
-      try {
-        verifyPortal();
-        if(index) {
-          await browser.waitForCooldown([CARSI_PORTAL,priorTargetOrigin],{signal,deadline,validate:verifyPortal,stage:'preparation',
-            step:'visit_target',pageId:sourcePageId,authorize:()=>verifyRecovery(signal,deadline)});
-          verifyPortal();
-        }
-        browser.pageBudget.releaseUnused(owner);
-        await browser.reserveTaskPages(3,{signal,deadline});
-        const portal=await newTaskPage(browser,signal,{role:'service-resource',source:entry,managed:true,pageAttempt:attempt,deadline});
-        portal.institutionOrigins=new Set(entry.institutionOrigins || []);
-        const attemptProgress=value=>{
-          if(value.waiting_for_user)attempt.manual=true;
-          progress(value);
-        };
-        await navigate(browser,portal,CARSI_PORTAL,signal,attemptProgress,deadline);
-        if(authentication)portal.authContext=authentication;
-        else authentication=browser.beginAuthentication(portal,bounded,{institution:false});
-        const result=await visitCARSIResource(browser,portal,data,{signal,progress:attemptProgress,attempt,priorTargetOrigin,
-          verifyVisit:waited=>index || waited?verifyRecovery(signal,deadline):verifyPortal()},deadline);
-        if(index) {
-          const opened=result.outcome==='Opened';
-          record(opened?'recovery_succeeded':'recovery_exhausted',opened?firstFailure:
-            {diagnostic:result.diagnostic || {code:'unverified_official_page'}},
-          {page_id:result.evidence?.target_page_id ?? browser.taskTab?.id,
-            ...(opened?{dispatch_outcome:'confirmed'}:{recovery_stop:'failed'})});
-        }
-        if(result.outcome==='Opened') {
-          const retained=browser.retainAccessPage(browser.tabs.get(result.evidence.target_page_id),data);
-          if(retained.ebscoEntry)result.evidence.pdf_source='ebsco';
-        }
-        return result;
-      } catch(error) {
-        const failed=browser.taskTab;
-        if(index)record('recovery_exhausted',error,{page_id:failed?.id,recovery_stop:recoveryStop(error,bounded)});
-        if(index || bounded.aborted || !browser.ownsPage(owner,failed?.id)
-          || failed.pageAttempt!==attempt || attempt.visitStarted && !attempt.visitConfirmed
-          || attempt.ambiguous || attempt.manual || authentication?.actionDispatched)throw error;
-        // An exhausted target can start a new Visit through CARSI regardless of the failed request's method.
-        const exhaustedTarget=attempt.visitConfirmed && browser.pageAssociation(failed.id)?.role==='service-target'
-          && failed.navigation.exhaustedRefreshes(error);
-        if(!exhaustedTarget && (!error.rebuildPage || failed.navigation.current?.chain.unsafeRequest))throw error;
-        checkCARSISession([failed],bounded);
-        verifyPortal();
-        if(Date.now()>=deadline)throw timeoutFailure('preparation','request');
-        firstFailure=error;sourcePageId=failed.id;priorTargetOrigin=attempt.targetOrigin;
-        record('recovery_scheduled',error,{page_id:sourcePageId,dispatch_outcome:'not_dispatched'});
-        await browser.retirePageAttempt(attempt);
+async function waitForWayflessLanding(browser,tab,entry,{signal,progress,deadline}) {
+  while(true) {
+    checkCanceled(signal);
+    const pages=authenticationPages(browser,tab);
+    for(const page of pages.reverse()) {
+      browser.bindTaskPage(page,signal);
+      const observed=await browser.inspectPage(page,{signal,deadline});
+      if(observed.loading)continue;
+      const doc=observed.doc,url=new URL(doc.url);
+      if(!observed.waiting && doc.status>=200 && doc.status<300) {
+        if(isFederatedPage(entry,doc.url))continue;
+        const entryURL=new URL(entry.wayfless_url);
+        // Some entries are also the product URL, for example the Gale menu.
+        // An initiator or callback page alone cannot establish the landing.
+        const initiator=url.hostname.startsWith('shibboleth.') || /\/(?:shibboleth\.sso|idp\/profile|api\/authorize|saml2?\/sso)(?:\/|$)/i.test(url.pathname)
+          || url.pathname===entryURL.pathname && /login|authenticate|federation|authorize|signon/i.test(entryURL.pathname);
+        const expectedHost=entry.landing_hosts.some(host=>url.hostname===host || url.hostname===host.replace(/^www\./,'')
+          || url.hostname==='www.'+host);
+        const ebsco=entry.landing_hosts.includes('search.ebscohost.com') && ebscoEntry(doc.url);
+        if(!initiator && url.origin!=='https://ds.carsi.edu.cn' && (expectedHost || ebsco))return page;
+        if(pages.length===1)throw new BrowserFailure('preparation','service_entry_unavailable');
       }
     }
-  });
+    progress({waiting_for_user:true});
+    await waitFor(()=>pause(signal),signal,deadline,'preparation','request');
+  }
+}
+
+async function prepareServiceWithinDeadline(browser,data,{signal,progress,first=false,deadline}) {
+  assertServiceScope(browser,data);
+  const entry=data.service_entry;
+  if(!entry || entry.unavailable_reason)throw new BrowserFailure('preparation','service_unavailable');
+  await browser.replaceAccess(data);
+  const open=async (wayfless,firstEntry)=>{
+    const attempt=browser.pageAttempt(signal);
+    const options={signal:attempt.signal,progress,deadline};
+    let tab,context;
+    try {
+      await browser.reserveTaskPages(3,options);
+      tab=await newTaskPage(browser,attempt.signal,{role:'service-resource',managed:true,pageAttempt:attempt,deadline});
+      context=browser.beginAuthentication(tab,attempt.signal,entry,{preparing:true});
+      options.signal=context.signal;
+      if(wayfless) {
+        await browser.navigate(entry.wayfless_url,{tab,signal:options.signal,deadline,afterLoad:true,serviceEntry:firstEntry?'first':true});
+        tab=await waitForWayflessLanding(browser,tab,entry,options);
+        browser.associatePage(tab,{role:'service-target'});
+        progress({waiting_for_user:false});
+        browser.finishPageLoad(tab);
+        return retainService(browser,tab,data);
+      }
+      const portal=await openPortal(browser,tab,entry,options.signal,progress,deadline,firstEntry);
+      const result=await visitCARSIResource(browser,portal,{name:entry.resource_name,access_url:entry.access_url},
+        {...options,attempt},deadline);
+      if(result.outcome==='Opened')return retainService(browser,browser.tabs.get(result.target_page_id),data);
+      return result;
+    } catch(error) {
+      // Only an explicit entry refusal or an observed wrong landing can fall back.
+      // A fresh Portal entry never reloads a callback or reuses form data.
+      const diagnostic=error.diagnostic;
+      if(wayfless && !options.signal.aborted && (diagnostic?.code==='service_entry_unavailable'
+        || !context?.actionDispatched && diagnostic?.code==='http_error' && [404,410].includes(diagnostic.status)
+          && tab && origin(tab.view.webContents.getURL())===origin(entry.wayfless_url))) {
+        await browser.retirePageAttempt(attempt);
+        browser.pageBudget.releaseUnused(browser.operation);
+        return null;
+      }
+      throw error;
+    } finally {
+      browser.endAuthentication(context);
+      const temporary=[...browser.tabs.values()].filter(page=>page.pageAttempt===attempt && page.resourceOwner===attempt.owner);
+      await Promise.all(temporary.map(page=>browser.closePage(page)));
+      browser.pageBudget.releaseUnused(attempt.owner);
+    }
+  };
+  if(entry.wayfless_url) {
+    const result=await open(true,first);
+    if(result)return result;
+    first=false;
+  }
+  return open(false,first);
+}
+
+async function prepareService(browser,data,{signal,progress}) {
+  return withTaskDeadline(signal,'preparation',(bounded,deadline)=>
+    prepareServiceWithinDeadline(browser,data,{signal:bounded,progress,deadline,first:data.first_entry===true}));
 }
 
 async function visitManualService(browser,data,{signal,progress}) {
-  requirePreparationKey(data);
+  assertServiceScope(browser,data);
   return withTaskDeadline(signal,'preparation',async(bounded,deadline)=>{
     await browser.replaceAccess(data);
     await browser.reserveTaskPages(3,{signal:bounded,deadline});
     const tab=await newTaskPage(browser,bounded,{role:'service-target',managed:true,deadline});
     const document=await navigate(browser,tab,data.access_url,bounded,progress,deadline);
     if(!browser.documentCurrent(document))throw new BrowserFailure('navigation','document_changed');
-    tab.preparationKey=data.preparation_key;
-    const retained=browser.retainAccessPage(tab,data);
-    return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
-      navigation_observed:true,target_page_id:tab.id,...(retained.ebscoEntry && {pdf_source:'ebsco'})}};
+    return retainService(browser,tab,data);
   });
 }
 
-async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,priorTargetOrigin,verifyVisit},requestDeadline) {
+async function recoverService(browser,data,{signal,deadline,progress},previous) {
+  const entry=data.service_entry,owner=browser.operation;
+  if(!entry || entry.unavailable_reason)throw new BrowserFailure('preparation','service_unavailable');
+  assertServiceScope(browser,data);
+  const key=browser.accessKey(data);
+  let pending=browser.serviceRecoveries.get(key);
+  if(!pending) {
+    const current=browser.serviceContext(data);
+    if(current && current!==previous)return current;
+    pending=(async()=>{
+      await owner.validateRecovery?.({signal,deadline,stage:'authentication'});
+      while(browser.serviceContext(data)?.pins.size)
+        await waitFor(()=>pause(signal),signal,deadline,'authentication','request');
+      const result=await prepareServiceWithinDeadline(browser,data,{signal,deadline,progress});
+      if(result.outcome!=='Opened')throw new BrowserFailure('authentication','service_authentication_required');
+      return browser.serviceContext(data);
+    })();
+    browser.serviceRecoveries.set(key,pending);
+    // Keep the shared result through actual Prepare settlement.
+    try {return await pending;}
+    finally {if(browser.serviceRecoveries.get(key)===pending)browser.serviceRecoveries.delete(key);}
+  }
+  return waitFor(()=>pending,signal,deadline,'authentication','request');
+}
+
+async function visitCARSIResource(browser,portal,data,{signal,progress,attempt},requestDeadline) {
   portal.taskSignal=signal;
   browser.bindTaskPage(portal,signal);
   let detail,detailURL,visitDeadline;
@@ -394,9 +417,9 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,p
     if(!browser.documentCurrent(sourceDocument) || wc.isLoadingMainFrame())
       throw new BrowserFailure('preparation','document_changed');
   };
-  const targetOrigin=priorTargetOrigin || browser.carsiVisitOrigins.get(detailURL) || origin(data.access_url);
+  const targetOrigin=browser.carsiVisitOrigins.get(detailURL) || origin(data.access_url);
   await browser.waitForCooldown([targetOrigin,CARSI_PORTAL],{signal,deadline:requestDeadline,validate:verifySource,
-    stage:'preparation',step:'visit_target',pageId:detail.id,authorize:verifyVisit});
+    stage:'preparation',step:'visit_target',pageId:detail.id});
   verifySource();
   await browser.reserveChildPage({signal,deadline:Math.min(requestDeadline,Date.now()+10000)});
   verifySource();
@@ -462,23 +485,20 @@ async function visitCARSIResource(browser,portal,data,{signal,progress,attempt,p
     browser.bindTaskPage(target,signal);
     const doc=await browser.waitForPage(target,{signal,deadline:requestDeadline,
       onWaiting:waiting=>progress({waiting_for_user:waiting})});
-    checkCARSISession([portal,detail,target],signal);
+    checkCARSISession([target],signal);
     if(attempt.ambiguous || !browser.documentCurrent(doc) || (target===detail && doc.url===sourceDocument.url))
       return {outcome:'Needs attention',reason:'unverified_official_page'};
     progress({waiting_for_user:false});
-    target.carsiOwned=true;
-    target.preparationKey=data.preparation_key;
-    target.institutionOrigins=new Set(portal.authContext.origins);
-    portal.institutionOrigins=new Set(portal.authContext.origins);
-    return {outcome:'Opened',reason:'target_opened',evidence:{visit_action_observed:true,
-      navigation_observed:true,source_page_id:detail.id,target_page_id:target.id}};
+    if(official(doc.url,'/resource/resource.php') || official(doc.url,'/resource/resourceDetail.php'))
+      return {outcome:'Needs attention',reason:'unverified_official_page'};
+    return {outcome:'Opened',target_page_id:target.id};
   } finally {
     settleClick(false);
     if(target)delete target.refreshGuard;
     browser.finishPageLoad(detail);
     if(attempt.visitConfirmed && !attempt.ambiguous) {
       const targetOrigin=origin(target?.navigation.current?.url);
-      if(targetOrigin && targetOrigin!==origin(CARSI_PORTAL) && !portal.authContext.origins.has(targetOrigin)) {
+      if(targetOrigin && targetOrigin!==origin(CARSI_PORTAL) && !isFederatedPage(portal.authContext?.entry,target?.navigation.current?.url)) {
         attempt.targetOrigin=targetOrigin;
         if(browser.carsiVisitOrigins.size>=128)browser.carsiVisitOrigins.delete(browser.carsiVisitOrigins.keys().next().value);
         browser.carsiVisitOrigins.set(detailURL,targetOrigin);
@@ -536,5 +556,5 @@ async function searchJournalCoverWithinDeadline(browser,data,{signal,progress},r
     await pause(signal);
   }
 }
-module.exports={loginInstitution,prepareLoggedInService,visitManualService,searchJournalCover,newTaskPage,navigate,pageAction,pause,checkCanceled,
+module.exports={prepareService,recoverService,isFederatedPage,isCarsiSelection,visitManualService,searchJournalCover,newTaskPage,navigate,pageAction,pause,checkCanceled,
   waitFor,withTaskDeadline,timeoutFailure};

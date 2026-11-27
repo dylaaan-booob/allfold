@@ -48,18 +48,14 @@ async def main():
     application = create_app(config, electron_bridge=bridge, diagnostics_root=root / 'logs')
     receiver = asyncio.create_task(bridge.connect(socket))
     await socket.ready.wait()
-    # Real saved Service authority, using the established manual-confirmation policy.
     from dataclasses import replace
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_services import BrowserServiceSnapshot
-    saved=load_user_state(config)
-    service=service.model_copy(update={'access_method':'manual'})
-    compare_write_user_state(config,replace(saved.state,access_services=(service,)),saved.revision)
-    login=application.state.login
-    login.start(config)
-    await asyncio.to_thread(login.join)
-    access=BrowserServiceSnapshot.read(config)
-    login.confirm_all(access,login.snapshot(access)['confirmation_workflow_id'])
+
+    saved = load_user_state(config)
+    service = service.model_copy(update={'access_method': 'manual'})
+    compare_write_user_state(config, replace(saved.state, access_services=(service,)), saved.revision)
+    login = application.state.login
     host = application.state.workspace_tasks
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://localhost')
     try:

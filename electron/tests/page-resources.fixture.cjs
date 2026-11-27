@@ -3,13 +3,13 @@ const {app,BrowserWindow,webContents}=require('electron');
 const assert=require('node:assert/strict'),http=require('node:http'),path=require('node:path'),fs=require('node:fs');
 const {randomUUID}=require('node:crypto');
 const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
-const {prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
+const {prepareService}=require('../src/workflows/browser-operations.cjs');
 const profile=process.argv[2];app.setPath('userData',profile);app.setPath('sessionData',profile);
 const signal=new AbortController().signal;
 const scope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
-const saved={service_scope:scope,authentication_key:'f'.repeat(64)};
-const service={...saved,service_id:'svc_'+'1'.repeat(32),preparation_key:'d'.repeat(64)};
-const other={...saved,service_id:'svc_'+'2'.repeat(32),preparation_key:'e'.repeat(64)};
+const saved={service_scope:scope};
+const service={...saved,service_id:'svc_'+'1'.repeat(32)};
+const other={...saved,service_id:'svc_'+'2'.repeat(32)};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function until(check){const deadline=Date.now()+3000;while(!check()){if(Date.now()>=deadline)throw Error('Native page state timed out');await delay(10);}}
@@ -65,15 +65,19 @@ app.whenReady().then(async()=>{
       abort.abort();await assert.rejects(waiting,/canceled/);
       reducedFinish.resolve();await granted;assert.equal(physical(),0);
     }finally {reducedFinish.resolve();await Promise.allSettled([granted]);}
-    let portal,target,opener,openerContents,targetContents;
-    await task(saved,async()=>{portal=await page('carsi-portal');await browser.navigate('https://ds.carsi.edu.cn/resource/resource.php',{tab:portal,signal,deadline:Date.now()+3000});portal.carsiSessionReady=true;browser.retainAccessPage(portal,saved,'portal');});
+    let target,opener,openerContents,targetContents;
+    const absent={...service,workflow_id:'later_login',task_id:'later_prepare',first_entry:true,
+      service_entry:{resource_name:'Absent fixture Service',landing_hosts:[]}};
+    const prepared=await task(absent,()=>prepareService(browser,absent,{signal,progress(){}}));
+    assert.equal(prepared.reason,'resource_not_found');assert.equal(physical(),0);
+    await task(other,async()=>{
+      const retained=await page('service-target');
+      await browser.navigate(origin+'/separate-platform',{tab:retained,signal,deadline:Date.now()+3000});
+      browser.retainAccessPage(retained,other);
+    });
     assert.equal(physical(),1);
-    const later={...service,workflow_id:'later_login',task_id:'later_prepare',portal_page_id:portal.id,name:'Absent fixture Service',
-      service_scope:{...scope,config_revision:'9'.repeat(64),user_state_revision:'8'.repeat(64)}};
-    const reused=await task(later,()=>prepareLoggedInService(browser,later,{signal,progress(){}}));
-    assert.equal(reused.reason,'resource_not_found');assert.equal(browser.tabs.get(portal.id),portal);assert.equal(physical(),1);
     await task(service,async()=>{
-      browser.pinAccessPage(portal,service);await browser.reserveTaskPages(3,{signal,deadline:Date.now()+3000});
+      await browser.reserveTaskPages(3,{signal,deadline:Date.now()+3000});
       await page('service-resource');opener=await page('service-resource');openerContents=opener.view.webContents;
       await browser.navigate(origin+'/opener',{tab:opener,signal,deadline:Date.now()+3000});
       const created=deferred();browser.events.once('tab-created',(_event,tab)=>created.resolve(tab));
@@ -85,13 +89,12 @@ app.whenReady().then(async()=>{
     });
     assert.equal(openerContents.isDestroyed(),true);assert.equal(targetContents.isDestroyed(),false);
     assert.equal(target.view.webContents.getURL(),origin+'/target');assert.equal(physical(),2);
-    // WF05 shared Service data users pin one Prepare context but own different
-    // physical work pages. One user's cleanup cannot retire the other's page.
+    // Shared Service readers own different physical work pages.
+    // One user's cleanup cannot retire the other's page.
     const paperAReady=deferred(),paperBReady=deferred(),paperAFinish=deferred(),paperBFinish=deferred();
     let paperA,paperB;
     const paperTask=(label,ready,finish,remember)=>task({...service,workflow_id:'collection_'+label,
       task_id:'attempt_'+label,paper_id:randomUUID()},async()=>{
-      browser.pinAccessPage(portal,service);
       const work=await page('auxiliary');remember(work.view.webContents);
       await browser.navigate(origin+'/paper-'+label,{tab:work,signal,deadline:Date.now()+3000});
       ready.resolve();await finish.promise;
@@ -107,11 +110,11 @@ app.whenReady().then(async()=>{
       paperBFinish.resolve();await paperBWork;assert.equal(physical(),2);
     } finally {paperAFinish.resolve();paperBFinish.resolve();await Promise.allSettled([paperAWork,paperBWork]);}
     for(let index=0;index<6;index++) {
-      await task(other,async()=>{browser.pinAccessPage(portal,other);await browser.reserveTaskPages(2,{signal,deadline:Date.now()+3000});await page('auxiliary');await page('auxiliary');assert.equal(physical(),4);});
-      assert.equal(physical(),2,'completed batches return to the bounded Portal/target base');
+      await task(other,async()=>{browser.pinPreparedPaperAccess(other,'127.0.0.1');await browser.reserveTaskPages(2,{signal,deadline:Date.now()+3000});await page('auxiliary');await page('auxiliary');assert.equal(physical(),4);});
+      assert.equal(physical(),2,'completed batches return to the two retained Service pages');
     }
     const filled=deferred(),finish=deferred();
-    const active=task(other,async()=>{browser.pinAccessPage(portal,other);await page('auxiliary');await page('auxiliary');filled.resolve();await finish.promise;});
+    const active=task(other,async()=>{browser.pinPreparedPaperAccess(other,'127.0.0.1');await page('auxiliary');await page('auxiliary');filled.resolve();await finish.promise;});
     await filled.promise;assert.equal(physical(),4);
     const abort=new AbortController();let admitted=false;
     const queued=task({...saved,service_id:'svc_'+'3'.repeat(32)},async()=>{await browser.newTaskPage({signal:abort.signal,deadline:Date.now()+3000});admitted=true;},abort.signal);
@@ -119,7 +122,7 @@ app.whenReady().then(async()=>{
     finish.resolve();await active;assert.equal(physical(),2);
     // WF03 navigation-generation authority refuses this Runtime form-POST entry; record the bounded refusal without another GET.
     await task(other,async()=>{
-      browser.pinAccessPage(portal,other);const source=await page('auxiliary'),contents=source.view.webContents;
+      browser.pinPreparedPaperAccess(other,'127.0.0.1');const source=await page('auxiliary'),contents=source.view.webContents;
       const doc=await browser.navigate(origin+'/post-source',{tab:source,signal,deadline:Date.now()+3000}),observed=deferred();
       const registration=browser.sessionEvents.registerDownload({owner:browser.operation,attemptId:'post-document-boundary',contents,
         frame:contents.mainFrame,document:doc,validate:()=>browser.documentCurrent(doc),filename:path.join(profile,'post.bin'),signal,
@@ -132,7 +135,7 @@ app.whenReady().then(async()=>{
     // The task returns after its original item is claimed. Runtime cleanup must retain its source and physical slot until actual done.
     const downloading=deferred();let source,sourceContents;
     const transfer=task(other,async()=>{
-      browser.pinAccessPage(portal,other);source=await page('auxiliary');sourceContents=source.view.webContents;
+      browser.pinPreparedPaperAccess(other,'127.0.0.1');source=await page('auxiliary');sourceContents=source.view.webContents;
       const doc=await browser.navigate(origin+'/source',{tab:source,signal,deadline:Date.now()+3000}),contents=source.view.webContents;
       const owner=browser.operation,filename=path.join(profile,'original.bin');
       const registration=browser.sessionEvents.registerDownload({owner,attemptId:'physical-original',contents,frame:contents.mainFrame,document:doc,

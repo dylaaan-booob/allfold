@@ -9,7 +9,7 @@ def test_current_page_limits_validate_dimensions_independently():
         'prepare_service_concurrency': 3, 'pdf_concurrency': 4})
     assert workflow.managed_page_global_limit == 16
     assert workflow.managed_page_service_limit == 4
-    assert workflow.prepare_service_concurrency == 3
+    assert workflow.model_dump() == dict(managed_page_global_limit=16, managed_page_service_limit=4, pdf_concurrency=4)
     assert workflow.pdf_concurrency == 4
     for field, values in (
         ('managed_page_global_limit', (3, 65, True, '16')),
@@ -39,6 +39,7 @@ def test_page_limit_autosave_preserves_services_and_publishes_one_effective_pair
             return result
 
     config, _, _, service = current_mapping_document(tmp_path)
+    config.write_text(config.read_text() + '\nworkflow:\n  prepare_service_concurrency: 3\n')
     bridge = LimitsBridge()
     with TestClient(create_app(config, electron_bridge=bridge), base_url='http://localhost') as client:
         opened = client.get('/api/ui-next/settings').json()
@@ -51,12 +52,10 @@ def test_page_limit_autosave_preserves_services_and_publishes_one_effective_pair
         unchanged = client.post('/api/ui-next/settings/autosave', json=patch_body(
             saved, managed_page_global_limit='4', managed_page_service_limit='3')).json()
         assert unchanged['saved']
-        unrelated = client.post('/api/ui-next/settings/autosave', json=patch_body(
-            unchanged, prepare_service_concurrency='2')).json()
-        assert unrelated['saved']
+        assert 'prepare_service_concurrency' not in config.read_text()
         assert bridge.published == [{'global_limit': 4, 'service_limit': 3}]
         refused = client.post('/api/ui-next/settings/autosave', json=patch_body(
-            unrelated, managed_page_global_limit='3')).json()
+            unchanged, managed_page_global_limit='3')).json()
         assert refused['outcome'] == 'INVALID_DRAFT'
         assert bridge.published == [{'global_limit': 4, 'service_limit': 3}]
         actual = client.get('/api/ui-next/settings').json()

@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from functools import lru_cache
+from threading import Lock
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Literal
@@ -24,6 +26,8 @@ MAX_CARSI_RECORDS = 10_000
 CARSI_TIMEOUT = httpx.Timeout(8.0, connect=4.0)
 CARSI_TOTAL_SECONDS = 20.0
 CATALOG_KEY = "carsi:catalog:v1"
+_ENTRY_FIELDS = ("wayfless_url_template", "unavailable_reason", "entry_sources", "entry_note")
+_CATALOG_LOCK = Lock()
 CacheStatus = Literal["fresh", "cached", "stale", "unavailable"]
 
 
@@ -37,6 +41,10 @@ class CarsiResource:
     searchStr: str
     url: str
     sptype: str
+    wayfless_url_template: str | None = None
+    unavailable_reason: str | None = None
+    entry_sources: tuple[str, ...] = ()
+    entry_note: str | None = None
 
     @property
     def access_url(self) -> str | None:
@@ -85,7 +93,7 @@ class _Scripts(HTMLParser):
             self._active = False
 
 
-def _resources(records) -> tuple[CarsiResource, ...]:
+def _resources(records, *, cached=False) -> tuple[CarsiResource, ...]:
     if not isinstance(records, list) or not 0 < len(records) <= MAX_CARSI_RECORDS:
         raise CatalogError("CARSI SPList must contain a bounded, nonempty resource array")
     resources, productions = [], set()
@@ -108,7 +116,20 @@ def _resources(records) -> tuple[CarsiResource, ...]:
             raise CatalogError(f"CARSI SPList resource {index} has an invalid URL") from error
         if record["sptype"] not in ("1", "2"):
             raise CatalogError(f"CARSI SPList resource {index} has an unknown sptype")
-        resources.append(CarsiResource(**{field: record[field] for field in fields}))
+        entry = {}
+        if cached:
+            for field in _ENTRY_FIELDS:
+                value = record.get(field)
+                if field == 'entry_sources':
+                    if value is None:
+                        value = ()
+                    if not isinstance(value, (list, tuple)) or any(not isinstance(url, str) for url in value):
+                        raise CatalogError("CARSI snapshot has invalid entry sources")
+                    value = tuple(value)
+                elif value is not None and not isinstance(value, str):
+                    raise CatalogError("CARSI snapshot has invalid entry fields")
+                entry[field] = value
+        resources.append(CarsiResource(**{field: record[field] for field in fields}, **entry))
     return tuple(resources)
 
 
@@ -191,25 +212,83 @@ def _changes(previous, current):
     return tuple(changes)
 
 
+@lru_cache(maxsize=1)
+def _defaults():
+    return _resources(json.loads(Path(__file__).with_name("carsi_defaults.json").read_text(encoding="utf-8")),
+                      cached=True)
+
+
+def _identity(resource):
+    return resource.production, resource.url.strip(), resource.sptype
+
+
+def _merge_entries(official, previous, retired, *, importing=False):
+    def key(resource):
+        identity = _identity(resource)
+        return (*identity, resource.searchStr.strip()) if importing else identity
+
+    evidence = {key(row): row for row in (*retired, *previous) if row.entry_sources or row.unavailable_reason}
+    unavailable = {row.production: row for row in evidence.values() if row.unavailable_reason}
+    resources = []
+    for row in official:
+        match = evidence.pop(key(row), None)
+        if match is None and row.production in unavailable:
+            # Keep the known stopped product and its history under its old identity.
+            resources.append(unavailable[row.production])
+            evidence.pop(key(unavailable[row.production]), None)
+            continue
+        resources.append(replace(row, **{field: getattr(match, field) for field in _ENTRY_FIELDS})
+                         if match is not None else row)
+    names = {row.production for row in resources}
+    for identity, row in tuple(evidence.items()):
+        if row.unavailable_reason and row.production not in names:
+            resources.append(evidence.pop(identity))
+    return tuple(resources), tuple(evidence.values())
+
+
+def _save_catalog(path, resources, retired, changes=(), *, fetched_at=None):
+    return write_snapshot(path, CATALOG_KEY, {
+        "resources": [asdict(row) for row in resources],
+        "retired_resources": [asdict(row) for row in retired],
+        "changes": [asdict(row) for row in changes],
+    }, fetched_at=fetched_at)
+
+
+def _read_catalog(path):
+    cached = read_snapshot(path, CATALOG_KEY)
+    if cached is None:
+        resources = _defaults()
+        cached = _save_catalog(path, resources, ())
+        return resources, (), (), cached.fetched_at, False
+    records = cached.payload.get("resources")
+    resources = _resources(records, cached=True)
+    archived = cached.payload.get("retired_resources") or []
+    # Archived evidence can contain successive identities of the same product.
+    retired = tuple(_resources([record], cached=True)[0] for record in archived)
+    changes = tuple(CatalogChange(item["kind"], item["previous_production"], tuple(item["productions"]))
+                    for item in cached.payload.get("changes", []))
+    if any(not all(field in row for field in _ENTRY_FIELDS) for row in records):
+        resources, retired = _merge_entries(resources, _defaults(), retired, importing=True)
+        _save_catalog(path, resources, retired, changes, fetched_at=cached.fetched_at)
+    return resources, retired, changes, cached.fetched_at, True
+
+
 def get_carsi_catalog(cache_path: Path, *, refresh=False,
                       transport: httpx.BaseTransport | None = None) -> CarsiCatalog:
-    """Reuse shared snapshots until explicit refresh; surface renames as warnings."""
-    cached = read_snapshot(cache_path, CATALOG_KEY)
-    previous, changes = (), ()
-    if cached is not None:
-        previous = _resources(cached.payload.get("resources"))
-        changes = tuple(CatalogChange(item["kind"], item["previous_production"], tuple(item["productions"]))
-                        for item in cached.payload.get("changes", []))
-        if not refresh:
-            return CarsiCatalog(previous, "cached", cached.fetched_at, changes=changes)
+    """Initialize or upgrade the shared snapshot, then fetch only on explicit refresh."""
+    with _CATALOG_LOCK:
+        previous, _, changes, fetched_at, existed = _read_catalog(cache_path)
+    if not refresh:
+        return CarsiCatalog(previous, "cached", fetched_at, changes=changes)
     try:
-        resources = fetch_carsi_directory(transport=transport)
+        official = fetch_carsi_directory(transport=transport)
     except CatalogError as error:
-        return CarsiCatalog(previous, "stale" if cached else "unavailable",
-                            cached.fetched_at if cached else None, str(error), changes)
-    changes = _changes(previous, resources)
-    saved = write_snapshot(cache_path, CATALOG_KEY, {"resources": [asdict(item) for item in resources],
-                                                   "changes": [asdict(item) for item in changes]})
+        return CarsiCatalog(previous, "stale", fetched_at, str(error), changes)
+    with _CATALOG_LOCK:
+        previous, retired, _, _, _ = _read_catalog(cache_path)
+        changes = _changes(previous, official) if existed else ()
+        resources, retired = _merge_entries(official, previous, retired)
+        saved = _save_catalog(cache_path, resources, retired, changes)
     return CarsiCatalog(resources, "fresh", saved.fetched_at, changes=changes)
 
 

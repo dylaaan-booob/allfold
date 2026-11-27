@@ -156,7 +156,7 @@ app.whenReady().then(async()=>{
     assert.equal(tabs[1].challenge.state,prior,'wrong target and expired challenge IDs cannot change state');
     await browser.closePage(tabs[1]);assert.equal(tabs[1].challenge.active,null,'close joins real worker');
     // Retained Service page keeps its observer after its operation settles.
-    const data={request_id:'retained-fixture',service_id:'svc_'+'1'.repeat(32),service_scope:{scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)},preparation_key:'d'.repeat(64)};
+    const data={request_id:'retained-fixture',service_id:'svc_'+'1'.repeat(32),service_scope:{scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)}};
     let retained;
     await browser.runTask(new AbortController().signal,data,async()=>{
       retained=browser.createTab({present:false});browser.bindTaskPage(retained);
