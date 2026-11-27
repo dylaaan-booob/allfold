@@ -18,4 +18,12 @@ function xmuLoginContext(institution,value) {
   );
 }
 
-module.exports={matchesXmuSchool,xmuLoginContext};
+function secureXmuLoginURL(institution,value) {
+  if(!URL.canParse(value))return;
+  const url=new URL(value);
+  if(url.origin!=='http://ids.xmu.edu.cn')return;
+  url.protocol='https:';
+  if(xmuLoginContext(institution,url.href))return url.href;
+}
+
+module.exports={matchesXmuSchool,xmuLoginContext,secureXmuLoginURL};

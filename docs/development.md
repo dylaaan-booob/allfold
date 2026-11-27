@@ -221,10 +221,11 @@ and a seeded test Workspace.
 | Selected Prepare batch | First waited at the fixture verification page while Second and Third remained unstarted. After completing verification, all three opened. The Login header reported `0 / 3` and then `3 / 3`, scoped to the selected workflow. |
 | Public WAYFless entry | Web of Science reached the Xiamen University sign-in page. EBSCO stayed unstarted while it waited. Cancel settled the batch. |
 | Public Portal entry | Karger reached the Xiamen University sign-in page from CARSI Portal. Login reported the manual step and Cancel settled the task. |
+| EBSCO Portal sign-in | A disposable Portal route override exercised the PR #141 entry. Allfold upgraded the HTTP XMU CAS entry to HTTPS, switched to account login, and submitted the live form. The authentication chain reached the privacy statement and waited for the user. Two image requests returned `-100` on that attempt. The main frame did not report `-100` before the privacy statement. An earlier attempt timed out on the school login page before form submission. |
 | Manual Visit and restart | Explicit Visit opened the fixture page. After normal quit and restart, the old page was absent and the fixture still read its persistent Cookie and site storage. |
 | Browser Session Reset | The Settings action canceled a Prepare waiting for verification and closed the old Browser pages. The fixture then read empty Cookie and site storage. The seeded Paper-to-PDF association, PDF bytes, configuration and application databases survived. |
 | Multi-school compatibility | Deferred for this acceptance. |
-| Live authorization | Publisher return after school sign-in, MFA, first-time binding and subscription entitlements were not exercised. |
+| Live authorization | The privacy decision, publisher return, MFA, first-time binding and subscription entitlements remain manual checks. |
 
 The public entries used the system network configuration. The local fixture was
 retested with direct networking after the system proxy returned HTTP 502 for its

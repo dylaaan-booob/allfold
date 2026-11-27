@@ -66,6 +66,14 @@ test('scoped header handlers compose once and ending one leaves the shared nativ
   assert.equal(count,2);failing.dispose();following.dispose();events.dispose();
   assert.equal(session.listenerCount('will-download'),0);assert.equal(hooks.onBeforeSendHeaders,null);
 });
+test('a Session request cancellation takes precedence over a redirect',()=>{
+  const {hooks,events}=fixture();
+  events.subscribe('beforeRequest',()=>({redirectURL:'https://fixture/login'}));
+  events.subscribe('beforeRequest',()=>({cancel:true}));
+  hooks.onBeforeRequest({id:1,url:'http://fixture/login',method:'GET',resourceType:'mainFrame'},
+    result=>assert.deepEqual(result,{cancel:true}));
+  events.dispose();
+});
 test('controlled same-URL host requests use request IDs, remove markers and retain actual redirects and shared cooldown',async()=>{
   const {session,hooks,events}=fixture();let sequence=0;
   const seen=[];

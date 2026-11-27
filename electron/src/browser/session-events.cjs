@@ -107,6 +107,7 @@ class SharedSessionEvents {
       request?.controlled?.validate(details);
     } catch(_){state={cancel:true};}
     finally {
+      if(event==='beforeRequest' && state.cancel)delete state.redirectURL;
       finish?.(state);
       if(event==='completed' || event==='errorOccurred')this.requests.delete(details.id);
     }

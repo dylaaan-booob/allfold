@@ -13,7 +13,7 @@ const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
 const {log,withLogContext,associationLogContext}=require('../shared/logging.cjs');
 const {institutionAuthPage}=require('../auth/institution-auth.cjs');
-const {xmuLoginContext}=require('../auth/xmu-auth.cjs');
+const {xmuLoginContext,secureXmuLoginURL}=require('../auth/xmu-auth.cjs');
 const {ServiceEntryStarts}=require('./service-entry-starts.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
 const {waitFor,pause,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
@@ -56,13 +56,19 @@ class BrowserRuntime {
     this.cooldown=this.sessionEvents.cooldown;
     this.sessionEvents.subscribe('beforeRequest',details=>{
       const tab=this.tabs.get(details.webContentsId);
-      if(details.resourceType==='mainFrame' && tab){tab.mainRequest=details.id;tab.navigation.observeRequestStart(details);}
+      let redirectURL;
+      if(details.resourceType==='mainFrame' && tab) {
+        tab.mainRequest=details.id;
+        tab.navigation.observeRequestStart(details);
+        redirectURL=this.xmuLoginRedirect(tab,details);
+      }
       if(tab?.taskOwner && !tab.pageAttempt?.retired) {
         const frame=details.frame;
         this.sessionEvents.associateRequest(details.id,{...tab.taskOwner.association,
           page_id:tab.id,attempt_id:tab.pageAttempt?.id ?? tab.taskOwner.association.request_id,process_id:frame?.processId,frame_token:frame?.frameToken,
           document_id:frame?tab.documentIds.get(frame.frameToken):undefined,navigation_generation:tab.documentGeneration});
       }
+      if(redirectURL)return {redirectURL};
     });
     this.sessionEvents.subscribe('headersReceived',details=>{
       const tab=this.tabs.get(details.webContentsId);
@@ -293,6 +299,19 @@ class BrowserRuntime {
     const context=tab?.authContext;
     if(context?.active && context.failure)throw context.failure;
   }
+  liveAuthentication(tab) {
+    const context=tab?.authContext;
+    if(context?.active && !context.signal.aborted && !context.failure && !this.destroying
+      && this.ownsPage(context.owner,tab.id))return context;
+  }
+  xmuLoginRedirect(tab,{method,url}) {
+    const context=this.liveAuthentication(tab);
+    if(method!=='GET' || !context || context.loginHTTPSUpgraded || context.loginSubmitted
+      || this.authenticationPaused || context.revision!==this.authenticationRevision)return;
+    const secureURL=secureXmuLoginURL(context.entry,url);
+    // An IdP that downgrades its own secure login cannot create a redirect loop.
+    if(secureURL){context.loginHTTPSUpgraded=true;return secureURL;}
+  }
   async revokeAuthentication() {
     this.authenticationRevision++;
     const active=[...this.operations].map(owner=>owner.authContext).filter(context=>context?.active);
@@ -333,12 +352,11 @@ class BrowserRuntime {
   }
   async handleAuthentication(tab) {
     if(tab.authHandling)return tab.authHandling;
-    const context=tab.authContext,wc=tab.view.webContents;
-    if(!context?.active || !this.ownsPage(context.owner,tab.id) || context.signal.aborted || context.failure || this.destroying || wc.isDestroyed())return;
+    const context=this.liveAuthentication(tab),wc=tab.view.webContents;
+    if(!context || wc.isDestroyed())return;
     const operation=this.runInOperation(context.owner,async()=>{
       const state=await this.inspectAuthentication(tab);
-      const current=()=>context.active && !context.signal.aborted && !context.failure
-        && tab.authContext===context && this.ownsPage(context.owner,tab.id) && !this.destroying && this.documentCurrent(state.binding)
+      const current=()=>this.liveAuthentication(tab)===context && this.documentCurrent(state.binding)
         && !wc.isLoadingMainFrame();
       if(!state.binding || !current())return;
       const school=xmuLoginContext(context.entry,state.binding.url);

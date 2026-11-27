@@ -211,6 +211,49 @@ for(const submission of [
     assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|csrf=|submit|stale/);
   });
 });
+test('an owned XMU login upgrades its HTTP entry before navigating to the password form',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  let reads=0,submissions=0,requestId=0;
+  const browser=new BrowserRuntime({readCASCredentials:async()=>{
+    reads++;return {username:'fixture-user',password:'fixture-password'};
+  }});
+  t.after(()=>browser.close());await browser.ready;
+  const query='?service=https%3A%2F%2Fidp.xmu.edu.cn%2Freturn%3Fexecution%3De1s1%26test%3Da%2Bb';
+  const secure=xmuLogin+query,insecure=secure.replace(/^https:/,'http:');
+  const beforeRequest=(tab,url=insecure,method='GET',resourceType='mainFrame')=>new Promise(resolve=>{
+    partition.requestHook({id:++requestId,url,method,resourceType,webContentsId:tab.id},resolve);
+  });
+  const ordinary=browser.createTab({user:true});
+  assert.equal((await beforeRequest(ordinary)).redirectURL,undefined);
+  const signal=new AbortController().signal;
+  await browser.runTask(signal,{request_id:'xmu-https',service_id:serviceId,service_scope:serviceScope},async()=>{
+    const tab=await browser.newTaskPage(),contents=tab.view.webContents;
+    browser.beginAuthentication(tab,signal,xmu);
+    assert.equal((await beforeRequest(tab,insecure,'POST')).redirectURL,undefined);
+    assert.equal((await beforeRequest(tab,insecure,'GET','subFrame')).redirectURL,undefined);
+    assert.equal((await beforeRequest(tab,'http://ids.xmu.edu.cn.example/authserver/login')).redirectURL,undefined);
+    assert.equal((await beforeRequest(tab,'http://idp.xmu.edu.cn/idp/profile/SAML2/Redirect/SSO')).redirectURL,undefined);
+    const entry=await beforeRequest(tab);
+    assert.equal(entry.redirectURL,secure);
+    assert.equal(reads,0);
+    assert.equal((await beforeRequest(tab)).redirectURL,undefined,'a second downgrade cannot cause a redirect loop');
+
+    contents.runAuth=async code=>{
+      const [action,credentials,_step,mode]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+      assert.equal(mode,'institution');
+      if(action==='inspect')return {step:'login',waiting:true};
+      assert.equal(credentials.password,'fixture-password');
+      submissions++;
+      return {acted:true};
+    };
+    await contents.loadURL(entry.redirectURL);
+    await browser.handleAuthentication(tab);
+    await browser.handleAuthentication(tab);
+    assert.equal(reads,1);
+    assert.equal(submissions,1);
+  });
+});
+
 test('only the selected XMU login can read credentials; a manual IdP can return through generic consent',async t=>{
   const {BrowserRuntime}=fixture(t),reads=[],posts=[],modes=[];
   const browser=new BrowserRuntime({readCASCredentials:async()=>{reads.push(true);return {username:'fixture',password:'synthetic'};}});
@@ -545,6 +588,7 @@ function authDOM({title='Institution Login',fields=[],buttons=['登录'],error='
     const controls=(definition.buttons || []).map(button=>({isConnected:true,tagName:'BUTTON',type:'submit',
       name:'',value:'',innerText:typeof button==='string'?button:'',disabled:false,readOnly:false,
       getClientRects:()=>[{}],getAttribute(key){return this[key] ?? null;},
+      hasAttribute(key){return this.getAttribute(key)!==null;},
       matches(selector){return selector===':disabled' && (this.disabled || this.fieldsetDisabled===true);},
       click(){clicks++;},...(typeof button==='string'?{}:button)}));
     return {definition,inputs,controls};
@@ -583,7 +627,11 @@ function authDOM({title='Institution Login',fields=[],buttons=['登录'],error='
     Object.assign(own,{action:'https://idp.example.edu/continue?execution=current',method:'post',
       enctype:'application/x-www-form-urlencoded',...group.definition,
       elements:[...group.inputs,...group.controls]});
-    for(const node of own.elements){node.form=own;node.closest=()=>own;node.parentElement=own;}
+    for(const node of own.elements){
+      if(node.tagName==='A')delete node.form;
+      else node.form=own;
+      node.closest=()=>own;node.parentElement=own;
+    }
     return own;
   });
   // VM substitute for native successful-control serialization; no real IdP or Session is used here.
@@ -624,6 +672,24 @@ test('page is the default mode and cannot execute a recognized institution login
   const page=authDOM({fields:[{label:'Username'},{type:'password',label:'Password'}]});
   assert.equal(page.runDefault('act','login').waiting,true);
   assert.equal(page.clicks(),0);assert.equal(page.inputs[0].value,'');assert.equal(page.inputs[1].value,'');
+});
+test('the XMU password form can use its official submit link over HTTPS',()=>{
+  const page=(action,href)=>authDOM({url:xmuLogin,forms:[{
+    id:'pwdFromId',action,fields:[{label:'学工号'},{label:'密码',type:'password'}],
+    buttons:[{tagName:'A',id:'login_submit',innerText:'登录',href}],
+  }]});
+  const secure=page(xmuLogin,'javascript:void(0);');
+  assert.equal(secure.run().step,'login');
+  assert.equal(secure.run('act','login').acted,true);
+  assert.equal(secure.clicks(),1);
+  assert.ok(secure.inputs.every(input=>input.value));
+  for(const [action,href] of [[xmuLogin,'https://other.example/'],[xmuLogin.replace('https:','http:'),'javascript:void(0);']]) {
+    const refused=page(action,href);
+    assert.equal(refused.run().step,'manual');
+    assert.equal(refused.run('act','login').acted,false);
+    assert.equal(refused.clicks(),0);
+    assert.ok(refused.inputs.every(input=>!input.value));
+  }
 });
 test('an optional password sign-in entry does not block an ordinary article, while institution switching stays authorized',()=>{
   const page=authDOM({title:'Article abstract',formHeading:'Sign in',buttons:['Sign in with password'],

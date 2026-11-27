@@ -85,9 +85,12 @@ frame and resource owner. Selecting a Browser tab never retargets a task. Remote
 pages have no Node or host IPC capability. Trusted UI sender checks and the
 sandboxed, isolated Document preload remain in use. CARSI credential authority
 requires a current Service operation, the selected Xiamen University identity
-and a recognized HTTPS school login page. Credential writes pause and revoke
-in-flight school submissions through the authenticated bridge. Supported terms
-and attribute release use the current native Document's own form data.
+and a recognized HTTPS school login page. When the current XMU authentication
+attempt reaches the known HTTP CAS login URL in a main-frame GET, Browser
+upgrades it once before sending the request and preserves the service query.
+The credential form uses the verified HTTPS origin and POST. Credential writes
+pause and revoke in-flight school submissions through the authenticated bridge.
+Supported terms and attribute release use the current native Document's own form data.
 
 [Document access](browser-documents.md) owns page reading and Solver behavior.
 Fixed page extraction captures rendered HTML, URL and the necessary runtime PDF
