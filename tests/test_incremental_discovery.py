@@ -54,7 +54,7 @@ def test_native_stage_reuses_parent_slot_and_retains_first_batch_after_later_fai
                 rows=[record(doi='10.5555/safe',ut='WOS:1')]
                 if invalid_batch in {'count','duplicate_ut'}: rows.append(record(doi='10.5555/other',ut='WOS:1'))
                 Path(data['filename']).write_text(tagged(rows))
-                value = dict(filename='unissued' if invalid_batch=='path' else data['filename'])
+                value = dict(filename='unissued' if invalid_batch=='path' else data['filename'], page_id=data['page_id'])
             else:
                 future.set_exception(ValueError('Second export failed'))
                 return future
@@ -272,7 +272,7 @@ def test_unified_wos_quarantines_conflicting_ut_before_creation(tmp_path,existin
             else:
                 exports=([rows[2],rows[0],rows[1]][data['first']-1:data['last']] if split_batches else rows)
                 Path(data['filename']).write_text(tagged(exports))
-                value = dict(filename=data['filename'])
+                value = dict(filename=data['filename'], page_id=data['page_id'])
             future.set_result(value)
             return future
     stage = WoSCoordinator(path, Login(), threading.Lock(), bridge=Bridge(), browser_lock=BrowserTaskLock())
