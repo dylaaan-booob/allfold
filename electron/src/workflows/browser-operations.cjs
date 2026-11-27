@@ -281,6 +281,9 @@ async function prepareServiceWithinDeadline(browser,data,{signal,progress,first=
   const open=async (wayfless,firstEntry)=>{
     const attempt=browser.pageAttempt(signal);
     const options={signal:attempt.signal,progress,deadline};
+    const closeTemporary=keep=>Promise.all([...browser.tabs.values()]
+      .filter(page=>page!==keep && page.pageAttempt===attempt && page.resourceOwner===attempt.owner)
+      .map(page=>browser.closePage(page)));
     let tab,context;
     try {
       await browser.reserveTaskPages(3,options);
@@ -296,6 +299,7 @@ async function prepareServiceWithinDeadline(browser,data,{signal,progress,first=
         return retainService(browser,tab,data);
       }
       const portal=await openPortal(browser,tab,entry,options.signal,progress,deadline,firstEntry);
+      await closeTemporary(portal);
       const result=await visitCARSIResource(browser,portal,{name:entry.resource_name,access_url:entry.access_url},
         {...options,attempt},deadline);
       if(result.outcome==='Opened')return retainService(browser,browser.tabs.get(result.target_page_id),data);
@@ -314,8 +318,7 @@ async function prepareServiceWithinDeadline(browser,data,{signal,progress,first=
       throw error;
     } finally {
       browser.endAuthentication(context);
-      const temporary=[...browser.tabs.values()].filter(page=>page.pageAttempt===attempt && page.resourceOwner===attempt.owner);
-      await Promise.all(temporary.map(page=>browser.closePage(page)));
+      await closeTemporary();
       browser.pageBudget.releaseUnused(attempt.owner);
     }
   };

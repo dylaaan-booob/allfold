@@ -69,6 +69,8 @@ pages retain a nonzero viewport and do not select, present or focus Browser.
 
 Prepare reserves capacity for its entry and possible native popups. Portal flows
 also use their own detail page. Resource acquisition finishes before entry jitter.
+A Portal popup that has reached the resource catalog releases its temporary
+authentication opener before allocating the detail and Visit pages.
 A synchronous popup handler consumes a dedicated reservation and validates the
 opener and current operation. Child capacity is checked before Visit.
 A denied popup has a finite failure result and never authorizes replaying an
@@ -108,6 +110,8 @@ source reusable; its owner-free late-item guard leaves only on actual destructio
 The native access context is indexed by configuration scope and Service UUID.
 The actual Page ID is sent to Python when a retained page closes. This releases
 the displayed handle and preserves the Service's last observed Prepare result.
+WoS Query can open a fresh query page after the previously visited Manual target
+is evicted. The workflow still requires an explicit Manual Visit before admission.
 WoS Export validates its exact workflow results Document and supported overlay.
 Before a native export is issued, a recognized authentication block can restore
 the same results route. The workflow checks the original result count, loans the

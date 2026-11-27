@@ -140,7 +140,6 @@ async function wosQueryWithinDeadline(browser,data,{signal,progress},deadline) {
       browser.beginPageLoad(page,signal,deadline);
       await browser.waitForServiceTarget(data,{tab:page,signal,deadline,onWaiting});
     } else {
-      if(!data.service_entry)throw new BrowserFailure('preparation','document_changed');
       await browser.reserveTaskPages(3,{signal,deadline});
       page=await newTaskPage(browser,signal,{role:'wos-query',managed:true,deadline});
     }

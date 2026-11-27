@@ -868,6 +868,59 @@ test('an unredirected WAYFless initiator cannot settle Prepare',async t=>{
   assert.deepEqual(opened,entries.flatMap(entry=>[entry,portal]));
 });
 
+test('Portal popup releases its authentication opener before Visit needs the third page slot',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  browser.updatePageLimits({global_limit:8,service_limit:3});
+  const login='https://ds.carsi.edu.cn/Shibboleth.sso/Login';
+  const portal='https://ds.carsi.edu.cn/resource/resource.php';
+  const detail='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=fixture';
+  const target='https://publisher.example/fixture';
+  let opener,visits=0;
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    const access=wc.executeJavaScriptInIsolatedWorld.bind(wc);
+    const popup=url=>{
+      const result=wc.popup({url});
+      assert.equal(result.action,'allow');
+      return result.createWindow({}).loadURL(url);
+    };
+    const args=code=>JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+    wc.loadURL=async url=>{
+      if(url!==login)return load(url);
+      opener=wc;
+      await load('https://idp.example/idp/profile/SAML2/Redirect/SSO');
+      await popup(portal);
+    };
+    wc.runAuth=async code=>{
+      const [action]=args(code);
+      if(action==='ready')return {status:'ready',checked:false};
+      if(action==='search')return {status:'pending'};
+      if(action==='poll')return {status:'complete',selection:{status:'selected',url:detail}};
+      return {step:'none',waiting:false};
+    };
+    wc.executeJavaScriptInIsolatedWorld=async (world,scripts)=>{
+      if(!scripts)return access(world,scripts);
+      const [action]=args(scripts[0].code);
+      if(action==='check')return {status:'ready'};
+      assert.equal(action,'visit');
+      assert.equal(opener.isDestroyed(),true);
+      visits++;
+      await popup(target);
+      return {status:'visited_click'};
+    };
+  });
+  const data={request_id:'portal-popup',service_id:serviceId,service_scope:serviceScope,first_entry:true,
+    service_entry:{portal_login_url:login,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+  const signal=AbortSignal.timeout(2000);
+  const result=await browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
+  assert.equal(result.outcome,'Opened');
+  assert.equal(visits,1);
+  assert.equal(browser.tabs.size,1);
+  assert.equal(browser.serviceContext(data).tab.view.webContents.getURL(),target);
+});
+
 test('Service recovery keeps a live follower when the leading Paper is canceled',async t=>{
   const {recoverService}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});

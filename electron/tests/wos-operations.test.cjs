@@ -219,18 +219,19 @@ test('WoS query and consecutive exports keep the prepared page/document while an
   assert.equal(f.browser.partition.listenerCount('will-download'),1);
 });
 
-test('a CARSI WoS query can acquire a new page and exports use its returned handle',async t=>{
-  const f=fixture(t,{query:true});
-  f.browser.tabs.clear();
-  await assert.rejects(f.runQuery({page_id:null}),/document_changed/);
-  assert.deepEqual(f.ops,[]);
-  const query=await f.runQuery({service_entry:{resource_name:'Web of Science'}});
-  assert.equal(query.page_id,71);
-  assert.equal(f.ops[0],'new page');
-  await assert.rejects(f.run({page_id:42}),/document_changed/);
-  assert.equal((await f.run({page_id:query.page_id})).filename,f.filename);
-  assert.equal(f.browser.taskTab.id,71);
-});
+for(const service of ['CARSI','previously visited Manual']) {
+  test('WoS can reacquire the page of a '+service+' Service and export using its new handle',async t=>{
+    const f=fixture(t,{query:true});
+    f.browser.tabs.clear();
+    const service_entry=service==='CARSI'?{resource_name:'Web of Science'}:null;
+    const query=await f.runQuery({service_entry});
+    assert.equal(query.page_id,71);
+    assert.equal(f.ops[0],'new page');
+    await assert.rejects(f.run({page_id:42}),/document_changed/);
+    assert.equal((await f.run({page_id:query.page_id})).filename,f.filename);
+    assert.equal(f.browser.taskTab.id,71);
+  });
+}
 test('WoS waits for a result toolbar that mounts after the result count, then opens export once',async t=>{
   const f=fixture(t,{query:true,deferExportMenu:true});
   const result=await f.runQuery();

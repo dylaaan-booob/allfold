@@ -26,7 +26,7 @@ _CONTROL_ACTIONS = {"diagnostics_reset", "cas_credentials", "browser_session_res
 _RESOURCE_ACTIONS = {"invalidate_access", "release_workflow_pages", "pause_authentication", "resume_authentication"}
 _PAPER_ACTIONS = {"extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
 _BUSINESS_ACTIONS = _RESOURCE_ACTIONS | {"prepare_service", "visit_manual_service", "search_journal_cover", "wos_query", "wos_export", "extract_paper_metadata", "extract_paper_pdf_clues", "stream_paper_body", "native_paper_body", "local_paper_body"}
-_RECOVERY_ACTIONS = {"prepare_service", "wos_query", "extract_paper_metadata", "extract_paper_pdf_clues",
+_RECOVERY_ACTIONS = {"prepare_service", "wos_query", "wos_export", "extract_paper_metadata", "extract_paper_pdf_clues",
     "stream_paper_body", "native_paper_body", "local_paper_body"}
 _CONTEXT_FIELDS = ("workflow_id", "task_id", "parent_task_id", "service_id", "paper_id")
 _SOCKET_ERRORS = (WebSocketDisconnect, OSError, RuntimeError)
