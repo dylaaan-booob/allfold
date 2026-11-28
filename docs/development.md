@@ -212,20 +212,25 @@ Chromium authentication remains a separate manual acceptance boundary.
 
 ### CARSI Browser and Prepare acceptance
 
-On 2026-11-27, PR #142 was exercised through the Allfold source Electron
-app with a rebuilt UI, a disposable configuration, a separate Browser profile
-and a seeded test Workspace.
+On 2026-11-27 and 2026-11-28, PR #142 was exercised through the Allfold source
+Electron app with a rebuilt UI, a disposable configuration, a separate Browser
+profile and a seeded test Workspace.
 
 | Check | Observed result |
 | --- | --- |
 | Selected Prepare batch | First waited at the fixture verification page while Second and Third remained unstarted. After completing verification, all three opened. The Login header reported `0 / 3` and then `3 / 3`, scoped to the selected workflow. |
 | Public WAYFless entry | Web of Science reached the Xiamen University sign-in page. EBSCO stayed unstarted while it waited. Cancel settled the batch. |
 | Public Portal entry | Karger reached the Xiamen University sign-in page from CARSI Portal. Login reported the manual step and Cancel settled the task. |
-| EBSCO Portal sign-in | A disposable Portal route override exercised the PR #141 entry. Allfold upgraded the HTTP XMU CAS entry to HTTPS, switched to account login, and submitted the live form. The authentication chain reached the privacy statement and waited for the user. Two image requests returned `-100` on that attempt. The main frame did not report `-100` before the privacy statement. An earlier attempt timed out on the school login page before form submission. |
+| EBSCO Portal sign-in | A disposable Portal route override exercised the PR #141 entry. Allfold upgraded the HTTP XMU CAS entry to HTTPS, submitted the password form, and automatically confirmed the recognized privacy terms and attribute release. Prepare reported `Opened` at EBSCOhost. Both `-100` events came from image requests. |
 | Manual Visit and restart | Explicit Visit opened the fixture page. After normal quit and restart, the old page was absent and the fixture still read its persistent Cookie and site storage. |
 | Browser Session Reset | The Settings action canceled a Prepare waiting for verification and closed the old Browser pages. The fixture then read empty Cookie and site storage. The seeded Paper-to-PDF association, PDF bytes, configuration and application databases survived. |
 | Multi-school compatibility | Deferred for this acceptance. |
-| Live authorization | The privacy decision, publisher return, MFA, first-time binding and subscription entitlements remain manual checks. |
+| Live authorization | MFA, first-time binding and subscription entitlements remain manual checks. |
+
+Before the navigation fix, the CAS page updated its address within the same
+document before load finished. Allfold compared the completed load with the
+original address and timed out. Load completion now follows the committed
+document address. Network failures still use the matching request URL and ID.
 
 The public entries used the system network configuration. The local fixture was
 retested with direct networking after the system proxy returned HTTP 502 for its

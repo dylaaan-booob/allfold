@@ -1272,6 +1272,34 @@ test('the existing Session hook gates only matching entry origins and retains an
   assert.equal(sleepers.length,3);
 });
 
+test('a managed navigation finishes when its main document updates its address before load',async t=>{
+  const {BrowserRuntime,partition}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({managed:true}),wc=tab.view.webContents;
+  const signal=new AbortController().signal;
+  const initial='https://idp.example/login?execution=current';
+  const address='https://idp.example/login';
+  await browser.runTask(signal,{request_id:'same-document-address'},async()=>{
+    const deadline=Date.now()+500;
+    browser.beginPageLoad(tab,signal,deadline,{fresh:true});
+    wc.loading=true;
+    wc.emit('did-start-navigation',{},initial,false,true);
+    partition.requestHook({id:1,url:initial,method:'POST',resourceType:'mainFrame',webContentsId:wc.id},()=>{});
+    wc.url=initial;wc.emit('did-navigate',{},initial,200);wc.emit('dom-ready');
+
+    wc.emit('did-start-navigation',{},address,true,true);
+    wc.url=wc.mainFrame.url=address;
+    wc.emit('did-navigate-in-page',{},address,true);
+    wc.emit('did-navigate-in-page',{},'https://frame.example/',false);
+    wc.emit('did-finish-load');
+    wc.loading=false;wc.emit('did-stop-loading');
+
+    const document=await browser.waitForPage(tab,{signal,deadline});
+    assert.equal(document.url,address);
+    assert.equal(document.status,200);
+  });
+});
+
 test('managed refresh ignores obsolete frame and URL failures and reopens the provisional destination',async t=>{
   const {BrowserRuntime,logs}=fixture(t);
   const waits=[],urls=[];

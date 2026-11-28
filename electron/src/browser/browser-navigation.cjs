@@ -25,7 +25,12 @@ class NavigationRecovery {
       else if(!nav?.pendingStart && !(nav?.active && nav.started && !nav.loaded && !nav.refresh && nav.url===target))
         this.begin({...this.options(),resume:true,replayable:false});
     });
-    on('did-navigate-in-page',()=>{this.historyOptions=null;});
+    on('did-navigate-in-page',(_event,url,main)=>{
+      this.historyOptions=null;
+      const nav=this.current;
+      // The document can change its address while the original request is still loading.
+      if(main && nav?.documentURL && !nav.pendingStart && !nav.refresh)nav.documentURL=url;
+    });
     const redirect=(event,url,inPlace,main,processId,routingId)=>{
       const nav=this.current;
       if(!event.defaultPrevented && (event.isMainFrame ?? main) && !(event.isSameDocument ?? inPlace)
@@ -42,7 +47,7 @@ class NavigationRecovery {
       if(this.historyOptions){nav=this.begin(this.historyOptions);this.historyOptions=null;}
       const target=event.url ?? url;
       this.tab.status=null;
-      if(nav)nav.documentReady=false;
+      if(nav){nav.documentReady=false;nav.documentURL=undefined;}
       // Keep observing the document after recovery ends; do not reopen recovery.
       if(nav?.automatic && !nav.active){nav.url=target;return;}
       if(!nav)nav=this.begin(this.options());
@@ -57,17 +62,18 @@ class NavigationRecovery {
     on('did-navigate',(_event,url,status)=>{
       if(!this.matches(url))return;
       this.tab.status=status;
-      this.current.committed=true;
+      this.current.documentURL=url;
       if(Number.isInteger(status) && status>=100)this.tab.error=null;
       this.changed();
     });
     on('dom-ready',()=>{
       const nav=this.current;
-      if(nav?.active && nav.committed && !nav.pendingStart && !nav.refresh)nav.documentReady=true;
+      if(nav?.active && nav.documentURL && !nav.pendingStart && !nav.refresh)nav.documentReady=true;
     });
     on('did-finish-load',()=>{
       const nav=this.current;
-      if(!nav?.active || !nav.started || nav.pendingStart || nav.refresh || !nav.committed || !this.matches(this.contents.getURL()))return;
+      if(!nav?.active || !nav.started || nav.pendingStart || nav.refresh || !nav.documentURL
+        || nav.documentURL!==this.contents.getURL())return;
       // Retain the one-shot completion signal; the polling wait separately requires native idle.
       nav.loaded=true;
       if(!this.contents.isLoadingMainFrame())this.complete(nav);
@@ -103,7 +109,7 @@ class NavigationRecovery {
     if(!nav)return false;
     if(url && nav.url && url!==nav.url)return false;
     // A cross-site navigation may replace the frame captured at its start.
-    const frame=this.contents.isDestroyed()?null:(!nav.committed && nav.frame) || this.contents.mainFrame;
+    const frame=this.contents.isDestroyed()?null:(!nav.documentURL && nav.frame) || this.contents.mainFrame;
     if([processId,routingId,frame?.processId,frame?.routingId].every(id=>Number.isInteger(id) && id>=0))
       return processId===frame.processId && routingId===frame.routingId;
     return true;
@@ -185,7 +191,7 @@ class NavigationRecovery {
         nav.refresh=null;
         nav.generation=++this.generation;
         nav.requestId=undefined;
-        nav.pendingStart=true;nav.started=false;nav.committed=false;
+        nav.pendingStart=true;nav.started=false;nav.documentURL=undefined;
         // A provisional cross-site failure can leave the previous document committed.
         const url=nav.url;
         this.track(()=>this.contents.getURL()===url?this.contents.reload():this.contents.loadURL(url,{httpReferrer:nav.httpReferrer}));
