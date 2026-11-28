@@ -3,6 +3,7 @@ const {BrowserFailure}=require('./browser-errors.cjs');
 const {publicClueURL}=require('./pdf-clues.cjs');
 const {validDOI}=require('./article-identity.cjs');
 const {checkCanceled,pause,waitFor,PAGE_LOAD_MS}=require('./browser-task.cjs');
+const {reusableNavigationURL}=require('./browser-recovery.cjs');
 
 const SEARCH_HOSTS=new Set(['research.ebsco.com','discovery.ebsco.com']);
 const HUB_HOST='search.ebscohost.com';
@@ -295,35 +296,46 @@ function watchPdf(browser,tab,viewer,{signal,deadline,verify}) {
   return {pending,dispose:()=>{for(const listener of [headers,response,...terminal])listener.dispose();}};
 }
 
-async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,verify}) {
+async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,verify,withAccess}) {
   const doi=validDOI(data.identity?.doi),title=data.target_title;
   const viewerOnly=data.prepared_source==='ebsco-viewer';
   const entry=context.ebscoEntry;
   if(!doi || typeof title!=='string' || !entry)throw refusal('prepared');
   checkCanceled(signal);
-  const tab=await browser.newTaskPage({signal,deadline,managed:true});
-  browser.associatePage(tab,{role:'pdf-reader'});
+  const openTab=async()=>{
+    const page=await browser.newTaskPage({signal,deadline,managed:true});
+    browser.associatePage(page,{role:'pdf-reader'});
+    const guard=browser.sessionEvents.subscribe('beforeRequest',details=>{
+      if(details.webContentsId!==page.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
+      verify();
+      if(signal?.aborted || Date.now()>=deadline || !httpsURL(details.url))return {cancel:true};
+    });
+    page.view.webContents.once('destroyed',guard.dispose);
+    return page;
+  };
+  let tab=await openTab();
   const onAccessWaiting=(waiting,diagnostic,current)=>{
     if(!waiting)return;
-    if(current?.markers.login || current?.markers.mfa)throw new BrowserFailure('navigation','content_access_blocked');
+    if(!data.service_entry && (current?.markers.login || current?.markers.mfa))throw new BrowserFailure('navigation','content_access_blocked');
     onWaiting?.(diagnostic);
   };
   const options={signal,deadline,verify,onWaiting:onAccessWaiting,doi};
-  const visit=async (url,{referer}={})=>{
+  const navigate=async (url,{referer,watch}={})=>{
     verify();
-    const doc=await browser.navigate(url.href,{tab,signal,deadline,documentOnly:true,
-      httpReferrer:referer?{url:referer,policy:'strict-origin-when-cross-origin'}:undefined,
-      onWaiting:(diagnostic,current)=>onAccessWaiting(true,diagnostic,current)});
-    browser.finishPageLoad(tab);
-    verify();
-    return doc;
+    if(browser.tabs.get(tab.id)!==tab)tab=await openTab();
+    const observation=watch?.(tab);
+    try {
+      const doc=await browser.navigateServiceTarget(data,url.href,{tab,signal,deadline,documentOnly:true,
+        httpReferrer:referer?{url:referer,policy:'strict-origin-when-cross-origin'}:undefined,
+        onWaiting:(diagnostic,current)=>onAccessWaiting(true,diagnostic,current)});
+      browser.finishPageLoad(tab);
+      verify();
+      return observation ? await observation.read(doc) : doc;
+    } finally {observation?.dispose();}
   };
-  const guard=browser.sessionEvents.subscribe('beforeRequest',details=>{
-    if(details.webContentsId!==tab.id || !['mainFrame','subFrame'].includes(details.resourceType))return;
-    verify();
-    if(signal?.aborted || Date.now()>=deadline || !httpsURL(details.url))return {cancel:true};
-  });
-  tab.view.webContents.once('destroyed',guard.dispose);
+  const visit=(url,settings)=>reusableNavigationURL(url.href)
+    ? withAccess(current=>{context=current;return navigate(url,settings);})
+    : navigate(url,settings);
   let scope=profile(context.tab.view.webContents.getURL()) || context.ebscoProfile || profile(entry.href);
   async function enterProfile() {
     const hubURL=(await visit(entry)).url;
@@ -424,15 +436,16 @@ async function readEbscoSource(browser,data,context,{signal,deadline,onWaiting,v
   return await fromViewer(currentViewer,recordURL);
 
   async function fromViewer(viewer,recordURL) {
-    const reader=watchPdf(browser,tab,viewer,options);
-    try {
-      const landed=await visit(viewer,{referer:recordURL});
-      const url=httpsURL(landed.url);
-      if(url?.origin!==viewer.origin || url.pathname!==viewer.pathname)throw refusal('contentReady');
-      // A refused request can be followed by another eligible Viewer response.
-      const candidate=await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
-      return retrieved(recordURL,[candidate]);
-    } finally {reader.dispose();}
+    return visit(viewer,{referer:recordURL,watch:page=>{
+      const reader=watchPdf(browser,page,viewer,options);
+      return {dispose:reader.dispose,async read(landed) {
+        const url=httpsURL(landed.url);
+        if(url?.origin!==viewer.origin || url.pathname!==viewer.pathname)throw refusal('contentReady');
+        // A refused request can be followed by another eligible Viewer response.
+        const candidate=await waitFor(()=>reader.pending,signal,Math.min(deadline,Date.now()+PAGE_LOAD_MS));
+        return retrieved(recordURL,[candidate]);
+      }};
+    }});
   }
 }
 

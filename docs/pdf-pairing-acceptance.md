@@ -3,13 +3,12 @@
 Issue: [#140](https://github.com/dylaaan-booob/allfold/issues/140). Baseline:
 `a2e511aa86ab5aa292f224301d6609a59c287fa2`.
 
-## Current acceptance · 26 November 2026
+## PR #141 acceptance · 26 November 2026
 
 This round of PR #141 started at `b45e95ae9312d99bbb60e9625c929f82f107a7f2`.
-The user authorized normal cookie, site storage and HTTP cache writes to a
-fresh managed Browser Session directory during each app run. Each launch
-starts with fresh website state. Saved institution credentials and Workspace
-Reset keep their existing scope.
+This historical run used the per-launch Browser directories shipped by PR #141.
+[Shared Browser Session](browser-session.md) describes the current storage and
+Reset lifecycle.
 
 - [x] Verify F19 and F18 through ordinary Download, body removal, Restore and
   a second Download. Both repeats saved the cached body to the original Paper

@@ -58,16 +58,21 @@ captured institution, credential epoch and selected saved Service records; unrel
 configuration/User State revisions do not renew or revoke that authority. WoS
 retains its stricter foreground Run input snapshot and Query→Export binding.
 
-Login runs one CARSI institution flow. Each subsequent CARSI preparation opens its own resource Portal in the same Session. The saved Access Service ID and observed source and target pages establish provenance. Manual Services use explicit visits. Login keeps outcomes and target Page IDs in memory, bound to the saved Service and institution authority. After a settled batch with Services that need attention, one user confirmation marks the batch's unchanged saved Services available. Existing prepared targets are retained. Ordinary settings edits preserve a prepared target while the next task takes a fresh configuration and User State revision. Discover uses the prepared WoS target or opens the official query page in the shared Session after manual confirmation. Query and Export still validate the scoped Service, document and export path. API discovery remains independent of that prerequisite.
+Login starts the first selected available CARSI Service and waits for its final
+result. Its saved UUID anchors preparation and business access. Each Service
+prepares through the selected WAYFless URL from SQLite or its own CARSI Portal
+flow. Portal search, detail and Visit establish the local target. Both entry
+paths use the shared page readiness checks. Manual Visit is explicit.
 
-Browser Runtime uses one disk-backed business Session in a fresh directory for
-each launch. See [Session storage and ownership](browser-session.md).
-Selection and presentation are separate from task ownership. DocumentRuntime and
-its isolated preload supply fixed binding/access observations and detached
-extract/pdf snapshots. [Document access](browser-documents.md) owns the local
-rendered-HTML capture, shared Date/Abstract/PDF parsing and request correlation.
-Snapshot results survive later page changes. Each physical Page separately owns its
-challenge observer and exact-target Solver lifetime, independent of business requests.
+Main applies a short shared delay immediately before new Service entry
+navigation, after page admission and cooldown. Once the first Service is ready,
+successive entries use uniform 0–1 second gaps and may remain active together.
+BrowserRuntime coalesces in-progress recovery by Service and resumes the affected
+business step within its parent deadline. Query and Export retain the actual
+results Document and native download ownership across the WoS workflow.
+
+Browser Runtime reopens one stable disk-backed business Session on launch.
+[Session storage and ownership](browser-session.md)
 
 PDF discovery separates qualified rules, exact-target source facts and a
 result-driven P1–P5 coordinator. Run and necessary API responses project reusable
@@ -119,17 +124,17 @@ Compare-and-Write and Workspace lock protections. Active tasks continue using
 their captured inputs. Foreground Run/WoS snapshot writers currently keep ordinary
 edits Pending until settlement; independent Browser owners allow unrelated input,
 Journal and Service edits. A change overlapping an executing Service waits for its
-owner to settle. Saved access changes invalidate captured old preparation/authentication
-keys and await their scoped native cleanup outside the configuration write lock.
-An access-cleanup owner prevents conflicting Prepare/control admission until actual
-cleanup; captured old keys cannot revoke a later context. Actual retained-Page
-destruction also invalidates the matching Python preparation, including late results. A new task requires successful
+owner to settle. Saved Service edits close affected idle targets under scoped
+admission. A school change revokes active authentication before the configuration
+write. Product parameters apply when the next entry is constructed. Actual
+retained-Page destruction releases the matching Python handle.
+A new task requires successful
 save and validation; a failed or conflicting draft cannot become task authority.
 Provider secrets, CARSI credentials and high-impact operations use explicit
 submission rather than ordinary autosave. CARSI mutations settle through the
 authenticated native bridge and compare encrypted-store revisions. Credential
-controls hold exclusive admission through native settlement, without holding the
-configuration write lock across the bridge wait. Covers commits under the short
+controls reserve the school scope through native settlement. The bridge wait
+runs outside the configuration write lock. Covers commits under the short
 configuration/asset guards and compares its target Journal, asset-tree identity and
 exact target cover record/image, preserving unrelated edits while refusing replaced
 Journal or cover assets.
@@ -186,7 +191,10 @@ Reject persists exclusion before exact-Paper cancellation outside write locks;
 restoration cannot revive old work. Clearing metadata waits for actual cleanup.
 See [identity](paper-identity.md) and [Workspace runtime](collection-runtime.md).
 
-The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence, not users' Service preferences. Refresh commits only validated, complete data and retains the previous cache on failure. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
+The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence and the selected default entry fields. Offline initialization
+and upgrades attach those fields by official product identity. Refresh replaces
+validated official fields and retains matched entry evidence. Removed or conflicted
+evidence remains in the same snapshot. UserState owns the enabled Service UUIDs. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
 
 The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser handles and scheduler queues remain transient; current collection qualification and branch completion belong to Paper SQLite. Generated UI is rebuildable, not user data.
 
@@ -213,8 +221,7 @@ helpers live in `application/provider_lookup.py`.
 Native publication-date filters determine its range; subsequent evidence never
 rejudges inclusion. Commit rechecks the captured query AST, publication months,
 enabled Discovery source sequence, Journal ISSN scope/Service allocation, request
-contact and output Workspace. Selected WoS access and its original prepared binding
-remain captured through the parent stage. YAML bytes, log level, display metadata,
+contact and output Workspace. The selected WoS Service remains captured through the parent stage. YAML bytes, log level, display metadata,
 page quotas and unrelated UserState revisions are not Run authority. Standalone
 WoS checks only its consumed query/date/ISSN/access/output inputs. Workspace/database
 identity and the complete identity index remain checked before atomic creates.
@@ -289,7 +296,6 @@ See [runtime interfaces](collection-runtime.md).
 One Session-wide `PageBudget` jointly admits global and trusted Service/public
 capacity before native page creation. Task execution, retained access resources
 and user ownership are separate; actual WebContents destruction and native-item
-cleanup return slots. Prepare pins its Portal, and WoS keeps an exact workflow/
-Document loan between native operations. Main waits physical cleanup before the
+cleanup return slots. WoS keeps an exact workflow/Document loan between native operations. Main waits physical cleanup before the
 shared Session event entry is disposed. See [page counts, retention and live
 configuration](browser-pages.md), including user-page bounds and rollback.

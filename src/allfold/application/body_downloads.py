@@ -144,7 +144,22 @@ def _consume_access(reservation, repository, files, candidate, progress):
         return CandidateResult.failed('service-invalidated'), None, ''
 
 
-def _consume(reservation, repository, files, candidate, progress):
+def _resume_body_access(reservation, repository, files, candidate, progress, *, fallback):
+    """Retry an affected Session GET before any output can be associated."""
+    from allfold.application.collection_runtime import BodyAccessBusy, BodyAccessRevoked
+    from allfold.application.task_authority import ServiceAccessUnavailable
+    try:
+        authority = candidate.access or reservation.registry._authority(reservation.body_request.service_id, ())
+        if not authority.native_access().service_entry:
+            return fallback
+        with _access_operation(reservation, repository, authority) as operation:
+            return _consume(operation, repository, files, candidate, progress, recover_service=True)
+    except (ServiceAccessUnavailable, BodyAccessBusy, BodyAccessRevoked):
+        reservation.registry._guard(reservation, repository)
+        return fallback
+
+
+def _consume(reservation, repository, files, candidate, progress, *, recover_service=False):
     registry = reservation.registry
     registry._guard(reservation, repository)
     from allfold.application.native_body_downloads import native_applicable, transfer_native
@@ -194,6 +209,8 @@ def _consume(reservation, repository, files, candidate, progress):
         payload['cookie_source'] = candidate.target.article_url
     if candidate.recover_access:
         payload['recover_access'] = True
+    if recover_service:
+        payload['recover_service'] = True
     with registry.paper_gate():
         registry._require_live(reservation)
         repository.require_download(reservation.download_token)
@@ -355,7 +372,7 @@ class _BodyDiscoveryIO:
             raise PdfSourceReadError('EBSCO access changed', diagnostic='service-invalidated',
                 service_id=request.service_id) from None
         binding = authority.native_access()
-        if binding.pdf_source != 'ebsco' or binding.target_page_id is None:
+        if binding.pdf_source != 'ebsco':
             return None
         return self._read_ebsco(target, authority, 'ebsco')
 
@@ -502,9 +519,15 @@ def _run(reservation, request, progress):
                     capabilities = frozenset(name for name, secret in dict(options.get('credentials', ())).items() if secret)
                     selected = PdfRuleInputs(request.target, credentials=capabilities)
                     transferred = {}
+                    recovered_service = False
                     def consume(candidate):
-                        nonlocal result
+                        nonlocal result, recovered_service
                         candidate_result, output, final_url = _consume_access(reservation, repository, files, candidate, progress)
+                        if (not recovered_service and request.service_id and not candidate.action and not candidate.credential
+                                and candidate_result.diagnostic == 'access-login'):
+                            recovered_service = True
+                            candidate_result, output, final_url = _resume_body_access(
+                                reservation, repository, files, candidate, progress, fallback=(candidate_result, output, final_url))
                         result = BodyResult(candidate_result.kind, candidate_result=candidate_result)
                         if output is not None:
                             transferred.update(output=output, final_url=final_url)

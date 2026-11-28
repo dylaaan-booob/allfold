@@ -47,8 +47,8 @@ async function casStatus() {
     return {ok:true,configured:!!credentials,username:credentials?.username || '',revision:storedRevision};
   }catch(error){return {ok:false,error:casErrorCode(error),configured:false,username:'',revision:storedRevision};}
 }
-function saveCASCredentials(value) {return mutate(()=>saveCredentials(value));}
-async function saveCredentials(value) {
+function saveCASCredentials(value,beforeWrite) {return mutate(()=>saveCredentials(value,beforeWrite));}
+async function saveCredentials(value,beforeWrite) {
   if(!value || typeof value.username!=='string' || !value.username.trim() || typeof value.password!=='string')
     throw failure('cas_invalid_credentials');
   const username=value.username.trim();
@@ -65,14 +65,17 @@ async function saveCredentials(value) {
     const file=await fs.open(temporary,'wx',0o600);
     created=true;
     try {await file.writeFile(encrypted);} finally {await file.close();}
+    await beforeWrite?.();
     verifyRevision(value.expected_revision,await encryptedStore());
     await fs.rename(temporary,target);
   } catch (error) {if(error.code==='cas_revision_conflict')throw error;throw failure('cas_store_write_failed');}
   finally {if(created)await fs.unlink(temporary).catch(()=>{});}
   return {ok:true,configured:true,username,revision:revision(encrypted)};
 }
-function clearCASCredentials(value) {return mutate(()=>clearCredentials(value));}
-async function clearCredentials(value) {
+function clearCASCredentials(value,beforeWrite) {return mutate(()=>clearCredentials(value,beforeWrite));}
+async function clearCredentials(value,beforeWrite) {
+  verifyRevision(value?.expected_revision,await encryptedStore());
+  await beforeWrite?.();
   verifyRevision(value?.expected_revision,await encryptedStore());
   try {await fs.unlink(filename());}
   catch(error) {if(error.code!=='ENOENT')throw failure('cas_store_clear_failed');}

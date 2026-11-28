@@ -79,7 +79,7 @@ class PdfDiscoveryContext:
         """Only this captured retained target can grant the operation-local bit."""
         self.guard()
         binding = self.reservation.authority.native_access()
-        if binding.service_id is None or binding.target_page_id is None:
+        if binding.service_id is None:
             return False
         if self._oce_access is None:
             value = self.execute_native('extract_paper_pdf_clues',

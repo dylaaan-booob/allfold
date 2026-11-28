@@ -169,7 +169,7 @@ def test_ordinary_save_rechecks_foreground_started_after_preflight(tmp_path, mon
             assert client.get('/api/ui-next/settings').json()['values']['keyword_expression'] == 'inference'
 
 
-def test_credentials_are_explicit_native_settled_and_blocked_for_waiting_task(tmp_path):
+def test_credentials_settle_without_canceling_unrelated_browser_work(tmp_path):
     from concurrent.futures import Future
     class CredentialsBridge(OfflineBridge):
         connected = True
@@ -188,13 +188,13 @@ def test_credentials_are_explicit_native_settled_and_blocked_for_waiting_task(tm
         body = {'csrf_token': opened['csrf_token'], 'operation': 'save', 'username': 'fixture',
                 'password': 'synthetic-only', 'expected_revision': 'missing'}
         owner = app.state.browser_task_lock.acquire('covers')
-        assert client.post('/api/ui-next/settings/credentials', json=body).json()['error'] == 'cas_task_active'
-        assert not bridge.calls
-        app.state.browser_task_lock.release(owner)
-        saved = client.post('/api/ui-next/settings/credentials', json=body).json()
-        assert saved == {'ok': True, 'configured': True, 'username': 'fixture', 'revision': 'new'}
-        assert bridge.calls[0][0] == 'cas_credentials'
-        assert app.state.browser_task_lock.owner is None
+        try:
+            saved = client.post('/api/ui-next/settings/credentials', json=body).json()
+            assert saved == {'ok': True, 'configured': True, 'username': 'fixture', 'revision': 'new'}
+            assert bridge.calls[0][0] == 'cas_credentials'
+            assert app.state.browser_task_lock.owners == (owner,)
+        finally:
+            app.state.browser_task_lock.release(owner)
         actual = client.get('/api/ui-next/settings').json()
         assert actual['values']['monitor_revision_digest'] == opened['values']['monitor_revision_digest']
         assert 'synthetic-only' not in str(actual)
@@ -233,8 +233,7 @@ def test_access_save_waits_old_context_cleanup_without_holding_settings_lock(tmp
                 return self.pending
             assert action == 'visit_manual_service'
             done = Future()
-            done.set_result({'outcome': 'Opened', 'evidence': {'visit_action_observed': True,
-                'navigation_observed': True, 'target_page_id': 17}})
+            done.set_result({'outcome': 'Opened', 'target_page_id': 17})
             return done
     config, _, _, service = current_mapping_document(tmp_path)
     initial = load_user_state(config)
@@ -246,7 +245,6 @@ def test_access_save_waits_old_context_cleanup_without_holding_settings_lock(tmp
         app.state.login.start(config, manual_service_id=manual.id)
         app.state.login.join()
         old = BrowserServiceSnapshot.read(config)
-        old_key = app.state.login.prepared_authority(old, manual.id).key
         opened = client.get('/api/ui-next/settings').json()
         rows = opened['values']['access_services']
         rows[-1]['access_url'] = 'https://replacement.example/'
@@ -257,11 +255,9 @@ def test_access_save_waits_old_context_cleanup_without_holding_settings_lock(tmp
                 assert bridge.invalidating.wait(2)
                 assert app.state.settings_write_lock.acquire(blocking=False)
                 app.state.settings_write_lock.release()
-                assert bridge.invalidation == {'scope_id': old.scope_id,
-                    'preparation_keys': {manual.id: old_key}, 'authentication_key': None}
+                assert bridge.invalidation == {'scope_id': old.scope_id, 'service_ids': [manual.id]}
                 with pytest.raises(ValueError, match='Browser workflow'):
                     app.state.login.start(config, manual_service_id=manual.id)
-                assert app.state.browser_task_lock.acquire('credentials') is None
                 assert app.state.login.prepared_authority(BrowserServiceSnapshot.read(config), manual.id) is None
             finally:
                 bridge.pending.set_result({'ok': True})

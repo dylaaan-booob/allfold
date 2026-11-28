@@ -105,6 +105,13 @@ class _LoginAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     csrf_token: str
     service_id: str | None = None
+    service_ids: tuple[str, ...] | None = None
+
+
+class _BrowserSessionReset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    csrf_token: str
+    confirmation: Literal["reset"]
 
 
 class _LoginWorkflowAction(BaseModel):
@@ -281,7 +288,9 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
         try:
             with app.state.settings_write_lock:
-                result = app.state.login.start(resolved_config_path, manual_service_id=body.service_id)
+                if (body.service_id is None) == (body.service_ids is None):
+                    raise ValueError('Choose Manual Visit or select CARSI Services')
+                result = app.state.login.start(resolved_config_path, manual_service_id=body.service_id, service_ids=body.service_ids)
             return JSONResponse(jsonable_encoder(result))
         except (ValueError, OSError, RuntimeError) as error:
             return JSONResponse({"message": str(error)}, status_code=409)
@@ -294,19 +303,45 @@ def create_app(config_path: Path, *, electron_bridge: ElectronBridge, diagnostic
             return JSONResponse({"message": "Login task is no longer active."}, status_code=409)
         return read_login()
 
-    @app.post("/api/login/confirm")
-    def confirm_login(body: _LoginWorkflowAction):
-        if not _csrf_valid(body.csrf_token, csrf_token):
-            return JSONResponse({"message": "Invalid or missing CSRF token."}, status_code=403)
-        try:
-            with app.state.settings_write_lock:
-                saved = BrowserServiceSnapshot.read(resolved_config_path)
-                result = app.state.login.confirm_all(saved, body.workflow_id)
-            return JSONResponse(jsonable_encoder(result))
-        except (ValueError, OSError, RuntimeError) as error:
-            return JSONResponse({"message": str(error)}, status_code=409)
+    from allfold.application.carsi_entry import school_identity
+    electron_bridge.current_school = lambda: school_identity(load_config(resolved_config_path).institution)
 
-    from allfold.application.browser_services import BrowserServiceSnapshot
+    @app.post("/api/browser/session/reset")
+    def reset_browser_session(body: _BrowserSessionReset):
+        if not _csrf_valid(body.csrf_token, csrf_token):
+            return settings_error("Invalid or missing CSRF token.", 403)
+        control = change = None
+        try:
+            with admission_lock:
+                if not electron_bridge.connected:
+                    raise ValueError("Browser runtime unavailable")
+                control = app.state.browser_task_lock.reserve_control('browser-session-reset')
+                if control is None:
+                    raise ValueError('Another Browser control is active')
+                change = app.state.workspace_tasks.begin_change(browser=True)
+            app.state.login.shutdown()
+            app.state.wos_coordinator.shutdown()
+            app.state.journal_cover_search.shutdown()
+            app.state.workspace_tasks.drain_change(change)
+            app.state.login.join()
+            app.state.wos_coordinator.join()
+            app.state.journal_cover_search.join()
+            result = electron_bridge.execute('browser_session_reset', {}).result()
+            if result.get('ok') is not True:
+                raise ValueError('Browser Session reset did not complete')
+            app.state.login.reset()
+            return JSONResponse({'ok': True})
+        except (OSError, RuntimeError, ValueError) as error:
+            return settings_error(str(error), 409)
+        finally:
+            with admission_lock:
+                try:
+                    if change is not None:
+                        app.state.workspace_tasks.finish_change(change)
+                finally:
+                    if control is not None:
+                        app.state.browser_task_lock.release_control(control)
+
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=_ALLOWED_HOSTS,

@@ -185,7 +185,7 @@ def test_production_run_preserves_parent_service_fairness_while_other_documents_
     from dataclasses import replace
     from threading import Event
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.login import ServicePreparation
     from allfold.application.integrated_run import run_integrated
     from allfold.application.run_commit import capture_run_workspace
     from allfold.application.task_clients import IndependentClientFactory
@@ -212,7 +212,7 @@ def test_production_run_preserves_parent_service_fairness_while_other_documents_
     class Login:
         def prepared_authority(self, _, service_id):
             index = next(index for index, service in enumerate(services) if service.id == service_id)
-            return PreparedService(71 + index, str(index + 1) * 64, False)
+            return ServicePreparation(status='Opened', page_id=71 + index)
     class Bridge:
         def __init__(self):
             self.started = {row.external_ids.doi: Event() for row in rows}
@@ -405,8 +405,8 @@ def test_http_run_hands_off_real_branches_and_next_run_cancel_preserves_them(tmp
     bridge=Bridge()
     app=create_app(path,electron_bridge=bridge)
     if next_provider == 'wos':
-        from allfold.application.coordinators.login import PreparedService
-        monkeypatch.setattr(app.state.login,'prepared_authority',lambda *_: PreparedService(71,'e'*64,False))
+        from allfold.application.coordinators.login import ServicePreparation
+        monkeypatch.setattr(app.state.login,'prepared_authority',lambda *_: ServicePreparation(status='Opened', page_id=71))
     from contextlib import ExitStack
     def release_blocked():
         release_api.set();release_second.set()
@@ -620,7 +620,7 @@ def test_public_retry_service_checks_exact_attempt_and_only_pending_api_access(t
     import httpx
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.collection_planner import ProductionCollectionService
-    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.login import ServicePreparation
     from allfold.application.provider_lookup import provider_client
     from allfold.application.run_commit import capture_run_workspace
     from allfold.application.task_clients import IndependentClientFactory
@@ -642,7 +642,7 @@ def test_public_retry_service_checks_exact_attempt_and_only_pending_api_access(t
         captures=0
         def prepared_authority(self,*args):
             self.captures+=1
-            return PreparedService(71,'e'*64,False) if self.available else None
+            return ServicePreparation(status='Opened', page_id=71) if self.available else None
     class Bridge:
         document_calls=0
         def execute(self,action,*args,**kwargs):

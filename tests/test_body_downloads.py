@@ -226,7 +226,7 @@ def prepared_application_host(tmp_path, *, metadata=None, service_updates=None, 
     login.start(host.config_path, manual_service_id=service.id)
     result = opened(17)
     if pdf_source:
-        result['evidence']['pdf_source'] = pdf_source
+        result['pdf_source'] = pdf_source
     native.operations.get(timeout=2)[2].set_result(result)
     login.join()
     host.login, host.browser_lock = login, lock
@@ -328,7 +328,7 @@ def test_public_download_tries_prepared_ebsco_before_other_sources(
             institutional = source in {'ebsco', 'ebsco-viewer'}
             link = direct and source == 'ebsco'
             if institutional:
-                assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
+                assert data['service_id'] == bound.access.service_id
                 assert data['identity']['doi'] == doi and data['target_title'] == metadata.title
                 if source == 'ebsco-viewer':
                     assert data['prepared_record'] == record
@@ -348,7 +348,7 @@ def test_public_download_tries_prepared_ebsco_before_other_sources(
         else:
             assert action == 'stream_paper_body'
             if data['url'] == licensed_pdf:
-                assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
+                assert data['service_id'] == bound.access.service_id
                 if blocked_direct and data['referer'] == search:
                     result.set_result(dict(kind='response', outcome='response', response=dict(url=licensed_pdf,
                         status=403, content_type='text/html', body='Use the Reader', access=direct)))
@@ -424,7 +424,7 @@ def test_service_change_stops_only_active_access_and_releases_scope_before_oa(tm
         assert bridge.started.wait(2)
         operation = task.access_operation
         data = bridge.calls[-1][1]
-        assert data['service_id'] == bound.access.service_id and data['target_page_id'] == 17
+        assert data['service_id'] == bound.access.service_id
         assert task.service_id is None and not task.authority.native_access().payload()
         unrelated = host.begin_change(services=('svc_'+'f'*32,))
         assert not unrelated.targets
@@ -448,7 +448,7 @@ def test_service_change_stops_only_active_access_and_releases_scope_before_oa(tm
         assert drained.wait(2)
         worker.join(); assert not errors
         host.finish_change(change)
-        assert 'service_id' not in bridge.calls[-1][1] and 'preparation_key' not in bridge.calls[-1][1]
+        assert 'service_id' not in bridge.calls[-1][1]
         assert not host.browser_lock.conflicts((bound.access.service_scope,))
         # Changing the previous Service again cannot address the new OA owner.
         later = host.begin_change(services=(bound.access.service_id,))
@@ -1186,3 +1186,41 @@ def test_old_candidate_cannot_borrow_a_primary_identity_changed_by_new_run(tmp_p
             submit_body_download(host,paper,candidates=(candidate,))
         assert bridge.calls==[]
     finally:host.shutdown();host.join()
+
+
+def test_recognized_login_retries_only_the_affected_get_and_associates_its_body(tmp_path):
+    from concurrent.futures import Future
+    from pathlib import Path
+    from allfold.application.body_downloads import submit_body_download
+    from allfold.persistence.user_state import load_user_state
+
+    host, workspace, paper, bridge, candidate = application_host(tmp_path)
+    service = load_user_state(host.config_path).state.access_services[0]
+    def execute(action, data, *_args, **_kwargs):
+        bridge.calls.append((action, data))
+        done = Future()
+        if len(bridge.calls) == 1:
+            done.set_result(dict(kind='response', outcome='response', response=dict(url=data['url'],
+                content_type='text/html', status=200, body='Sign in', access='login')))
+        else:
+            data_out = data['output']
+            body = b'%PDF-resumed'
+            (Path(data['workspace_root']) / data_out['temporary']).write_bytes(body)
+            done.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
+                size_bytes=len(body), output_file=data_out['file'], final_url=data['url']))
+        return done
+    bridge.execute = execute
+    try:
+        task = submit_body_download(host, paper, candidates=(candidate,), service_id=service.id)
+        result = task.future.result(3)
+        assert result.status == 'completed' and result.paper.id == paper.id
+        assert (workspace / result.paper.body.relative_path).read_bytes() == b'%PDF-resumed'
+        (original_action, original), (retry_action, retry) = bridge.calls
+        assert original_action == retry_action == 'stream_paper_body'
+        assert retry['recover_service'] is True and retry['service_id'] == service.id
+        assert retry['url'] == original['url'] == candidate.url
+        assert retry['workflow_id'] == original['workflow_id'] == task.workflow_id
+        assert retry['attempt'] == original['attempt'] == task.download_token.attempt
+    finally:
+        host.shutdown()
+        host.join()

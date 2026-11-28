@@ -1,20 +1,18 @@
 # Shared Browser Session
 
-BrowserRuntime uses one disk-backed Session per application run, opened with
-`session.fromPath()` in a fresh Allfold directory under Electron's
-`sessionData`. Browser pages, Prepare, Solver, Document and ordinary Download
-share this Session. Chromium uses its normal disk cache rules and writes
-cookies and website storage during the run. Each launch uses a new directory,
-so previous website state is unavailable to the new Session. Saved institution
-credentials have their own lifetime.
+BrowserRuntime opens the stable `allfold-browser-session` directory under
+Electron's `sessionData` using `session.fromPath()`. School sign-in, CARSI,
+publishers and business pages share it. Chromium controls cookie, storage and
+cache expiry. The application admits one process per profile and lets Electron
+close the Session at exit. Page handles, tasks, navigation and authentication
+transactions live for the current process. [Electron Session API](https://www.electronjs.org/docs/latest/api/session)
 
-The existing shutdown drains owned work, pages and native items. Electron
-owns the remaining native Session lifetime. After the next startup has
-claimed the UI port, it reclaims managed directories from exited processes
-in the background using an opened directory and directory-relative removal.
-A still-running process keeps its directory even after
-its UI port is released. Cleanup failures are logged and retried on later
-launches. Workspace Reset leaves Session storage to this lifecycle.
+**Browser Session Reset** reserves Browser admission, cancels affected work and
+waits for owned page, Solver and DownloadItem cleanup before clearing site
+storage, cache and HTTP authentication with the native Session APIs. Its fixed
+target is the Browser Session. Workspace files, business SQLite and the
+credential store have their own controls. The live runtime can accept new
+Browser work after reset settlement.
 
 One `SharedSessionEvents` lifetime installs the native request/header/redirect/error,
 completion and `will-download` listeners. BrowserRuntime and Browser identity

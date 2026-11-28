@@ -123,18 +123,18 @@ def config_files(tmp_path):
     return path, venues
 
 
-@pytest.mark.parametrize(('change_after_query', 'prepared_page', 'manually_confirmed'),
-    [(None, 71, False), ('comment', 71, False), ('unrelated', 71, False),
-     ('journal_display', 71, False), ('unused_service', 71, False),
-     ('keyword', 71, False), ('date', 71, False), ('journal_scope', 71, False),
-     ('access', 71, False), ('prepared', 71, False), (None, None, True), (None, 42, True)])
+@pytest.mark.parametrize(('change_after_query', 'prepared_page'),
+    [(None, 71), ('comment', 71), ('unrelated', 71),
+     ('journal_display', 71), ('unused_service', 71),
+     ('keyword', 71), ('date', 71), ('journal_scope', 71),
+     ('access', 71), ('prepared', 71), (None, None), (None, 42)])
 def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batches(
-    tmp_path, change_after_query, prepared_page, manually_confirmed,
+    tmp_path, change_after_query, prepared_page,
 ):
     from concurrent.futures import Future
     from allfold.application.browser_runtime import BrowserTaskLock
     from allfold.application.browser_services import BrowserServiceSnapshot
-    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.login import ServicePreparation
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
 
     from safety_config_helpers import current_mapping_document
@@ -147,15 +147,14 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         AccessService.create('Web of Science', 'https://www.webofscience.com/'))), initial.revision)
     saved = BrowserServiceSnapshot.read(path)
 
-    prepared_key = 'e' * 64
-    refused = change_after_query in {'keyword', 'date', 'journal_scope', 'access', 'prepared'}
+    refused = change_after_query in {'keyword', 'date', 'journal_scope', 'access'}
 
     class Login:
         def prepared_page(self, saved, service_id):
             assert any(service.id == service_id and service.name == "Web of Science" for service in saved.services)
             return prepared_page
         def prepared_authority(self, saved, service_id):
-            return PreparedService(self.prepared_page(saved, service_id), prepared_key, manually_confirmed)
+            return ServicePreparation(status='Opened', page_id=prepared_page) if prepared_page is not None else None
 
 
     recovery = [{'recovery_action': 'page_refresh', 'count': 1, 'outcome': 'recovered',
@@ -167,17 +166,14 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
         calls = []
         cleanup_dispatched = threading.Event()
         cleanup_result = Future()
-        def execute(self, action, data, progress=None):
-            nonlocal prepared_key
+        def execute(self, action, data, progress=None, **kwargs):
             self.calls.append((action, data))
             future = Future()
             if action == 'release_workflow_pages':
                 self.cleanup_dispatched.set()
                 return self.cleanup_result
             elif action == 'wos_query':
-                if change_after_query == 'prepared':
-                    prepared_key = 'f' * 64
-                elif change_after_query in {'journal_display', 'unused_service', 'journal_scope', 'access'}:
+                if change_after_query in {'journal_display', 'unused_service', 'journal_scope', 'access'}:
                     current = load_user_state(path)
                     if change_after_query == 'unused_service':
                         state = replace(current.state, access_services=(*current.state.access_services,
@@ -201,12 +197,14 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
                     else:
                         text += '\n# changed during Query\n'
                     path.write_text(text)
-                result = dict(page_id=71, total=2, batch_limit=1, recovery=recovery)
+                result = dict(page_id=72 if change_after_query == 'prepared' else 71, total=2, batch_limit=1, recovery=recovery)
             else:
                 assert action == 'wos_export'
                 Path(data['filename']).write_text(tagged([record(doi=f"10.1234/{data['first']}",
                     ut=f"WOS:{data['first']}", PD='JAN')]))
-                result = dict(filename=data['filename'])
+                if data['first'] == 2:
+                    assert data['page_id'] == 73
+                result = dict(filename=data['filename'], page_id=73)
             future.set_result(result)
             return future
 
@@ -227,11 +225,11 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
                                                      ['wos_query', 'wos_export', 'wos_export', 'release_workflow_pages'])
     assert bridge.calls[-1][1] == {'workflow_id': start['snapshot']['task_id'], 'task_id': start['snapshot']['task_id']}
     query = bridge.calls[0][1]
-    assert query['page_id'] == prepared_page
-    assert query['manually_confirmed'] is manually_confirmed
-    assert all(data['page_id'] == 71 for _, data in bridge.calls[1:-1])
+    assert query['service_entry']['resource_name'] == 'Web of Science'
+    assert [data['page_id'] for _, data in bridge.calls[1:-1]] == (
+        [] if refused else [72 if change_after_query == 'prepared' else 71, 73])
     assert all(data['service_id'] == next(s.id for s in saved.services if s.name == 'Web of Science')
-               and data['service_scope'] == saved.scope and data['preparation_key'] == 'e' * 64 for _, data in bridge.calls[:-1])
+               and data['service_scope'] == saved.scope for _, data in bridge.calls[:-1])
     assert len({data['task_id'] for _, data in bridge.calls}) == 1
     assert all(data['workflow_id'] == start['snapshot']['task_id'] for _,data in bridge.calls)
     assert store.history()['records'][0]['task_id'] == start['snapshot']['task_id']
@@ -275,7 +273,7 @@ def test_coordinator_preserves_saved_service_scope_and_prepared_page_across_batc
 def test_wos_retains_original_run_scope_across_unrelated_edits(tmp_path, monkeypatch, edit):
     from concurrent.futures import Future
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.login import ServicePreparation
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.application.run_commit import capture_run_workspace
     from allfold.config import AccessService
@@ -290,11 +288,11 @@ def test_wos_retains_original_run_scope_across_unrelated_edits(tmp_path, monkeyp
     compare_write_user_state(path, replace(state.state, access_services=(*state.state.access_services, wos)), state.revision)
     class Login:
         def prepared_authority(self, saved, service_id):
-            return PreparedService(71, 'e' * 64, False)
+            return ServicePreparation(status='Opened', page_id=71)
     class Bridge:
         connected = True
         calls = []
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, **kwargs):
             self.calls.append((action, data))
             future = Future()
             future.set_result(dict(page_id=71, total=0, batch_limit=0) if action == 'wos_query' else {'released': True})

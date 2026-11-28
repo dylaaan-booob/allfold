@@ -12,6 +12,8 @@ const {institutionAuthPage}=require('../src/auth/institution-auth.cjs');
 const chromiumVersion='123.4.5.6';
 const serviceScope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
 const serviceId='svc_'+'1'.repeat(32);
+const xmu={institution_name:'厦门大学',idp_entity_id:'https://idp.xmu.edu.cn/idp/shibboleth'};
+const xmuLogin='https://ids.xmu.edu.cn/authserver/login';
 function networkFailure(partition,contents,{id,url,method='GET'}) {
   const request={id,url,method,webContentsId:contents.id,resourceType:'mainFrame'};
   partition.requestHook(request,details=>assert.deepEqual(Object.keys(details),[]));
@@ -174,16 +176,16 @@ test('institution auth is task-scoped and a popup cannot submit after cancellati
   const {BrowserRuntime}=fixture(t),controller=new AbortController();
   const browser=new BrowserRuntime({readCASCredentials:()=>{reads++;return new Promise(r=>{resolveCredentials=r;});}});
   t.after(()=>browser.close());await browser.ready;
-  const ordinary=browser.createTab();await ordinary.view.webContents.loadURL('https://idp.example.edu/login');
+  const ordinary=browser.createTab();await ordinary.view.webContents.loadURL(xmuLogin);
   ordinary.view.webContents.runAuth=code=>JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1))[0]==='inspect'?{step:'login',waiting:true}:(actions++,{acted:true});
   ordinary.taskSignal=controller.signal;
   await browser.handleAuthentication(ordinary);assert.equal(reads,0);
-  assert.throws(()=>browser.beginAuthentication(ordinary,controller.signal),/canceled/);
+  assert.throws(()=>browser.beginAuthentication(ordinary,controller.signal,xmu),/canceled/);
   await browser.runTask(controller.signal,{request_id:'login'},async()=>{
     await browser.reserveTaskPages(1,{signal:controller.signal,deadline:Date.now()+1000});
-    browser.beginAuthentication(ordinary,controller.signal);
+    browser.beginAuthentication(ordinary,controller.signal,xmu);
     const wc=ordinary.view.webContents.popup({url:'about:blank'}).createWindow({});
-    const popup=browser.tabs.get(wc.id);await wc.loadURL('https://idp.example.edu/login');
+    const popup=browser.tabs.get(wc.id);await wc.loadURL(xmuLogin);
     wc.runAuth=ordinary.view.webContents.runAuth;
     const pending=browser.handleAuthentication(popup);await new Promise(setImmediate);
     assert.equal(reads,1);controller.abort();resolveCredentials({username:'PRIVATE_USER',password:'PRIVATE_PASSWORD'});
@@ -209,27 +211,88 @@ for(const submission of [
     assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|csrf=|submit|stale/);
   });
 });
-test('Main chooses institution mode only for a live authorized authentication context',async t=>{
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime(),controller=new AbortController();
+test('an owned XMU login upgrades its HTTP entry before navigating to the password form',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  let reads=0,submissions=0,requestId=0;
+  const browser=new BrowserRuntime({readCASCredentials:async()=>{
+    reads++;return {username:'fixture-user',password:'fixture-password'};
+  }});
   t.after(()=>browser.close());await browser.ready;
-  const tab=browser.createTab();await tab.view.webContents.loadURL('https://idp.example.edu/login');
-  const modes=[];
-  tab.view.webContents.runAuth=code=>{
-    const args=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
-    modes.push(args[3]);return {step:'none',waiting:false};
-  };
-  await browser.inspectAuthentication(tab);
-  await browser.runTask(controller.signal,{request_id:'auth-mode'},async()=>{
-    const auth=browser.beginAuthentication(tab,controller.signal);
-    await browser.inspectAuthentication(tab);
-    auth.institution=false;
-    await browser.inspectAuthentication(tab);
-    auth.origins.add('https://idp.example.edu');
-    await browser.inspectAuthentication(tab);
-    controller.abort();await assert.rejects(browser.inspectAuthentication(tab),/document_changed|canceled/);
+  const query='?service=https%3A%2F%2Fidp.xmu.edu.cn%2Freturn%3Fexecution%3De1s1%26test%3Da%2Bb';
+  const secure=xmuLogin+query,insecure=secure.replace(/^https:/,'http:');
+  const beforeRequest=(tab,url=insecure,method='GET',resourceType='mainFrame')=>new Promise(resolve=>{
+    partition.requestHook({id:++requestId,url,method,resourceType,webContentsId:tab.id},resolve);
   });
-  await browser.inspectAuthentication(tab);
-  assert.deepEqual(modes,['page','institution','page','institution','page']);
+  const ordinary=browser.createTab({user:true});
+  assert.equal((await beforeRequest(ordinary)).redirectURL,undefined);
+  const signal=new AbortController().signal;
+  await browser.runTask(signal,{request_id:'xmu-https',service_id:serviceId,service_scope:serviceScope},async()=>{
+    const tab=await browser.newTaskPage(),contents=tab.view.webContents;
+    browser.beginAuthentication(tab,signal,xmu);
+    assert.equal((await beforeRequest(tab,insecure,'POST')).redirectURL,undefined);
+    assert.equal((await beforeRequest(tab,insecure,'GET','subFrame')).redirectURL,undefined);
+    assert.equal((await beforeRequest(tab,'http://ids.xmu.edu.cn.example/authserver/login')).redirectURL,undefined);
+    assert.equal((await beforeRequest(tab,'http://idp.xmu.edu.cn/idp/profile/SAML2/Redirect/SSO')).redirectURL,undefined);
+    const entry=await beforeRequest(tab);
+    assert.equal(entry.redirectURL,secure);
+    assert.equal(reads,0);
+    assert.equal((await beforeRequest(tab)).redirectURL,undefined,'a second downgrade cannot cause a redirect loop');
+
+    contents.runAuth=async code=>{
+      const [action,credentials,_step,mode]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+      assert.equal(mode,'institution');
+      if(action==='inspect')return {step:'login',waiting:true};
+      assert.equal(credentials.password,'fixture-password');
+      submissions++;
+      return {acted:true};
+    };
+    await contents.loadURL(entry.redirectURL);
+    await browser.handleAuthentication(tab);
+    await browser.handleAuthentication(tab);
+    assert.equal(reads,1);
+    assert.equal(submissions,1);
+  });
+});
+
+test('only the selected XMU login can read credentials; a manual IdP can return through generic consent',async t=>{
+  const {BrowserRuntime}=fixture(t),reads=[],posts=[],modes=[];
+  const browser=new BrowserRuntime({readCASCredentials:async()=>{reads.push(true);return {username:'fixture',password:'synthetic'};}});
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal, tab=browser.createTab(),wc=tab.view.webContents;
+  const submission={url:'https://other-idp.example/confirm?execution=current',body:'consent=release',referrer:'https://other-idp.example/release'};
+  const load=wc.loadURL.bind(wc);
+  wc.loadURL=(url,options)=>{
+    if(options?.postData){posts.push(String(options.postData[0].bytes));return load('https://publisher.example/home');}
+    return load(url);
+  };
+  wc.runAuth=code=>{
+    const [action,credentials,_step,mode]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+    if(action==='inspect') {
+      modes.push(mode);
+      return wc.getURL()===submission.referrer ? {step:'release',waiting:true} : {step:'login',waiting:true};
+    }
+    if(wc.getURL()===submission.referrer) {
+      assert.equal(credentials,null);
+      assert.equal(mode,'confirmation');
+      return {submission};
+    }
+    assert.equal(credentials.username,'fixture');
+    return {acted:true};
+  };
+  await browser.runTask(signal,{request_id:'manual-then-confirm'},async()=>{
+    browser.beginAuthentication(tab,signal,{institution_name:'Other University'});
+    await load('https://other-idp.example/login');await browser.handleAuthentication(tab);
+    assert.equal(reads.length,0);
+    await load(submission.referrer);await browser.handleAuthentication(tab);
+    assert.deepEqual(posts,['consent=release']);
+    const ctx=browser.beginAuthentication(tab,signal,xmu);
+    await load('https://publisher.example/login');await browser.handleAuthentication(tab);
+    assert.equal(reads.length,0);
+    await load(xmuLogin);await browser.handleAuthentication(tab);
+    assert.equal(reads.length,1);
+    browser.endAuthentication(ctx);
+  });
+  assert.ok(modes.includes('page') && modes.includes('institution'));
 });
 test('selecting another tab does not retarget the document, but reload/navigation invalidates it',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();
@@ -456,13 +519,12 @@ test('explicit Manual Service Visit retains a scoped target without CARSI creden
   const browser=new BrowserRuntime({readCASCredentials:async()=>{reads++;}});
   t.after(()=>browser.close());await browser.ready;
   const data={access_url:'https://library.example.org/',service_scope:serviceScope,
-    service_id:serviceId,workflow_id:'login_manual',task_id:'visit_manual',preparation_key:'e'.repeat(64)};
+    service_id:serviceId,workflow_id:'login_manual',task_id:'visit_manual'};
   const signal=new AbortController().signal;
   const result=await browser.runTask(signal,data,()=>visitManualService(browser,data,{signal,progress(){}}));
   assert.equal(result.outcome,'Opened');
-  const page=browser.tabs.get(result.evidence.target_page_id),association=browser.pageAssociation(page.id);
+  const page=browser.tabs.get(result.target_page_id),association=browser.pageAssociation(page.id);
   assert.equal(page.view.webContents.getURL(),data.access_url);
-  assert.equal(page.preparationKey,data.preparation_key);
   assert.equal(association.role,'service-target');assert.equal(association.service_id,serviceId);
   assert.equal(association.active,false);assert.equal(page.managed,true);assert.equal(page.authContext,undefined);
   assert.equal(browser.selected,null);assert.equal(browser.tabs.size,1);assert.equal(reads,0);
@@ -526,6 +588,7 @@ function authDOM({title='Institution Login',fields=[],buttons=['登录'],error='
     const controls=(definition.buttons || []).map(button=>({isConnected:true,tagName:'BUTTON',type:'submit',
       name:'',value:'',innerText:typeof button==='string'?button:'',disabled:false,readOnly:false,
       getClientRects:()=>[{}],getAttribute(key){return this[key] ?? null;},
+      hasAttribute(key){return this.getAttribute(key)!==null;},
       matches(selector){return selector===':disabled' && (this.disabled || this.fieldsetDisabled===true);},
       click(){clicks++;},...(typeof button==='string'?{}:button)}));
     return {definition,inputs,controls};
@@ -564,7 +627,11 @@ function authDOM({title='Institution Login',fields=[],buttons=['登录'],error='
     Object.assign(own,{action:'https://idp.example.edu/continue?execution=current',method:'post',
       enctype:'application/x-www-form-urlencoded',...group.definition,
       elements:[...group.inputs,...group.controls]});
-    for(const node of own.elements){node.form=own;node.closest=()=>own;node.parentElement=own;}
+    for(const node of own.elements){
+      if(node.tagName==='A')delete node.form;
+      else node.form=own;
+      node.closest=()=>own;node.parentElement=own;
+    }
     return own;
   });
   // VM substitute for native successful-control serialization; no real IdP or Session is used here.
@@ -605,6 +672,24 @@ test('page is the default mode and cannot execute a recognized institution login
   const page=authDOM({fields:[{label:'Username'},{type:'password',label:'Password'}]});
   assert.equal(page.runDefault('act','login').waiting,true);
   assert.equal(page.clicks(),0);assert.equal(page.inputs[0].value,'');assert.equal(page.inputs[1].value,'');
+});
+test('the XMU password form can use its official submit link over HTTPS',()=>{
+  const page=(action,href)=>authDOM({url:xmuLogin,forms:[{
+    id:'pwdFromId',action,fields:[{label:'学工号'},{label:'密码',type:'password'}],
+    buttons:[{tagName:'A',id:'login_submit',innerText:'登录',href}],
+  }]});
+  const secure=page(xmuLogin,'javascript:void(0);');
+  assert.equal(secure.run().step,'login');
+  assert.equal(secure.run('act','login').acted,true);
+  assert.equal(secure.clicks(),1);
+  assert.ok(secure.inputs.every(input=>input.value));
+  for(const [action,href] of [[xmuLogin,'https://other.example/'],[xmuLogin.replace('https:','http:'),'javascript:void(0);']]) {
+    const refused=page(action,href);
+    assert.equal(refused.run().step,'manual');
+    assert.equal(refused.run('act','login').acted,false);
+    assert.equal(refused.clicks(),0);
+    assert.ok(refused.inputs.every(input=>!input.value));
+  }
 });
 test('an optional password sign-in entry does not block an ordinary article, while institution switching stays authorized',()=>{
   const page=authDOM({title:'Article abstract',formHeading:'Sign in',buttons:['Sign in with password'],
@@ -679,7 +764,7 @@ test('parallel native tasks keep page navigation, credentials and cleanup with t
     stopA.abort();settleA();await a;
     assert.equal(browser.pageAssociation(first.id).active,false);
     assert.equal(browser.pageAssociation(second.id).active,true);
-    assert.equal(first.authContext.active,false);assert.equal(second.authContext.active,true);
+    assert.equal(first.authContext,null);assert.equal(second.authContext.active,true);
     assert.equal(second.navigation.current.active,true);
   } finally {settleA();settleB();await results;}
   assert.equal(browser.pageAssociation(second.id).active,false);
@@ -779,113 +864,216 @@ test('an explicit PDF snapshot failure ends toolbar polling without erasing an e
   }
 });
 
-test('Login opens one managed CARSI Portal and prepares independent Service pages without resubmitting credentials',{timeout:5000},async t=>{
-  const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
+test('mixed Service entries stagger at native dispatch while previous loads remain active',{timeout:4000},async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
   const {BrowserRuntime}=fixture(t);
-  const idp='https://idp.example.edu/login',portalURL='https://ds.carsi.edu.cn/resource/resource.php';
-  const targetURL='https://publisher.example/challenge';
-  const manualId='svc_'+'2'.repeat(32),noClickId='svc_'+'3'.repeat(32);
-  let reads=0,submissions=0,releaseSearches,reportManual,manualWaiting=false;
-  const simultaneous=new Promise(resolve=>{releaseSearches=resolve;});
-  const manualReady=new Promise(resolve=>{reportManual=resolve;});
-  const searches=[],solved=[],serviceModes=[];
-  const browser=new BrowserRuntime({
-    readCASCredentials:async()=>{reads++;return {username:'fixture',password:'synthetic'};},
-    solveCloudflare:async tab=>{
-      solved.push({pageId:tab.id,serviceId:tab.association.service_id});
-      tab.view.webContents.access={markers:{}};
-      return {outcome:'clicked'};
-    },
-  });
+  let elapsed=0;const pauses=[],loads=[],finish=new Map();
+  const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.25,pause:async(_signal,ms)=>{pauses.push(ms);elapsed+=ms;}}});
   t.after(()=>browser.close());await browser.ready;
+  const portalURL='https://ds.carsi.edu.cn/resource/resource.php';
   browser.events.on('tab-created',(_event,tab)=>{
     const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
-    if(tab.opener)wc.modernNavigation=true;
-    wc.loadURL=url=>load(url.startsWith('https://ds.carsi.edu.cn/Shibboleth.sso/Login')?idp:url);
+    wc.loadURL=async url=>{
+      loads.push([url,elapsed]);await new Promise(resolve=>finish.set(url,resolve));return load(url);
+    };
     wc.runAuth=async code=>{
-      const [action,name,_query,mode]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
-      if(action==='inspect' && wc.getURL()===idp) {
-        if(tab.association?.service_id)serviceModes.push(mode);
-        return {step:'login',waiting:true};
-      }
-      if(action==='act' && wc.getURL()===idp) {
-        submissions++;await load(portalURL);return {acted:true};
-      }
+      const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
       if(action==='ready')return {status:'ready',checked:false};
-      if(action==='search') {
-        searches.push({tabId:tab.id,serviceId:tab.association.service_id,name});
-        if(searches.length===2)releaseSearches();
-        await simultaneous;
-        return {status:'pending'};
-      }
-      if(action==='poll')return {status:'complete',selection:{status:'selected',
-        url:'https://ds.carsi.edu.cn/resource/resourceDetail.php?id='+tab.association.service_id}};
+      if(action==='search')return {status:'pending'};
+      if(action==='poll')return {status:'complete',selection:{status:'missing'}};
       return {step:'none',waiting:false};
     };
-    const execute=wc.executeJavaScriptInIsolatedWorld.bind(wc);
-    wc.executeJavaScriptInIsolatedWorld=async(world,scripts)=>{
-      if(!scripts)return execute();
-      const [action]=JSON.parse(scripts[0].code.slice(scripts[0].code.lastIndexOf('(...')+4,-1));
-      if(action==='check')return {status:'ready'};
-      assert.equal(action,'visit');
-      const popup=wc.popup({url:idp}).createWindow({});
-      await popup.loadURL(idp);
-      await browser.handleAuthentication(browser.tabs.get(popup.id));
-      if(tab.association.service_id===noClickId) {
-        await popup.loadURL('https://publisher.example/unrelated');
-        return {status:'pending'};
-      }
-      popup.access={markers:tab.association.service_id===manualId?{hcaptcha:true,hcaptchaVisible:true}:
-        {cloudflareTitle:true,cloudflareOptions:true,cloudflareOrchestrator:true}};
-      await popup.loadURL(targetURL);
-      return {status:'visited_click'};
+  });
+  const controller=new AbortController(),{signal}=controller;
+  const run=(id,url)=> {
+    const data={request_id:'entry-'+id,service_scope:serviceScope,service_id:'svc_'+id.repeat(32),
+      service_entry:{wayfless_url:url,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+    return browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
+  };
+  const first='https://publisher.example/one',third='https://publisher.example/three';
+  const pending=[run('1',first),run('2',null),run('3',third)];
+  try {
+    while(loads.length<3)await new Promise(setImmediate);
+    assert.deepEqual(loads,[[first,250],[portalURL,500],[third,750]]);
+    assert.deepEqual(pauses,[250,250,250]);
+    for(const release of finish.values())release();
+    const results=await Promise.all(pending);
+    assert.deepEqual(results.map(result=>result.outcome),['Opened','Needs attention','Opened']);
+    assert.ok([...browser.tabs.values()].every(tab=>tab.association.role==='service-target'));
+  } finally {controller.abort();for(const release of finish.values())release();await Promise.allSettled(pending);}
+});
+
+test('an unredirected WAYFless initiator cannot settle Prepare',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  const idp='https%3A%2F%2Fidp.example%2Fidp%2Fshibboleth';
+  const entries=['/action/ssostart?idp=', '/sp/startSSO.ping?PartnerIdpId=', '/wayf?eid=', '/openathens.cfm?entity=']
+    .map(path=>'https://publisher.example'+path+idp);
+  const portal='https://ds.carsi.edu.cn/resource/resource.php';
+  const opened=[];
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    wc.loadURL=url=>{opened.push(url);return load(url);};
+    wc.runAuth=async code=>{
+      const [action]=JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+      if(action==='ready')return {status:'ready',checked:false};
+      if(action==='search')return {status:'pending'};
+      if(action==='poll')return {status:'complete',selection:{status:'missing'}};
+      return {step:'none',waiting:false};
     };
   });
   const signal=new AbortController().signal;
-  const common={workflow_id:'login_workflow',service_scope:serviceScope,authentication_key:'e'.repeat(64)};
-  const institution={...common,request_id:'login',task_id:'institution',use_shibboleth:true,
-    login_url:'https://ds.carsi.edu.cn/Shibboleth.sso/Login'};
-  const login=await browser.runTask(signal,institution,()=>loginInstitution(browser,institution,{signal,progress(){}}));
-  assert.equal(login.outcome,'Opened');assert.equal(reads,1);assert.equal(submissions,1);
-  const entry=browser.tabs.get(login.portal_page_id);
-  const prepare=(id,name,progress=()=>{})=>{
-    const data={...common,request_id:name,task_id:name,service_id:id,portal_page_id:entry.id,name,
-      preparation_key:id.slice(4).repeat(2)};
-    return browser.runTask(signal,data,()=>prepareLoggedInService(browser,data,{signal,progress}));
-  };
-  const manual=prepare(manualId,'ManualCaptcha',value=>{
-    if(value.waiting_for_user){manualWaiting=true;reportManual();}
-  });
-  const automatic=prepare(serviceId,'Automatic');
-  await Promise.race([manualReady,manual]);
-  const auto=await automatic;
-  assert.equal(auto.outcome,'Opened');assert.equal(manualWaiting,true);
-  assert.equal(searches.length,2);assert.notEqual(searches[0].tabId,searches[1].tabId);
-  assert.equal(searches.some(search=>search.tabId===entry.id),false);
-  const {target_page_id:autoId}=auto.evidence;
-  assert.equal(browser.tabs.get(autoId).preparationKey,serviceId.slice(4).repeat(2));
-  assert.deepEqual(solved,[{pageId:autoId,serviceId}]);
-  const manualTarget=browser.servicePages(serviceScope.scope_id,manualId).find(page=>page.role==='service-target');
-  assert.ok(manualTarget);assert.notEqual(manualTarget.page_id,autoId);
-  const manualContents=browser.tabs.get(manualTarget.page_id).view.webContents;
-  manualContents.access={markers:{}};
-  await manualContents.loadURL('https://publisher.example/verified');
-  assert.equal((await manual).outcome,'Opened');
-  assert.equal((await prepare(noClickId,'NoClick')).outcome,'Needs attention');
-  for(const id of [entry.id,autoId,manualTarget.page_id]) {
-    const page=browser.state().tabs.find(tab=>tab.id===id);
-    assert.equal(page.managed,true);
-    await assert.rejects(browser.command({action:'close',id}),/managed page/i);
+  for(const entry of entries) {
+    const data={request_id:'entry-refused',service_id:serviceId,service_scope:serviceScope,first_entry:true,
+      service_entry:{wayfless_url:entry,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+    const result=await browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
+    assert.equal(result.outcome,'Needs attention');
+    assert.equal(browser.serviceContext(data),null);
   }
-  assert.ok(serviceModes.includes('institution'));
-  assert.equal(reads,1);assert.equal(submissions,1);
-  assert.equal(browser.pageAssociation(autoId).source_page_id,null);
-  assert.equal(browser.tabs.has(auto.evidence.source_page_id),false);
-  entry.view.webContents.close();
-  const retained=browser.tabs.size;
-  await assert.rejects(prepare(serviceId,'StalePortal'),{diagnostic:{stage:'authentication',code:'carsi_session_expired'}});
-  assert.equal(browser.tabs.size,retained);
-  assert.equal(reads,1);assert.equal(submissions,1);
+  assert.deepEqual(opened,entries.flatMap(entry=>[entry,portal]));
+});
+
+test('Portal popup releases its authentication opener before Visit needs the third page slot',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  browser.updatePageLimits({global_limit:8,service_limit:3});
+  const login='https://ds.carsi.edu.cn/Shibboleth.sso/Login';
+  const portal='https://ds.carsi.edu.cn/resource/resource.php';
+  const detail='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=fixture';
+  const target='https://publisher.example/fixture';
+  let opener,visits=0;
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    const access=wc.executeJavaScriptInIsolatedWorld.bind(wc);
+    const popup=url=>{
+      const result=wc.popup({url});
+      assert.equal(result.action,'allow');
+      return result.createWindow({}).loadURL(url);
+    };
+    const args=code=>JSON.parse(code.slice(code.lastIndexOf('(...')+4,-1));
+    wc.loadURL=async url=>{
+      if(url!==login)return load(url);
+      opener=wc;
+      await load('https://idp.example/idp/profile/SAML2/Redirect/SSO');
+      await popup(portal);
+    };
+    wc.runAuth=async code=>{
+      const [action]=args(code);
+      if(action==='ready')return {status:'ready',checked:false};
+      if(action==='search')return {status:'pending'};
+      if(action==='poll')return {status:'complete',selection:{status:'selected',url:detail}};
+      return {step:'none',waiting:false};
+    };
+    wc.executeJavaScriptInIsolatedWorld=async (world,scripts)=>{
+      if(!scripts)return access(world,scripts);
+      const [action]=args(scripts[0].code);
+      if(action==='check')return {status:'ready'};
+      assert.equal(action,'visit');
+      assert.equal(opener.isDestroyed(),true);
+      visits++;
+      await popup(target);
+      return {status:'visited_click'};
+    };
+  });
+  const data={request_id:'portal-popup',service_id:serviceId,service_scope:serviceScope,first_entry:true,
+    service_entry:{portal_login_url:login,landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+  const signal=AbortSignal.timeout(2000);
+  const result=await browser.runTask(signal,data,()=>prepareService(browser,data,{signal,progress(){}}));
+  assert.equal(result.outcome,'Opened');
+  assert.equal(visits,1);
+  assert.equal(browser.tabs.size,1);
+  assert.equal(browser.serviceContext(data).tab.view.webContents.getURL(),target);
+});
+
+test('Service recovery keeps a live follower when the leading Paper is canceled',async t=>{
+  const {recoverService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  const data={service_id:serviceId,service_scope:serviceScope,
+    service_entry:{wayfless_url:'https://publisher.example/landing',landing_hosts:['publisher.example'],resource_name:'Fixture'}};
+  const leader=new AbortController(),follower=new AbortController(),deadline=Date.now()+3000;
+  let start,joined,loads=0;
+  const started=new Promise(resolve=>{start=resolve;});
+  const following=new Promise(resolve=>{joined=resolve;});
+  browser.events.on('tab-created',()=>{loads++;});
+  const recover=(owner,request_id,validate)=>browser.runTask(owner.signal,{...data,request_id},()=>{
+    browser.operation.validateRecovery=validate;
+    const pending=recoverService(browser,data,{signal:owner.signal,deadline,progress(){}},null);
+    if(owner===follower)joined();
+    return pending;
+  });
+  const first=recover(leader,'leading-paper',({signal})=>new Promise((_,reject)=>{
+    signal.addEventListener('abort',()=>reject(new BrowserFailure('navigation','canceled')),{once:true});start();
+  }));
+  const refused=assert.rejects(first,/canceled/);
+  await started;
+  const second=recover(follower,'following-paper');
+  await following;
+  assert.equal(loads,0);
+  leader.abort();
+  await refused;
+  assert.equal((await second).tab.view.webContents.getURL(),data.service_entry.wayfless_url);
+  assert.equal(loads,1);
+  assert.equal(browser.serviceRecoveries.size,0);
+});
+
+test('OCE Reader settles its blocked page before recovering the same Service and retrying its GET',async t=>{
+  const {prepareService}=require('../src/workflows/browser-operations.cjs');
+  const {BrowserRuntime,partition}=fixture(t),browser=new BrowserRuntime({recoveryTiming:{random:()=>0}});
+  t.after(()=>browser.close());await browser.ready;
+  partition.cookies={get:async()=>[]};
+  const entry='https://oce.ovid.com/landing',id='00000000-000000000-00001';
+  const readerURL='https://oce.ovid.com/article/'+id+'/HTML';
+  const selection='https://ds.carsi.edu.cn/login/index.html';
+  const identity={doi:'10.5555/fixture'},signal=new AbortController().signal,loads=[];
+  let blocked;
+  const data={workspace_identity:'a'.repeat(64),paper_id:'fd8460a2-7cf1-4f02-b346-cbcbd2fe6e45',identity,
+    service_id:serviceId,service_scope:serviceScope,
+    service_entry:{wayfless_url:entry,landing_hosts:['oce.ovid.com'],resource_name:'Fixture'},
+    reader:{rule_id:'R060',platform:'oce',identifier:id,source_url:readerURL,url:readerURL,stage:'P4',target:identity}};
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    wc.loadURL=url=>{
+      loads.push(url);
+      if(url===readerURL && !blocked){blocked=wc;return load(selection);}
+      if(url===entry && blocked)assert.equal(blocked.isDestroyed(),true);
+      return load(url);
+    };
+  });
+  const readDocument=browser.readDocument.bind(browser);
+  browser.readDocument=async (tab,action,options)=>{
+    if(action!=='pdf')return readDocument(tab,action,options);
+    assert.equal(tab.view.webContents.getURL(),readerURL);
+    return {clues:{candidates:[],status:'complete'}};
+  };
+  const before=await browser.runTask(signal,{...data,request_id:'oce-prepare'},()=>prepareService(browser,data,{signal,progress(){}}));
+  const result=await browser.runTask(signal,{...data,request_id:'oce-reader'},()=>
+    browser.extractPaperPdfClues(data,{signal,deadline:Date.now()+2500}));
+  assert.equal(result.outcome,'retrieved');
+  assert.deepEqual(loads,[entry,readerURL,entry,readerURL]);
+  assert.notEqual(browser.serviceContext(data).tab.id,before.target_page_id);
+});
+
+test('Session Reset waits for a previously destroyed page to finish cleanup',async t=>{
+  const {BrowserRuntime,partition}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  let cleared=false,settle;
+  partition.closeAllConnections=async()=>{};
+  partition.clearData=async()=>{cleared=true;};
+  partition.clearAuthCache=async()=>{};
+  const tab=browser.createTab({user:true});
+  tab.challenge.active={controller:new AbortController(),done:new Promise(resolve=>{settle=resolve;})};
+  tab.view.webContents.destroy();
+  assert.equal(browser.tabs.size,0);
+  const reset=browser.resetSession();
+  try {
+    await new Promise(setImmediate);
+    assert.equal(cleared,false);
+  } finally {settle();}
+  assert.equal((await reset).ok,true);
+  assert.equal(cleared,true);
 });
 
 test('initial Paper loading allows two delayed refreshes before replacing only the failed page',async t=>{
@@ -924,28 +1112,21 @@ test('initial Paper loading allows two delayed refreshes before replacing only t
   assert.equal(recovery.at(-1).source_page_id,pages[0].id);
 });
 
-for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-get','after-limit-post',
-  'timeout','unknown','ambiguous','unsafe-method','authority','double-fail']) {
-  test('CARSI Visit recovery preserves authority for '+mode,async t=>{
-    if(mode==='timeout')t.mock.timers.enable({apis:['Date'],now:1000});
-    const {loginInstitution,prepareLoggedInService}=require('../src/workflows/browser-operations.cjs');
+for(const mode of ['same-tab','popup','follow-up-post','unknown','ambiguous','unsafe-method']) {
+  test('Portal Visit keeps its local action and navigation ownership for '+mode,async t=>{
+    const {prepareService}=require('../src/workflows/browser-operations.cjs');
     const {BrowserRuntime,partition}=fixture(t);
     const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.5,pause:async()=>{}}});
     t.after(()=>browser.close());await browser.ready;
     const portalURL='https://ds.carsi.edu.cn/resource/resource.php';
     const detailURL='https://ds.carsi.edu.cn/resource/resourceDetail.php?id=synthetic';
     const targetURL='https://publisher.example/target';
-    const afterRefreshURL='https://publisher.example/after-refresh';
-    const afterLimitMethod={'after-limit-get':'GET','after-limit-post':'POST'}[mode];
     const followUp=mode==='follow-up' || mode==='follow-up-post';
     const method=mode==='unsafe-method' || mode==='follow-up-post'?'POST':'GET';
-    let visits=0,refreshes=0,authorities=0,requestId=0,oldTarget;
-    const recovery=[],created=[];
+    let visits=0,refreshes=0,requestId=0;
     browser.events.on('tab-created',(_event,tab)=>{
-      created.push(tab);
       const wc=tab.view.webContents,load=wc.loadURL.bind(wc),access=wc.executeJavaScriptInIsolatedWorld.bind(wc);
       wc.loadURL=url=>{
-        assert.notEqual(url,afterRefreshURL,'resource reentry must not load the failed request URL');
         return load(url.includes('/Shibboleth.sso/')?portalURL:url);
       };
       wc.runAuth=async code=>{
@@ -961,33 +1142,15 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
         if(action==='check')return {status:'ready'};
         const target=['popup','unknown','ambiguous'].includes(mode)?wc.popup({url:targetURL}).createWindow({}):wc;
         visits++;
-        if(visits===1 || mode==='double-fail') {
-          oldTarget ||= target;
+        {
           let failedURL=followUp?'https://publisher.example/landing':targetURL;
           const fail=(requestMethod=method)=>{
             target.url=failedURL;
             target.emit('did-start-navigation',{},failedURL,false,true);
-            if(mode==='timeout' && refreshes===1) {
-              target.loading=true;
-              setImmediate(()=>t.mock.timers.setTime(86000));
-              return;
-            }
             networkFailure(partition,target,{id:++requestId,url:failedURL,method:requestMethod});
           };
           target.reload=()=>{
             refreshes++;
-            if(afterLimitMethod && refreshes===2) {
-              void target.loadURL(failedURL);
-              failedURL=afterRefreshURL;
-              target.emit('will-navigate',{},failedURL);
-              fail(afterLimitMethod);
-              return;
-            }
-            if(mode==='follow-up' && refreshes===1) {
-              void target.loadURL(failedURL);
-              failedURL='https://publisher.example/final';
-              target.emit('will-navigate',{},failedURL);
-            }
             fail();
           };
           if(followUp) {
@@ -997,64 +1160,26 @@ for(const mode of ['same-tab','popup','follow-up','follow-up-post','after-limit-
           fail();
           if(mode==='unknown')return {status:'pending'};
           if(mode==='ambiguous'){const admission=wc.popup({url:'about:blank'});if(admission.action==='allow')admission.createWindow({});}
-        } else {
-          oldTarget.emit('did-fail-load',{},-100,'ERR_CONNECTION_CLOSED',targetURL,true,
-            oldTarget.mainFrame.processId,oldTarget.mainFrame.routingId);
-          await target.loadURL(targetURL);
         }
         return {status:'visited_click'};
       };
     });
     const signal=new AbortController().signal;
-    const institution={workflow_id:'login_reentry',request_id:'login',task_id:'login',service_scope:serviceScope,authentication_key:'e'.repeat(64),
-      use_shibboleth:true,login_url:'https://ds.carsi.edu.cn/Shibboleth.sso/Login'};
-    const login=await browser.runTask(signal,institution,()=>loginInstitution(browser,institution,{signal,progress(){}}));
-    const userPage=browser.createTab();
-    const data={...institution,request_id:'prepare',task_id:'prepare',service_id:serviceId,name:'Example',
-      portal_page_id:login.portal_page_id,preparation_key:'a'.repeat(64)};
+    const userPage=browser.createTab({user:true});
+    const data={request_id:'prepare',task_id:'prepare',service_id:serviceId,first_entry:true,service_scope:serviceScope,
+      service_entry:{resource_name:'Example',landing_hosts:['publisher.example']}};
     const preparation=browser.runTask(signal,data,()=>{
-      browser.operation.recordRecovery=(event,details)=>recovery.push({event,...details});
-      if(mode==='authority')browser.operation.validateRecovery=async()=>{
-        if(++authorities===3)throw Error('document_changed');
-      };
       const {request_id,...payload}=data;
-      return prepareLoggedInService(browser,payload,{signal,progress(){}});
+      return prepareService(browser,payload,{signal,progress(){}});
     });
     const isLoadFailure=error=>error.diagnostic?.code==='load_failed' && error.diagnostic?.net_code===-100;
-    if(mode==='double-fail') {
-      await assert.rejects(preparation,isLoadFailure);
-      assert.equal(visits,2);
-      assert.equal(refreshes,4);
-      assert.equal(oldTarget.isDestroyed(),true);
-      assert.equal(recovery.at(-1).recovery_action,'resource_reentry');
-      assert.equal(recovery.at(-1).event,'recovery_exhausted');
-      assert.equal(recovery.at(-1).source_page_id,oldTarget.id);
-      return;
-    }
-    if(method==='POST' || ['unknown','ambiguous','authority'].includes(mode)) {
-      if(method==='POST')await assert.rejects(preparation,isLoadFailure);
-      else if(mode==='authority')await assert.rejects(preparation,/document_changed/);
-      else if(mode==='ambiguous')await assert.rejects(preparation,/page_capacity/);
-      else assert.equal((await preparation).outcome,'Needs attention');
-      assert.equal(visits,1);
-      assert.equal(refreshes,mode==='authority'?2:0);
-      assert.equal(browser.tabs.has(login.portal_page_id),true);
-      assert.equal(recovery.some(event=>event.recovery_action==='resource_reentry' && event.event==='recovery_succeeded'),false);
-      return;
-    }
-    const result=await preparation;
-    assert.equal(visits,2);
-    assert.equal(refreshes,mode==='timeout'?1:2);
-    assert.equal(result.outcome,'Opened');
-    assert.equal(result.evidence.target_page_id,created.at(-1).id);
-    assert.equal(oldTarget.isDestroyed(),true);
-    assert.deepEqual(created.filter(tab=>!tab.view.webContents.isDestroyed()).map(tab=>tab.id).sort((a,b)=>a-b),
-      [userPage.id,login.portal_page_id,result.evidence.target_page_id].sort((a,b)=>a-b));
-    assert.equal(browser.tabs.has(login.portal_page_id),true);
+    if(method==='POST' || ['same-tab','popup'].includes(mode))await assert.rejects(preparation,isLoadFailure);
+    else if(mode==='ambiguous')await assert.rejects(preparation,/page_capacity/);
+    else assert.equal((await preparation).outcome,'Needs attention');
+    assert.equal(visits,1,'Visit is not replayed as an authentication transaction');
+    assert.equal(refreshes,['same-tab','popup'].includes(mode)?2:0);
+    assert.equal(browser.tabs.size,1);
     assert.equal(browser.state().selected,userPage.id);
-    assert.equal(recovery.filter(event=>event.recovery_action==='resource_reentry').length,2);
-    assert.equal(recovery.at(-1).source_page_id,oldTarget.id);
-    assert.equal(recovery.at(-1).page_id,result.evidence.target_page_id);
   });
 }
 
@@ -1145,6 +1270,34 @@ test('the existing Session hook gates only matching entry origins and retains an
   headers('mainFrame',429,'3600');
   await assert.rejects(run('budget',from,url),{diagnostic:{stage:'navigation',step:'page_load',code:'http_error',status:429}});
   assert.equal(sleepers.length,3);
+});
+
+test('a managed navigation finishes when its main document updates its address before load',async t=>{
+  const {BrowserRuntime,partition}=fixture(t),browser=new BrowserRuntime();
+  t.after(()=>browser.close());await browser.ready;
+  const tab=browser.createTab({managed:true}),wc=tab.view.webContents;
+  const signal=new AbortController().signal;
+  const initial='https://idp.example/login?execution=current';
+  const address='https://idp.example/login';
+  await browser.runTask(signal,{request_id:'same-document-address'},async()=>{
+    const deadline=Date.now()+500;
+    browser.beginPageLoad(tab,signal,deadline,{fresh:true});
+    wc.loading=true;
+    wc.emit('did-start-navigation',{},initial,false,true);
+    partition.requestHook({id:1,url:initial,method:'POST',resourceType:'mainFrame',webContentsId:wc.id},()=>{});
+    wc.url=initial;wc.emit('did-navigate',{},initial,200);wc.emit('dom-ready');
+
+    wc.emit('did-start-navigation',{},address,true,true);
+    wc.url=wc.mainFrame.url=address;
+    wc.emit('did-navigate-in-page',{},address,true);
+    wc.emit('did-navigate-in-page',{},'https://frame.example/',false);
+    wc.emit('did-finish-load');
+    wc.loading=false;wc.emit('did-stop-loading');
+
+    const document=await browser.waitForPage(tab,{signal,deadline});
+    assert.equal(document.url,address);
+    assert.equal(document.status,200);
+  });
 });
 
 test('managed refresh ignores obsolete frame and URL failures and reopens the provisional destination',async t=>{
@@ -1379,11 +1532,11 @@ test('Manual Prepare transfers its target to one bounded access context and repl
   const {visitManualService}=require('../src/workflows/browser-operations.cjs');
   t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal,data={request_id:'prepare_one',task_id:'prepare_one',workflow_id:'login',
-    service_scope:serviceScope,service_id:serviceId,preparation_key:'d'.repeat(64),access_url:'https://manual.example/'};
+    service_scope:serviceScope,service_id:serviceId,access_url:'https://manual.example/'};
   const prepare=()=>browser.runTask(signal,data,()=>visitManualService(browser,data,{signal,progress(){}}));
-  const first=await prepare(),old=browser.tabs.get(first.evidence.target_page_id);
+  const first=await prepare(),old=browser.tabs.get(first.target_page_id);
   assert.ok(old);assert.equal(browser.tabs.size,1);
-  const second=await prepare(),current=browser.tabs.get(second.evidence.target_page_id);
+  const second=await prepare(),current=browser.tabs.get(second.target_page_id);
   assert.ok(current);assert.notEqual(current.id,old.id);assert.equal(old.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,1);
   await browser.runTask(signal,{...data,request_id:'borrow'},()=>browser.bindTaskPage(current,signal));
   assert.equal(browser.tabs.get(current.id),current);assert.equal(current.taskOwner,null);
@@ -1393,7 +1546,7 @@ test('managed popup consumes reserved capacity and retained target survives temp
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});
   t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal,data={request_id:'popup',workflow_id:'login',service_scope:serviceScope,
-    service_id:serviceId,preparation_key:'d'.repeat(64)};
+    service_id:serviceId};
   let parent,child;
   await browser.runTask(signal,data,async()=>{
     await browser.reserveTaskPages(3,{signal,deadline:Date.now()+2000});
@@ -1455,28 +1608,30 @@ test('unchanged limits keep owner reservations and increased limits wake queued 
   assert.equal(admitted,true);finish();await first;assert.equal(browser.tabs.size,0);
 });
 
-test('late access invalidation closes only the captured old key and reports actual retained Page destruction',async t=>{
+test('scoped access invalidation waits for the affected physical page only',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
-  const signal=new AbortController().signal,data={service_scope:serviceScope,service_id:serviceId,preparation_key:'a'.repeat(64)};
+  const signal=new AbortController().signal,otherId='svc_'+'2'.repeat(32);
   const closed=[];browser.events.on('access-pages-closed',ids=>closed.push(...ids));
-  const prepare=async(key)=>browser.runTask(signal,{...data,request_id:key},async()=>{
-    await browser.replaceAccess({...data,preparation_key:key});const tab=await browser.newTaskPage({signal});
-    browser.retainAccessPage(tab,{...data,preparation_key:key});return tab;
-  });
-  const old=await prepare('a'.repeat(64)),current=await prepare('b'.repeat(64));
-  await browser.invalidateAccess({scope_id:serviceScope.scope_id,preparation_keys:{[serviceId]:'a'.repeat(64)},authentication_key:null});
-  assert.equal(browser.tabs.get(current.id),current);assert.deepEqual(closed,[old.id]);
-  current.view.webContents.deferClose=true;
+  const prepare=async(id)=> {
+    const data={service_scope:serviceScope,service_id:id,request_id:id};
+    return browser.runTask(signal,data,async()=>{
+      const tab=await browser.newTaskPage({signal});browser.retainAccessPage(tab,data);return tab;
+    });
+  };
+  const affected=await prepare(serviceId),other=await prepare(otherId);
+  affected.view.webContents.deferClose=true;
   let settled=false;const cleanup=browser.invalidateAccess({scope_id:serviceScope.scope_id,
-    preparation_keys:{[serviceId]:'b'.repeat(64)},authentication_key:null}).then(()=>{settled=true;});
-  await new Promise(setImmediate);assert.equal(settled,false);assert.equal(browser.tabs.has(current.id),true);
-  current.view.webContents.destroy();await cleanup;assert.deepEqual(closed,[old.id,current.id]);assert.equal(browser.tabs.size,0);
+    service_ids:[serviceId]}).then(()=>{settled=true;});
+  await new Promise(setImmediate);
+  try {assert.equal(settled,false);assert.equal(browser.tabs.has(affected.id),true);}
+  finally {affected.view.webContents.destroy();await cleanup;}
+  assert.deepEqual(closed,[affected.id]);assert.equal(browser.tabs.get(other.id),other);
 });
 
 test('WoS result workflow loan survives native-operation gaps and stale release cannot free another loan',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:4}});t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal,data={request_id:'query',workflow_id:'run_a',task_id:'run_a',service_scope:serviceScope,
-    service_id:serviceId,preparation_key:'c'.repeat(64)};
+    service_id:serviceId};
   let target;
   await browser.runTask(signal,data,async()=>{
     target=await browser.newTaskPage({signal});await target.view.webContents.loadURL('https://www.webofscience.com/wos/woscc/summary/test');
@@ -1497,7 +1652,7 @@ test('WoS result workflow loan survives native-operation gaps and stale release 
 test('an unresolved download closes its retained source at operation cleanup before a fresh context is reused',async t=>{
   const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime();t.after(()=>browser.close());await browser.ready;
   const signal=new AbortController().signal,data={request_id:'query',workflow_id:'run_a',task_id:'run_a',service_scope:serviceScope,
-    service_id:serviceId,preparation_key:'c'.repeat(64)};
+    service_id:serviceId};
   const closed=[];browser.events.on('access-pages-closed',ids=>closed.push(...ids));
   let target;
   await browser.runTask(signal,data,async()=>{
@@ -1550,23 +1705,22 @@ test('creation failure returns its reservation and Session shutdown waits actual
 });
 
 test('minimum global capacity evicts an idle completed target so the next queued Prepare tree can finish',{timeout:3000},async t=>{
-  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:3}});t.after(()=>browser.close());await browser.ready;
-  const signal=new AbortController().signal,saved={request_id:'portal',service_scope:serviceScope,authentication_key:'f'.repeat(64)};let portal,old;
-  await browser.runTask(signal,saved,async()=>{portal=await browser.newTaskPage({signal});browser.retainAccessPage(portal,saved,'portal');});
-  const firstData={...saved,request_id:'first',service_id:serviceId,preparation_key:'d'.repeat(64)};
+  const {BrowserRuntime}=fixture(t),browser=new BrowserRuntime({pageLimits:{global_limit:4,service_limit:4}});t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,saved={service_scope:serviceScope};let old;
+  const firstData={...saved,request_id:'first',service_id:serviceId};
   let ready,finish;const started=new Promise(resolve=>{ready=resolve;});
   const first=browser.runTask(signal,firstData,async()=>{
-    browser.pinAccessPage(portal,firstData);await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});
+    await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});
     await browser.newTaskPage({signal});await browser.newTaskPage({signal});old=await browser.newTaskPage({signal});
     browser.retainAccessPage(old,firstData);ready();await new Promise(resolve=>{finish=resolve;});
   });
   await started;let admitted=false;
   const second=browser.runTask(signal,{...saved,request_id:'second',service_id:'svc_'+'2'.repeat(32)},async()=>{
-    browser.pinAccessPage(portal,saved);await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});
-    admitted=true;for(let i=0;i<3;i++)await browser.newTaskPage({signal});
+    await browser.reserveTaskPages(4,{signal,deadline:Date.now()+1000});
+    admitted=true;for(let i=0;i<4;i++)await browser.newTaskPage({signal});
   });
   await new Promise(setImmediate);assert.equal(admitted,false);finish();await first;await second;
-  assert.equal(admitted,true);assert.equal(old.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,1);assert.equal(browser.tabs.get(portal.id),portal);
+  assert.equal(admitted,true);assert.equal(old.view.webContents.isDestroyed(),true);assert.equal(browser.tabs.size,0);
 });
 
 
@@ -1584,4 +1738,96 @@ test('failed native WebContents adoption retains its slot and cleanup until actu
     await browser.reserveTaskPages(3,{signal,deadline:Date.now()+1000});for(let i=0;i<3;i++)await browser.newTaskPage({signal});admitted=true;
   });
   assert.equal(admitted,true);assert.equal(browser.tabs.size,0);
+});
+
+test('canceling in the Service-entry wait prevents late loadURL and drains the page',async t=>{
+  const {BrowserRuntime}=fixture(t);
+  let enter,release;
+  const entered=new Promise(resolve=>{enter=resolve;}),hold=new Promise(resolve=>{release=resolve;});
+  const browser=new BrowserRuntime({recoveryTiming:{random:()=>0.9,pause:async()=>{enter();await hold;}}});
+  t.after(()=>browser.close());await browser.ready;
+  const controller=new AbortController(),signal=controller.signal;
+  let started=0,tab;
+  const running=browser.runTask(signal,{request_id:'pending-entry',service_scope:serviceScope,service_id:serviceId},async()=>{
+    tab=await browser.newTaskPage({signal});
+    tab.view.webContents.loadURL=()=>{started++;};
+    await browser.navigate('https://publisher.example/entry',{tab,signal,serviceEntry:true});
+  });
+  const stopped=assert.rejects(running,/canceled/);
+  try {
+    await entered;
+    assert.equal(started,0);assert.equal(browser.tabs.size,1);
+    controller.abort();
+    await stopped;
+    assert.equal(browser.tabs.size,0);
+    release();await new Promise(setImmediate);
+    assert.equal(started,0);
+  } finally {controller.abort();release();await stopped;}
+});
+
+test('concurrent blocked articles recover the same Service once and return to each original Paper',async t=>{
+  const {BrowserRuntime}=fixture(t);
+  const browser=new BrowserRuntime({pageLimits:{global_limit:12,service_limit:6},recoveryTiming:{random:()=>0,pause:async()=>{}}});
+  t.after(()=>browser.close());await browser.ready;
+  const entry='https://publisher.example/entry';
+  const targets=['https://doi.org/10.5555%2Fone','https://doi.org/10.5555%2Ftwo'];
+  const homes=[];
+  let postRecovery=false,deny=false,release,entered;
+  const observed=new Promise(resolve=>{entered=resolve;});
+  const delayed=new Promise(resolve=>{release=resolve;});
+  browser.events.on('tab-created',(_event,tab)=>{
+    const wc=tab.view.webContents,load=wc.loadURL.bind(wc);
+    wc.loadURL=async url=>{
+      homes.push(url);
+      if([...targets,entry].every(needed=>homes.includes(needed)))entered();
+      if(url===entry){await delayed;postRecovery=true;return load(url);}
+      if(deny){await load(url);tab.status=403;return;}
+      return load(!postRecovery?'https://ds.carsi.edu.cn/login/index.html':url);
+    };
+  });
+  const signal=new AbortController().signal;
+  const invoke=index=>{
+    const doi='10.5555/'+['one','two'][index],paperID='00000000-0000-4000-8000-00000000000'+index;
+    const data={request_id:'article-'+index,task_id:'article-'+index,paper_id:paperID,workspace_identity:'a'.repeat(64),
+      service_scope:serviceScope,service_id:serviceId,service_entry:{wayfless_url:entry,landing_hosts:['publisher.example']}};
+    return browser.runTask(signal,data,async()=>{
+      const doc=await browser.openPaperPage(data,doi,{role:'article',signal,deadline:Date.now()+3500});
+      assert.equal(browser.pageAssociation(doc.pageId).paper_id,paperID);
+      assert.equal(doc.identity.doi,doi);
+      return doc.url;
+    });
+  };
+  const pending=[invoke(0),invoke(1)];
+  try {
+    await Promise.race([observed,Promise.all(pending)]);
+    release();
+    assert.deepEqual(await Promise.all(pending),targets);
+    assert.equal(homes.filter(url=>url===entry).length,1);
+    assert.ok(targets.every(url=>homes.filter(loaded=>loaded===url).length===2));
+    deny=true;
+    await assert.rejects(invoke(0),error=>error.diagnostic?.code==='http_error' && error.diagnostic?.status===403);
+    assert.equal(homes.filter(url=>url===entry).length,1,'a bare 403 does not initiate recovery');
+  } finally {release();await Promise.allSettled(pending);}
+});
+
+test('a failed single-use OAuth redirect is never refreshed or reopened',async t=>{
+  const {BrowserRuntime,partition}=fixture(t);
+  const browser=new BrowserRuntime({recoveryTiming:{pause:async()=>{}}});
+  t.after(()=>browser.close());await browser.ready;
+  const signal=new AbortController().signal,starts=[];
+  await assert.rejects(browser.runTask(signal,{request_id:'authorization-callback'},async()=>{
+    const tab=await browser.newTaskPage({signal}),wc=tab.view.webContents;
+    const callback='https://publisher.example/callback?code=fixture-only';
+    wc.loadURL=async url=>{
+      starts.push(url);
+      wc.emit('did-start-navigation',{},url,false,true);
+      wc.emit('will-redirect',{},callback,false,true);
+      wc.url=callback;
+      networkFailure(partition,wc,{id:1,url:callback});
+      throw Error('ERR_CONNECTION_CLOSED');
+    };
+    wc.reload=()=>starts.push('reload');
+    await browser.navigate('https://publisher.example/entry',{tab,signal});
+  }),/load_failed/);
+  assert.deepEqual(starts,['https://publisher.example/entry']);
 });

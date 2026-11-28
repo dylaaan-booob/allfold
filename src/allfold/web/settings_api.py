@@ -194,6 +194,7 @@ AUTOSAVE_FIELDS = frozenset({
     'crossref_mailto', 'provider_aliases', 'provider_order', 'enabled_providers',
     *WORKFLOW_CONCURRENCY_FIELDS,
     'institution_name', 'institution_idp_entity_id', 'institution_use_shibboleth',
+    'institution_product_tenant_id', 'institution_gale_location_id', 'institution_resource_url',
     'journals', 'access_services', 'groups', 'custom_labels',
 })
 REVISION_FIELDS = ('monitor_revision_exists', 'monitor_revision_digest',
@@ -222,6 +223,10 @@ def install_autosave_api(app, config_path, csrf_token):
                 return refusal('REVISION_CONFLICT', 'Saved configuration changed. Review the saved state before reapplying the retained draft.')
             try:
                 updates = dict(changes)
+                if any(key in updates and updates[key] != getattr(values, key)
+                       for key in ('institution_name', 'institution_idp_entity_id')):
+                    for key in ('institution_product_tenant_id', 'institution_gale_location_id', 'institution_resource_url'):
+                        updates.setdefault(key, '')
                 for key, row_type in (('journals', SettingsJournalRow), ('access_services', SettingsAccessServiceRow)):
                     if key in updates:
                         updates[key] = tuple(row_type(**row) for row in updates[key])
@@ -283,36 +288,33 @@ def install_credential_api(app, csrf_token):
     import hmac
     from starlette.concurrency import run_in_threadpool
     from allfold.application.browser_runtime import ElectronDisconnected
-    from allfold.web.settings_guard import settings_input_active, drain_settings_effects, settle_settings_effects
+    from allfold.application.browser_services import browser_scope_id
+    from allfold.application.carsi_entry import school_identity
+    from allfold.config import load_config
 
     def commit(body):
-        effects = {}
+        control = None
         try:
             with app.state.settings_write_lock:
-                owned = app.state.workspace_tasks.browser_owner_ids
-                if settings_input_active(app) or any(owner.id not in owned for owner in app.state.browser_task_lock.owners):
-                    return json_response({'ok': False, 'error': 'cas_task_active',
-                        'message': 'Active task owns the saved configuration; credential draft retained.'}, 409)
-                control = app.state.browser_task_lock.reserve_control('credentials')
+                scope = 'authentication:' + browser_scope_id(app.state.config_path)
+                control = app.state.browser_task_lock.reserve_control('credentials', scopes={scope})
                 if control is None:
                     return json_response({'ok': False, 'error': 'cas_task_active'}, 409)
-                effects['control'] = control
-                effects['change'] = app.state.workspace_tasks.begin_change(all_access=True)
-            drain_settings_effects(app, effects)
+                school = school_identity(load_config(app.state.config_path).institution) if body['operation'] == 'save' else (None, None)
             if not app.state.electron_bridge.connected:
                 raise ElectronDisconnected()
             result = app.state.electron_bridge.execute('cas_credentials', {
-                key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')
+                **{key: body[key] for key in ('operation', 'username', 'password', 'expected_revision')},
+                'institution_name': school[0], 'idp_entity_id': school[1],
             }).result()
-            if result.get('ok') is True:
-                app.state.login.invalidate_credentials()
             return json_response({key: result[key] for key in
                 ('ok', 'error', 'configured', 'username', 'revision') if key in result})
         except (ElectronDisconnected, ValueError, RuntimeError, OSError):
             return json_response({'ok': False, 'error': 'cas_store_unavailable',
                 'message': 'Credential result could not be confirmed. Re-read status before retrying.'}, 409)
         finally:
-            settle_settings_effects(app, effects)
+            if control is not None:
+                app.state.browser_task_lock.release_control(control)
 
     @app.post('/api/ui-next/settings/credentials')
     async def credentials(request: Request):

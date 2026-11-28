@@ -251,8 +251,7 @@ def test_settings_ordinary_inputs_preserve_work_and_service_change_drains_only_a
         connected = True
         def execute(self, action, data, *args, **kwargs):
             done = Future()
-            done.set_result({'outcome': 'Opened', 'evidence': {'visit_action_observed': True,
-                'navigation_observed': True, 'target_page_id': 17 if data.get('service_id') == first.id else 18}})
+            done.set_result({'outcome': 'Opened', 'target_page_id': 17 if data.get('service_id') == first.id else 18})
             return done
     app = create_app(config, electron_bridge=Native(), diagnostics_root=tmp_path / 'logs')
     release, finish_other = threading.Event(), threading.Event()

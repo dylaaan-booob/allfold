@@ -198,7 +198,7 @@ def test_access_close_events_and_shared_limits_use_the_authenticated_bridge():
         bridge.refresh_page_limits().result(2)
         assert socket.receive_json() == {'type': 'page_limits', 'page_limits': {'global_limit': 8, 'service_limit': 3}}
         request = bridge.execute('invalidate_access', {'scope_id': 'a' * 64,
-            'preparation_keys': {'publisher': 'b' * 64}, 'authentication_key': None})
+            'service_ids': ['svc_' + 'b' * 32]})
         sent = socket.receive_json()
         socket.send_json({**{key: sent[key] for key in ('id', 'action')}, 'type': 'result', 'data': {'ok': True}})
         assert request.result(2) == {'ok': True} and closed == [17, 29]
@@ -235,6 +235,30 @@ def test_internal_extraction_contract_and_scoped_recovery_preserve_empty_success
                                      'metadata': {'dates': [], 'abstract': None},
                                      'extraction_diagnostics': []}})
         assert future.result(2)['metadata'] == {'dates': [], 'abstract': None}
+
+
+@pytest.mark.parametrize('school_matches', [True, False])
+def test_wos_export_can_check_school_authority_without_losing_the_bridge(school_matches):
+    bridge = ElectronBridge('secret', 'testserver')
+    school = ('Fixture University', 'https://idp.example/idp/shibboleth')
+    bridge.current_school = lambda: school if school_matches else ('Another University', school[1])
+    verified = threading.Event()
+    with TestClient(application(bridge)) as client, client.websocket_connect('/ws') as socket:
+        socket.send_json({'token': 'secret'})
+        assert socket.receive_json()['type'] == 'ready'
+        future = bridge.execute('wos_export', {'service_entry': {
+            'institution_name': school[0], 'idp_entity_id': school[1],
+        }}, verify_recovery=verified.set)
+        request = socket.receive_json()
+        identity = {key: request[key] for key in ('id', 'action')}
+        socket.send_json(identity | {'type': 'verify_recovery_authority', 'check_id': 'f' * 32,
+                                    'data': {'authentication': True}})
+        assert socket.receive_json() == identity | {'type': 'verify_recovery_authority_result',
+            'check_id': 'f' * 32, 'data': {'allowed': school_matches}}
+        assert verified.is_set()
+        socket.send_json(identity | {'type': 'result', 'data': {'page_id': 72}})
+        assert future.result(2) == {'page_id': 72}
+        assert bridge.connected
 
 
 def test_unauthenticated_connection_cannot_report_solver_drain():

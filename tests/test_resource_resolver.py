@@ -20,7 +20,7 @@ def resource(name="Springer Link", url="https://link.springer.com/", **extra):
 
 def test_catalog_is_shared_and_a_failed_refresh_keeps_last_valid_resources(tmp_path):
     cache = tmp_path / ".allfold/resources.sqlite"
-    first = get_carsi_catalog(cache, transport=httpx.MockTransport(
+    first = get_carsi_catalog(cache, refresh=True, transport=httpx.MockTransport(
         lambda request: httpx.Response(200, text=directory(resource()), headers={"content-type": "text/html"})))
     assert first.status == "fresh"
     assert first.resources[0].production == "Springer Link"
@@ -117,7 +117,7 @@ def test_resolver_retains_specific_products_and_only_offers_one_reliable_product
     from allfold.application.journal_resolver import resolve_journal
 
     result = resolve_journal(tmp_path / "config.yaml", JournalConfig(name="Fixture Journal", issn="1234-5679"),
-                             cache_path=tmp_path / "resources.sqlite",
+                             cache_path=tmp_path / "resources.sqlite", refresh=True,
                              transport=resolver_transport(records, platform_url=platform_url))
     assert [item.production for item in result.candidates] == expected
     assert all(item.evidence[0].platform_uuid == "platform-1" for item in result.candidates)
@@ -224,7 +224,7 @@ def test_catalog_rename_and_product_conflict_are_visible_without_rewriting_choic
     def fetch(rows, refresh=False):
         return get_carsi_catalog(cache, refresh=refresh, transport=resolver_transport(rows))
 
-    fetch([resource("Old name")])
+    fetch([resource("Old name")], refresh=True)
     renamed = fetch([resource("New name")], refresh=True)
     assert renamed.changes[0].kind == "possible_rename"
     assert renamed.changes[0].previous_production == "Old name"
@@ -242,7 +242,7 @@ def test_manual_carsi_choice_needs_catalog_membership_but_no_gokb_platform_proof
     from allfold.application.journal_resolver import resolve_journal
 
     journal = JournalConfig(name="Fixture Journal", issn="1234-5679", access_service_id="svc_" + "a" * 32)
-    result = resolve_journal(tmp_path / "config.yaml", journal, cache_path=tmp_path / "resources.sqlite",
+    result = resolve_journal(tmp_path / "config.yaml", journal, cache_path=tmp_path / "resources.sqlite", refresh=True,
         transport=resolver_transport([resource("EBSCO", "https://search.ebscohost.com/")],
                                      platform_url="https://pubsonline.informs.org/"))
     assert result.candidates == ()
@@ -259,7 +259,7 @@ def test_publisher_text_in_searchstr_does_not_establish_platform_match(tmp_path)
     catalog = [resource("Unrelated product", "https://unrelated.example/",
                         searchStr="OTHER PRODUCT-UNRELATED PRODUCT-SPRINGERLINK-SpringerLink")]
     result = resolve_journal(tmp_path / "config.yaml", JournalConfig(name="Fixture Journal", issn="1234-5679"),
-                             cache_path=tmp_path / "resources.sqlite", transport=resolver_transport(catalog))
+                             cache_path=tmp_path / "resources.sqlite", refresh=True, transport=resolver_transport(catalog))
     assert result.candidates == ()
 
 
@@ -267,7 +267,7 @@ def test_an_ebook_only_host_match_is_never_a_reliable_journal_default(tmp_path):
     from allfold.application.journal_resolver import resolve_journal
 
     result = resolve_journal(tmp_path / "config.yaml", JournalConfig(name="Fixture Journal", issn="1234-5679"),
-        cache_path=tmp_path / "resources.sqlite", transport=resolver_transport([
+        cache_path=tmp_path / "resources.sqlite", refresh=True, transport=resolver_transport([
             resource("Oxford Ebooks", "https://academic.oup.com/books")], platform_url="https://academic.oup.com/"))
     assert len(result.candidates) == 1
     assert not result.candidates[0].reliable
@@ -350,7 +350,7 @@ def test_ipv6_proxy_environment_fetches_valid_complete_resources(tmp_path, monke
         lambda **kw: get_journal_resources(path, journal, **kw))
     fixture = resolver_transport([resource()]) if source == "carsi" else gokb_transport()
     if cached:
-        assert lookup(transport=fixture).status == "fresh"
+        assert lookup(transport=fixture, refresh=True).status == "fresh"
     monkeypatch.setenv("NO_PROXY", "fe80::/10,fc00::/7")
     monkeypatch.setenv("no_proxy", "fe80::/10,fc00::/7")
     monkeypatch.setenv("HTTPS_PROXY", "http://fixture-proxy.test:8000")
@@ -384,14 +384,14 @@ def test_proxy_http_failure_preserves_last_good_cache(tmp_path, monkeypatch, cac
     lookup = (lambda **kw: get_carsi_catalog(path, **kw)) if source == "carsi" else (
         lambda **kw: get_journal_resources(path, journal, **kw))
     fixture = resolver_transport([resource()]) if source == "carsi" else gokb_transport()
-    previous = lookup(transport=fixture) if cached else None
+    previous = lookup(transport=fixture, refresh=True) if cached else None
     with http_server(lambda _: (503, {}, b"proxy unavailable")) as proxy:
         monkeypatch.setenv("HTTPS_PROXY", proxy.url)
         result = lookup(refresh=True)
         assert len(proxy.requests) == 1
-    assert result.status == ("stale" if cached else "unavailable")
+    assert result.status == ("stale" if cached or source == "carsi" else "unavailable")
     if source == "carsi":
-        assert result.resources == (previous.resources if previous else ())
+        assert result.resources == (previous.resources if previous else lookup().resources)
     else:
         assert result.snapshot == (previous.snapshot if previous else None)
     assert result.error is not None

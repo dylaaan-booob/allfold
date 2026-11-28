@@ -51,6 +51,11 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       +'<a href="/c/test-profile/viewer/pdf/related">Related PDF</a>'
       +'<a aria-label="Access now (PDF) Licensed fixture" href="'+viewerPath+viewerQuery+'">View PDF</a>';
     const signIn='<title>Sign in</title><main><h1>Sign in</h1><form><label>Password <input type="password"></label><button>Sign in</button></form></main>';
+    if(ebscoMode==='profile-postback-viewer-login' && request.url===viewerPath+viewerQuery
+      && requests.filter(item=>item.url===request.url).length===1) {
+      response.writeHead(200,{'content-type':'text/html','cache-control':'no-store'});
+      response.end(signIn);return;
+    }
     const resultLink='<h2><a href="'+recordPath+'">Licensed fixture</a></h2>';
     const pendingImage='<img src="/ebsco-pending-image">';
     let results='<main><h1>Search results</h1>'+resultLink+'</main>';
@@ -181,7 +186,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
   const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
   vm.runInContext(main.slice(main.indexOf('const CONTROL_ACTIONS='),main.indexOf('async function startPython(')),native);
   const data={workspace_identity:'a'.repeat(64),paper_id:randomUUID(),identity:{confirmed_article_url:'http://www.nature.com:'+port+'/actual/Article'},wantAbstract:true};
-  const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32),preparation_key:'f'.repeat(64)};
+  const scoped={service_scope:{scope_id:'b'.repeat(64),config_revision:'c'.repeat(64),user_state_revision:'d'.repeat(64)},service_id:'svc_'+'e'.repeat(32)};
   const invoke=async(action='extract_paper_metadata',extra={})=>{const id=randomUUID();requests=[];
     const payload={...data,...extra,deadline_ms:Date.now()+6000};if(action==='extract_paper_pdf_clues')delete payload.wantAbstract;
     await native.execute({id,action,data:payload});
@@ -401,9 +406,10 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       retained=await browser.newTaskPage({deadline:Date.now()+4000,managed:true});browser.bindTaskPage(retained);
       await browser.navigate('http://oce.ovid.com:'+port+'/',{tab:retained,deadline:Date.now()+4000});browser.retainAccessPage(retained,scoped);
     });
-    const own={...scoped,target_page_id:retained.id};
+    const own=scoped;
     assert.deepEqual((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).reader_access,{oce:true});assert.deepEqual(requests,[]);
-    assert.ok((await invoke('extract_paper_pdf_clues',{...own,preparation_key:'0'.repeat(64),reader_access_only:true})).diagnostic,'revoked preparation cannot grant a capability');assert.deepEqual(requests,[]);
+    const unrelated={...own,service_id:'svc_'+'0'.repeat(32)};
+    assert.deepEqual((await invoke('extract_paper_pdf_clues',{...unrelated,reader_access_only:true})).reader_access,{oce:false});assert.deepEqual(requests,[]);
     const oceURL='https://oce.ovid.com/article/'+an+'/HTML',signed='https://assets.ovid.com/Body.PDF?Signature=A%2FB&key=Keep';
     const oceReader={rule_id:'R060',platform:'oce',url:oceURL,identifier:an,target:data.identity,source_url:oceURL,stage:'P4'};
     page='<!doctype html><body><iframe src="/pdfviewer/web/viewer.html?file='+encodeURIComponent(signed)+'"></iframe><iframe src="/arbitrary?file=https://bad.example/other.pdf"></iframe></body>';
@@ -416,7 +422,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     assert.deepEqual((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).reader_access,{oce:false});
     assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader:oceReader})).diagnostic,'retained non-OCE context is refused');
     await browser.closePage(retained);
-    assert.ok((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).diagnostic,'closed preparation cannot be renewed');
+    assert.deepEqual((await invoke('extract_paper_pdf_clues',{...own,reader_access_only:true})).reader_access,{oce:false});
   }
   async function checkEbscoClues() {
     // Use real Session webRequest callbacks for the viewer subresource.
@@ -432,7 +438,7 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
       });
     };
     await prepareEbsco();
-    let licensed={...scoped,target_page_id:retained.id,prepared_source:'ebsco',
+    let licensed={...scoped,prepared_source:'ebsco',
       identity:{doi:'10.5555/fixture'},target_title:'Licensed fixture'};
     const freshProfile=async()=>{await prepareEbsco();licensed={...licensed,target_page_id:retained.id};};
     const found=await invoke('extract_paper_pdf_clues',licensed);
@@ -585,7 +591,21 @@ const {BrowserRuntime}=require('../src/browser/browser-runtime.cjs');
     const unsafeEbsco=await invoke('extract_paper_pdf_clues',licensed);
     assert.ok(unsafeEbsco.diagnostic && !unsafeEbsco.pdf_clues);
     assert.ok(!requests.some(request=>request.url==='/ebsco-forbidden'),'private redirect is refused before sending');
-    await browser.closePage(retained);
+    ebscoDOI='10.5555/fixture';ebscoMode='profile-postback-viewer-login';await freshProfile();
+    const signal=new AbortController().signal;
+    const entry='https://search.ebscohost.com/Community.aspx';
+    const recoverable={workspace_identity:data.workspace_identity,paper_id:data.paper_id,...licensed,deadline_ms:Date.now()+6000,
+      service_entry:{wayfless_url:entry,landing_hosts:['search.ebscohost.com'],resource_name:'EBSCO'}};
+    requests=[];
+    const recovered=await browser.runTask(signal,{...recoverable,request_id:randomUUID()},()=>
+      browser.extractPaperPdfClues(recoverable,{signal,deadline:recoverable.deadline_ms}));
+    assert.equal(recovered.pdf_clues?.candidates[0]?.url,ebscoPdf);
+    assert.deepEqual(requests.filter(request=>request.method==='POST').map(request=>request.url),['/webauth/Community.aspx']);
+    assert.equal(requests.filter(request=>request.url.startsWith(resultsPath)).length,1);
+    assert.deepEqual(requests.filter(request=>request.url===viewerPath+viewerQuery).map(request=>request.referer),
+      [ebscoProfile+'/search/details/record',ebscoProfile+'/search/details/record']);
+    assert.notEqual(browser.serviceContext(scoped).tab.id,retained.id);
+    await browser.closePage(browser.serviceContext(scoped).tab);
   }
   try {
     await browser.ready;

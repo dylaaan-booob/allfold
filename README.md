@@ -22,8 +22,8 @@ Setup installs locked dependencies and builds the UI. It creates a missing local
 ## Basic workflow
 
 1. In **Journals**, manage followed Journals, Groups, Labels and Access Services. Each configuration has its own saved scope. Import a Markdown research scope through Preview / Confirm, or export **User Data** to share it.
-2. In **Workflows → Login**, authenticate CARSI once and prepare every saved Access Service. Manual Services offer a Visit action. Complete verification in the corresponding Browser group while the task waits. Temporary pages close when the task ends; if a Service still needs attention, retry Visit or Login as needed. Select **Manual confirmation of login** only after confirming all saved Services are available.
-3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses its prepared Service page when available. After manual confirmation without a prepared page, Discover opens the official WoS query page in the shared Browser session. API discovery continues if WoS needs Login. Run resolves necessary direct identities, establishes readable basic Papers and registers their complete collection plans. Workspace continues collection after Run finishes, while another Run can start. See [Provider roles and query limits](docs/providers.md).
+2. In **Workflows → Login**, select the CARSI Services you need and choose **Prepare**. The first selected Service completes its own entry and any school login before the remaining entries start. Finish verification in the corresponding Browser group while the task waits. Manual Services have their own **Visit** action.
+3. In **Workflows → Discover**, set keywords and publication months, then select PubMed, Web of Science and OpenAlex as needed. WoS uses the selected Service and can acquire a new page in the shared Browser Session. API discovery can continue independently. Run resolves direct identities, establishes readable basic Papers and registers their collection plans. Workspace continues collection after Run finishes. See [Provider roles and query limits](docs/providers.md).
 4. Review **Candidate**, **Downloaded** and **Trash** in **Workspace / ARRAY**. Reject persists exclusion and moves the Paper to Trash. Restore keeps its UUID and existing content. In Trash, clearing metadata removes bibliography, dates, abstract, sources and notes while retaining reliable identities, exclusion and any body association. An identity-only entry can be unexcluded locally; only a later actual Run hit rebuilds its metadata.
 5. Read Papers while their dates, abstract, Preprint proof and collection state update. Retry an eligible failed/cancelled Paper after its resources finish cleaning up. Reader displays the ordinary date set and independent verified Preprint date. Developer Mode retains local field clearing and empty-abstract input.
 6. Select **Download** for one eligible Candidate; its independent task discovers sources and uses a reusable Session stream or the qualified original browser response while the reader stays usable. Cancel addresses that exact attempt. Only file publication and SQLite completion move it to Downloaded. Open or locate an existing body locally, including identity-only and Trash entries. Trash can independently delete the PDF after this Paper's work finishes; metadata and exclusion remain. Confirmed absence clears only its current association; permission/system failures preserve it.
@@ -54,13 +54,12 @@ running. Restart fails interrupted attempts without replaying requests or pages.
 
 **Browser**, **Search** and **History** are available from the header in Workspace, Workflows, Journals and Settings. Search opens local Papers, Journals, saved Services and existing Browser tabs. Enter `>` to find a command. Browser fills the main content area and groups existing pages under CARSI, a saved Service or Other. The Tabs rail opens the grouped directory. Task controls offer **查看任务页面** to open the associated page for inspection or manual verification. Returning keeps the business view, navigation history, shared Session and active task.
 
-Settings' **禁用全屏运行界面** keeps Discover progress inline. Login retains its
-own progress and Service preparation concurrency. Login can reenter a CARSI
-resource once when its captured preparation evidence remains valid. Browser pages remain available while their task is active; successful Portal and
-Service targets retain bounded access-context ownership. Temporary work pages close
-after completion, failure or cancellation. Managed pages keep their navigation and
-close protections, and idle pages allow refresh. Settings exposes the shared
-physical page limits; see [Browser page ownership](docs/browser-pages.md).
+Settings' **禁用全屏运行界面** keeps Discover progress inline. Login prepares each
+selected Service through its catalog entry or the CARSI Portal. Temporary
+authentication pages close after the task settles. The Browser can retain a
+bounded set of Service targets. Prepare establishes a usable product page.
+Subscription decisions are reported by the resource when used. See
+[Browser page ownership](docs/browser-pages.md).
 
 ARRAY and Journals keep icon rails on both sides. Hover, focus or click Index/Directory to browse without shifting the content; choose a right-hand tool to open or collapse Info/Details. Journal selection opens Details; Directory filtering closes it. Resize the Sidebar from its left edge; narrow windows use an overlay and restore the preferred width when space returns. ARRAY's Reject/Restore and Trash metadata actions stay beside the Reader. Developer Mode adds a horizontally scrolling Layout strip with independent SAVE/RESET/ORIGIN targets; Journals GRID columns always adapt to the available content width.
 
@@ -103,13 +102,14 @@ records remain readable and exportable. See [Providers](docs/providers.md#prepri
 | Electron application logs directory | Bounded configuration-scoped run history and structured diagnostics | No |
 | `*.openalex-secrets.json`, `*.pubmed-secrets.json` | Optional API keys beside the configuration | No |
 
-Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources; necessary identity and relationship capabilities have their own eligibility. Optional institution credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Background Paper work permits new Run inputs and unrelated Journal/Service edits. Changes to access used by an active branch revoke and drain only affected work before replacing the old context. Foreground Run/WoS keeps its input snapshot and ordinary edits Pending until completion; every save still rechecks saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites.
+Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources; necessary identity and relationship capabilities have their own eligibility. Optional Xiamen University credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Background Paper work permits new Run inputs and unrelated Journal/Service edits. Changes to access used by an active branch revoke and drain only affected work before replacing the old context. Foreground Run/WoS keeps its input snapshot and ordinary edits Pending until completion; every save still rechecks saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites.
 
 Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers . Legacy Markdown is a first-migration or explicit exchange source, not the live store.
 
-The shared Browser Session writes cookies, website storage and HTTP cache files
-during the application run. Each launch starts with fresh website state and
-reclaims retired Session directories independently of Settings Reset.
+The shared Browser Session stores cookies, site data and HTTP cache in Electron's
+profile across restarts. **Browser Session Reset** in Settings ends Browser work,
+closes its pages and clears that data. Papers, completed downloads, settings and
+saved credentials are managed separately. [Shared Browser Session](docs/browser-session.md)
 
 Settings Reset selects one scope without requiring a typed word. **Workspace**
 permanently deletes the confirmed Workspace, including its latest Run snapshots;

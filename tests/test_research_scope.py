@@ -61,7 +61,10 @@ def test_portable_export_import_restores_independent_services_order_and_local_id
     compare_write_user_state(source, state, ContentRevision(False, None))
     exported = export_user_data(source)
     assert 'svc_' not in exported
+    from allfold.application.carsi_catalog import get_carsi_catalog
+    from allfold.persistence.user_state import application_data_dir
     target = tmp_path / 'target.yaml'
+    get_carsi_catalog(application_data_dir(target) / 'resources.sqlite', refresh=True, transport=catalog_transport())
     plan = preview_research_scope(target, tmp_path/'list.md', exported, filename='data.md', transport=catalog_transport(), query_gokb=True)
     assert not target.exists()
     confirm_research_scope(plan)
@@ -89,7 +92,7 @@ def test_verified_carsi_production_reuses_saved_service_and_local_url(tmp_path, 
     local = AccessService.create('EBSCO', 'https://library.example.org/ebsco')
     before = compare_write_user_state(config, replace(initial.state,
         access_services=(*initial.state.access_services, local)), initial.revision)
-    get_carsi_catalog(application_data_dir(config) / 'resources.sqlite', transport=catalog_transport())
+    get_carsi_catalog(application_data_dir(config) / 'resources.sqlite', refresh=True, transport=catalog_transport())
     if operation == 'import':
         source = '| Journal | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n| Annals | EBSCO | https://untrusted.example.org/login | carsi |\n'
         plan = preview_research_scope(config, path, source, filename='scope.md', query_gokb=True, transport=catalog_transport())
@@ -127,7 +130,7 @@ def test_service_reuse_preserves_method_manual_url_and_exact_production_boundari
     local = AccessService.create('EBSCO', 'https://library.example.org/ebsco', access_method=saved_method)
     before = compare_write_user_state(config, replace(initial.state,
         access_services=(*initial.state.access_services, local)), initial.revision)
-    get_carsi_catalog(application_data_dir(config) / 'resources.sqlite', transport=catalog_transport())
+    get_carsi_catalog(application_data_dir(config) / 'resources.sqlite', refresh=True, transport=catalog_transport())
     if operation == 'import':
         source = f'| Journal | Service | Access URL | Access Method |\n| --- | --- | --- | --- |\n| Annals | {name} | https://other.example.org/ | {chosen_method} |\n'
         plan = preview_research_scope(config, path, source, filename='scope.md', transport=catalog_transport())
@@ -147,7 +150,7 @@ def test_new_imported_carsi_service_uses_official_url_instead_of_imported_url(tm
     plan = preview_research_scope(tmp_path / 'monitor.yaml', tmp_path / 'list.md', source,
         filename='scope.md', transport=catalog_transport())
     assert plan.rows[0].service_status == 'verified'
-    assert plan.proposed.access_services[0].access_url == 'https://search.ebscohost.com/'
+    assert plan.proposed.access_services[0].access_url == 'http://search.ebscohost.com/'
 
 
 def test_http_import_preview_confirm_binds_source_choices_and_revisions(tmp_path):
@@ -257,7 +260,7 @@ def test_http_resolver_evidence_selection_is_local_cas_and_never_overwrites_defa
     other_config.write_bytes(config.read_bytes())
     untouched = load_user_state(other_config)
     # Seed shared external snapshots through the real Resolver and HTTP fixture.
-    resolve_journal(config, journal, transport=resolver_transport([
+    resolve_journal(config, journal, refresh=True, transport=resolver_transport([
         resource(), resource('EBSCO','https://search.ebscohost.com/')], titles=[title(identifier='0006-341X')]))
     with TestClient(create_app(config, electron_bridge=OfflineBridge()), base_url='http://localhost') as client:
         state = client.get('/api/ui-next/settings').json()
@@ -340,7 +343,7 @@ def test_settings_validates_new_carsi_names_and_preserves_unchanged_legacy_choic
     # No catalog is needed for an unchanged historical Service.
     saved = save_settings(config, replace(draft,name='Updated monitor'))
     assert saved.outcome == SettingsSaveOutcome.SAVED
-    get_carsi_catalog(application_data_dir(config)/'resources.sqlite',transport=catalog_transport())
+    get_carsi_catalog(application_data_dir(config)/'resources.sqlite',refresh=True,transport=catalog_transport())
     draft = saved.state.draft
     invalid = replace(draft,access_services=(draft.access_services[0].model_copy(update={'name':'ebsco'}),))
     assert save_settings(config,invalid).outcome == SettingsSaveOutcome.INVALID_DRAFT

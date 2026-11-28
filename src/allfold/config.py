@@ -165,8 +165,12 @@ class InstitutionConfig(BaseModel):
     name: str | None = None
     idp_entity_id: str | None = None
     use_shibboleth: bool = False
+    product_tenant_id: str | None = None
+    gale_location_id: str | None = None
+    institution_resource_url: str | None = None
 
-    @field_validator("name", "idp_entity_id", mode="before")
+    @field_validator("name", "idp_entity_id", "product_tenant_id", "gale_location_id",
+                     "institution_resource_url", mode="before")
     @classmethod
     def optional_public_text(cls, value: Any) -> str | None:
         if value is None:
@@ -186,13 +190,32 @@ class InstitutionConfig(BaseModel):
             raise ValueError("use at most 120 letters, numbers, spaces or name punctuation")
         return value
 
+    @property
+    def configured(self) -> bool:
+        return any((self.name, self.idp_entity_id, self.use_shibboleth, self.product_tenant_id,
+                    self.gale_location_id, self.institution_resource_url))
+
+    @field_validator("product_tenant_id", "gale_location_id")
+    @classmethod
+    def public_identifier(cls, value: str | None) -> str | None:
+        if value is not None and len(value) > 512:
+            raise ValueError("use at most 512 characters")
+        return value
+
+    @field_validator("institution_resource_url")
+    @classmethod
+    def public_resource_url(cls, value: str | None) -> str | None:
+        if value is not None and len(value) > 4096:
+            raise ValueError("use at most 4096 characters")
+        return normalize_public_http_url(value)
+
     @field_validator("idp_entity_id")
     @classmethod
     def public_entity_id(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if len(value) > 512 or not value.isascii():
-            raise ValueError("use a public HTTPS entity ID or URN, at most 512 ASCII characters")
+        if len(value) > 512:
+            raise ValueError("use a public HTTPS entity ID or URN, at most 512 characters")
         if re.fullmatch(r"urn:[A-Za-z0-9][A-Za-z0-9._-]*:[A-Za-z0-9._:-]+", value):
             return value
         normalize_public_http_url(value)
@@ -203,21 +226,26 @@ class InstitutionConfig(BaseModel):
         return value
 
 
-DEFAULT_PREPARE_SERVICE_CONCURRENCY = 5
 WORKFLOW_CONCURRENCY_FIELDS = (
-    "prepare_service_concurrency", "managed_page_service_limit", "managed_page_global_limit",
+    "managed_page_service_limit", "managed_page_global_limit",
     "pdf_concurrency",
 )
 
 
 class WorkflowConfig(BaseModel):
-    """Prepare workers and Session-wide physical managed page capacities."""
+    """Managed Browser page capacities and body download concurrency."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    prepare_service_concurrency: int = Field(default=DEFAULT_PREPARE_SERVICE_CONCURRENCY, strict=True, ge=1, le=5)
     managed_page_service_limit: int = Field(default=4, strict=True, ge=3, le=16)
     managed_page_global_limit: int = Field(default=16, strict=True, ge=4, le=64)
     pdf_concurrency: int = Field(default=2, strict=True, ge=1, le=8)
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_retired_prepare_limit(cls, value):
+        if isinstance(value, dict) and "prepare_service_concurrency" in value:
+            return {key: item for key, item in value.items() if key != "prepare_service_concurrency"}
+        return value
 
 class _Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -267,7 +295,7 @@ class _Settings(BaseModel):
     @field_validator("institution")
     @classmethod
     def empty_institution(cls, value: InstitutionConfig | None) -> InstitutionConfig | None:
-        return value if value is not None and (value.name or value.idp_entity_id or value.use_shibboleth) else None
+        return value if value is not None and value.configured else None
 
     @field_validator(
         "name",

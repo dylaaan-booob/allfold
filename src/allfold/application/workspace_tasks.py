@@ -232,7 +232,7 @@ class WorkspaceTaskHost:
                     del registry._local_operations[owner]
                 registry._settled_condition.notify_all()
 
-    def begin_change(self, *, whole=False, services=(), providers=(), all_access=False):
+    def begin_change(self, *, whole=False, services=(), providers=(), all_access=False, browser=False):
         """Short settings → Paper → host decision; no cancellation callbacks."""
         with self.settings_lock:
             registry = self.peek()
@@ -257,7 +257,7 @@ class WorkspaceTaskHost:
                         registry.close_admission()
                     else:
                         change.targets = registry.prepare_cancel_services(change.services,
-                            all_access=all_access, providers=change.providers)
+                            all_access=all_access, providers=change.providers, browser=browser)
                 return change
 
     @staticmethod

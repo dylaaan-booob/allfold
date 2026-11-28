@@ -68,8 +68,10 @@ class SettingsFormValues:
     institution_name: str = ""
     institution_idp_entity_id: str = ""
     institution_use_shibboleth: bool = False
+    institution_product_tenant_id: str = ""
+    institution_gale_location_id: str = ""
+    institution_resource_url: str = ""
     institution_issues: tuple[SettingsIssue, ...] = ()
-    prepare_service_concurrency: str = "5"
     managed_page_service_limit: str = "4"
     managed_page_global_limit: str = "16"
     pdf_concurrency: str = "2"
@@ -140,6 +142,9 @@ def settings_form_from_draft(draft: MonitorDraft) -> SettingsFormValues:
         institution_name=draft.institution.name or "" if draft.institution else "",
         institution_idp_entity_id=draft.institution.idp_entity_id or "" if draft.institution else "",
         institution_use_shibboleth=draft.institution.use_shibboleth if draft.institution else False,
+        institution_product_tenant_id=(draft.institution.product_tenant_id or "") if draft.institution else "",
+        institution_gale_location_id=(draft.institution.gale_location_id or "") if draft.institution else "",
+        institution_resource_url=(draft.institution.institution_resource_url or "") if draft.institution else "",
     )
 
 
@@ -167,7 +172,8 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         rows = tuple(row for _, row in sorted(zip((int(value) for value in order_values), rows)))
 
     group_names = tuple(str(value) for value in form.getlist("settings_group"))
-    institution_fields = {"institution_name", "institution_idp_entity_id", "institution_use_shibboleth"}
+    institution_fields = {"institution_name", "institution_idp_entity_id", "institution_use_shibboleth",
+                          "institution_product_tenant_id", "institution_gale_location_id", "institution_resource_url"}
     # Enumerate the existing editor/import contract so credential aliases cannot be ignored.
     workflow_fields = {*WORKFLOW_CONCURRENCY_FIELDS}
     supported_fields = institution_fields | workflow_fields | {
@@ -234,6 +240,9 @@ def settings_form_from_submission(form: FormData) -> SettingsFormValues:
         institution_name=str(form.get("institution_name", "")),
         institution_idp_entity_id=str(form.get("institution_idp_entity_id", "")),
         institution_use_shibboleth=form.get("institution_use_shibboleth") == "1",
+        institution_product_tenant_id=str(form.get("institution_product_tenant_id", "")),
+        institution_gale_location_id=str(form.get("institution_gale_location_id", "")),
+        institution_resource_url=str(form.get("institution_resource_url", "")),
         institution_issues=institution_issues,
         **{name: str(form.get(name, WorkflowConfig.model_fields[name].default))
            for name in WORKFLOW_CONCURRENCY_FIELDS},
@@ -272,8 +281,11 @@ def settings_draft_from_form(
     institution = None
     try:
         public = InstitutionConfig(name=values.institution_name, idp_entity_id=values.institution_idp_entity_id,
-                                   use_shibboleth=values.institution_use_shibboleth)
-        institution = public if public.name or public.idp_entity_id or public.use_shibboleth else None
+                                   use_shibboleth=values.institution_use_shibboleth,
+                                   product_tenant_id=values.institution_product_tenant_id,
+                                   gale_location_id=values.institution_gale_location_id,
+                                   institution_resource_url=values.institution_resource_url)
+        institution = public if public.configured else None
     except ValidationError as error:
         detail = error.errors()[0]
         issues.append(_form_issue("institution." + str(detail["loc"][0]), detail["msg"]))

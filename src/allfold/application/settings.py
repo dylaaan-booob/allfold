@@ -695,7 +695,7 @@ def _render_monitor_yaml(
         if isinstance(draft.log_level, LogLevel)
         else str(draft.log_level)
     )
-    if draft.institution is not None and (draft.institution.name or draft.institution.idp_entity_id or draft.institution.use_shibboleth):
+    if draft.institution is not None and draft.institution.configured:
         values["institution"] = draft.institution.model_dump(exclude_none=True)
     values["workflow"] = draft.workflow.model_dump(exclude_none=True)
     return yaml.safe_dump(values, sort_keys=False, allow_unicode=True)

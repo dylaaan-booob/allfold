@@ -13,14 +13,17 @@ const {AsyncLocalStorage}=require('node:async_hooks');
 const {randomBytes}=require('node:crypto');
 const {log,withLogContext,associationLogContext}=require('../shared/logging.cjs');
 const {institutionAuthPage}=require('../auth/institution-auth.cjs');
+const {xmuLoginContext,secureXmuLoginURL}=require('../auth/xmu-auth.cjs');
+const {ServiceEntryStarts}=require('./service-entry-starts.cjs');
 const {casErrorCode}=require('../auth/cas-credentials.cjs');
 const {waitFor,pause,checkCanceled,timeoutFailure,TASK_DEADLINE_MS}=require('./browser-task.cjs');
 const {NavigationRecovery,inspectPage,waitForPage}=require('./browser-navigation.cjs');
-const {reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure}=require('./browser-recovery.cjs');
+const {reportRecovery,recoveryStop,pageRecoveryDetails,origin,loadFailure,reusableNavigationURL}=require('./browser-recovery.cjs');
 const {sharedSessionEvents}=require('./session-events.cjs');
 const {sharedBrowserSession}=require('./browser-session.cjs');
 const {operationAssociation}=require('./page-association.cjs');
 const {PageBudget}=require('./page-budget.cjs');
+const {recoverService,isFederatedPage,isCarsiSelection}=require('../workflows/browser-operations.cjs');
 const {PageChallenge}=require('./page-challenge.cjs');
 
 function chromiumUserAgent(userAgent, productName) {
@@ -53,13 +56,19 @@ class BrowserRuntime {
     this.cooldown=this.sessionEvents.cooldown;
     this.sessionEvents.subscribe('beforeRequest',details=>{
       const tab=this.tabs.get(details.webContentsId);
-      if(details.resourceType==='mainFrame' && tab){tab.mainRequest=details.id;tab.navigation.observeRequestStart(details);}
+      let redirectURL;
+      if(details.resourceType==='mainFrame' && tab) {
+        tab.mainRequest=details.id;
+        tab.navigation.observeRequestStart(details);
+        redirectURL=this.xmuLoginRedirect(tab,details);
+      }
       if(tab?.taskOwner && !tab.pageAttempt?.retired) {
         const frame=details.frame;
         this.sessionEvents.associateRequest(details.id,{...tab.taskOwner.association,
           page_id:tab.id,attempt_id:tab.pageAttempt?.id ?? tab.taskOwner.association.request_id,process_id:frame?.processId,frame_token:frame?.frameToken,
           document_id:frame?tab.documentIds.get(frame.frameToken):undefined,navigation_generation:tab.documentGeneration});
       }
+      if(redirectURL)return {redirectURL};
     });
     this.sessionEvents.subscribe('headersReceived',details=>{
       const tab=this.tabs.get(details.webContentsId);
@@ -78,7 +87,12 @@ class BrowserRuntime {
     this.tabs = new Map();
     this.paperPages=new Map();
     this.accessContexts=new Map();
+    this.serviceEntryStarts=new ServiceEntryStarts(recoveryTiming);
+    this.serviceRecoveries=new Map();
+    this.authenticationRevision=0;
+    this.schoolSubmission=null;
     this.failedCreations=new Set();
+    this.closedPages=new Set();
     this.carsiVisitOrigins=new Map();
     this.documents=new DocumentRuntime(this);
     this.bodyActions=new BodyActionRuntime(this,{ipc:ipcMain});
@@ -95,7 +109,7 @@ class BrowserRuntime {
     });
   }
   createTab(options = {}, opener = null) {
-    if (!this.identity || this.destroying) throw Error('Browser identity is not ready');
+    if (!this.identity || this.destroying || this.resetting) throw Error('Browser identity is not ready');
     if(options.webContents && this.tabs.has(options.webContents.id))throw new BrowserFailure('navigation','navigation_active');
     const execution=options.user===true?null:opener?.taskOwner || this.operation;
     if(execution && !this.operations.has(execution))throw new BrowserFailure('navigation','canceled');
@@ -127,7 +141,7 @@ class BrowserRuntime {
     this.tabs.set(tab.id, tab);
     if(owner)this.trackTaskDownloads(tab,owner);
     contents.setWindowOpenHandler(({url,frameName}) => {
-      if(tab.pageAttempt?.retired || contents.isDestroyed() || tab.closing)return {action:'deny'};
+      if(this.resetting || tab.pageAttempt?.retired || contents.isDestroyed() || tab.closing)return {action:'deny'};
       if(tab.bodyAction && !tab.bodyAction.acceptPopup(url,frameName))return {action:'deny'};
       const popupOwner=tab.taskOwner;
       if(popupOwner && !this.ownsPage(popupOwner,tab.id) || !popupOwner && tab.resourceOwner.kind!=='user' && !(tab.resourceOwner.kind==='access' && tab.resourceOwner.valid))return {action:'deny'};
@@ -227,7 +241,10 @@ class BrowserRuntime {
       const access=tab.resourceOwner?.kind==='access'?tab.resourceOwner:null;
       if(access){access.valid=false;if(this.accessContexts.get(access.key)===access)this.accessContexts.delete(access.key);
         this.cleanupStep(()=>this.events.emit('access-pages-closed',[tab.id]),tab.taskOwner);}
-      tab.destroyedCleanup=Promise.all([this.sessionEvents.waitForDownloads(contents),tab.challenge?.close()]).then(()=>resource.release());
+      const cleanup=Promise.all([this.sessionEvents.waitForDownloads(contents),tab.challenge?.close()]).then(()=>resource.release());
+      tab.destroyedCleanup=cleanup;
+      this.closedPages.add(cleanup);
+      cleanup.then(()=>this.closedPages.delete(cleanup),()=>{});
       if(this.paperPages.get(tab.paperKey)===tab)this.paperPages.delete(tab.paperKey);
       if (tab.taskOwner?.taskTab === tab)tab.taskOwner.taskTab=null;
       for(const page of this.tabs.values()) {
@@ -259,20 +276,50 @@ class BrowserRuntime {
     opener?.bodyAction?.addPopup(tab);
     return tab;
   }
-  beginAuthentication(tab,signal,{institution=true}={}) {
-    // Only CARSI entry and its attributable WoS handoff call this, never generic navigate().
+  beginAuthentication(tab,signal,entry,{preparing=false}={}) {
     const owner=this.claimPage(tab,signal);
-    const context={owner,signal,active:true,institution,allowCredentials:institution,origins:new Set(tab.institutionOrigins || []),
+    const controller=new AbortController();
+    signal=AbortSignal.any([controller.signal,...(signal?[signal]:[])]);
+    if(preparing && (this.authenticationPaused || owner.authenticationRevision!==this.authenticationRevision))
+      throw new BrowserFailure('authentication','configuration_changed');
+    const context={owner,signal,controller,entry,active:true,preparing,revision:owner.authenticationRevision,
       loginSubmitted:false,failure:null};
     context.fatal=new Promise((_,reject)=>{context.reject=reject;});
     context.fatal.catch(()=>{});
-    tab.authContext=context;tab.taskSignal=signal;
+    owner.authContext=tab.authContext=context;
     return context;
+  }
+  endAuthentication(context) {
+    if(!context)return;
+    context.active=false;
+    if(this.schoolSubmission===context)this.schoolSubmission=null;
+    if(context.owner.authContext===context)context.owner.authContext=null;
   }
   authenticationFailure(tab) {
     const context=tab?.authContext;
-    if(context?.active && !context.signal.aborted && context.failure)
-      throw new BrowserFailure('authentication','institution_credentials_rejected');
+    if(context?.active && context.failure)throw context.failure;
+  }
+  liveAuthentication(tab) {
+    const context=tab?.authContext;
+    if(context?.active && !context.signal.aborted && !context.failure && !this.destroying
+      && this.ownsPage(context.owner,tab.id))return context;
+  }
+  xmuLoginRedirect(tab,{method,url}) {
+    const context=this.liveAuthentication(tab);
+    if(method!=='GET' || !context || context.loginHTTPSUpgraded || context.loginSubmitted
+      || this.authenticationPaused || context.revision!==this.authenticationRevision)return;
+    const secureURL=secureXmuLoginURL(context.entry,url);
+    // An IdP that downgrades its own secure login cannot create a redirect loop.
+    if(secureURL){context.loginHTTPSUpgraded=true;return secureURL;}
+  }
+  async revokeAuthentication() {
+    this.authenticationRevision++;
+    const active=[...this.operations].map(owner=>owner.authContext).filter(context=>context?.active);
+    for(const context of active)if(context.preparing || context.engaged) {
+      context.failure=new BrowserFailure('authentication','configuration_changed');
+      context.reject(context.failure);context.controller.abort(context.failure);
+    }
+    await Promise.allSettled([...this.tabs.values()].map(tab=>tab.authHandling).filter(Boolean));
   }
   async inspectAuthentication(tab,{documentOnly=false}={}) {
     const wc=tab.view.webContents;
@@ -296,8 +343,7 @@ class BrowserRuntime {
     const carsiPage=url.origin==='https://ds.carsi.edu.cn' && ['/login/index.html','/wxds',
       '/resource/resource.php','/resource/resourceDetail.php'].includes(url.pathname);
     const context=tab.authContext;
-    const mode=context?.active && !context.signal.aborted && !context.failure
-      && (context.institution || context.origins.has(url.origin))?'institution':'page';
+    const mode=context?.active && xmuLoginContext(context.entry,binding.url)?'institution':'page';
     try {state=carsiPage?{step:'none',waiting:false}:await frame.executeJavaScript('('+institutionAuthPage.toString()+')(...'
       +JSON.stringify(['inspect',null,null,mode])+')');}
     catch (_) {state={step:'manual',waiting:true,code:'auth_execution_failed'};}
@@ -306,65 +352,76 @@ class BrowserRuntime {
   }
   async handleAuthentication(tab) {
     if(tab.authHandling)return tab.authHandling;
-    const context=tab.authContext,wc=tab.view.webContents;
-    if(!context?.active || !this.ownsPage(context.owner,tab.id) || context.signal.aborted || context.failure || this.destroying || wc.isDestroyed())return;
+    const context=this.liveAuthentication(tab),wc=tab.view.webContents;
+    if(!context || wc.isDestroyed())return;
     const operation=this.runInOperation(context.owner,async()=>{
       const state=await this.inspectAuthentication(tab);
-      const current=()=>context.active && !context.signal.aborted && !context.failure
-        && tab.authContext===context && this.ownsPage(context.owner,tab.id) && !this.destroying && this.documentCurrent(state.binding)
+      const current=()=>this.liveAuthentication(tab)===context && this.documentCurrent(state.binding)
         && !wc.isLoadingMainFrame();
       if(!state.binding || !current())return;
-      const origin=new URL(wc.getURL()).origin;
-      // After Portal return, only the IdP origins observed in this CARSI flow may autofill.
-      const permitted=context.institution || context.origins.has(origin);
-      if(context.institution && origin!=='https://ds.carsi.edu.cn')context.origins.add(origin);
-      tab.authState={...state,waiting:state.waiting || context.origins.has(origin)};
-      if(!permitted)return;
-      if(state.code==='institution_credentials_rejected') {
-        context.failure=true;
-        context.reject(new BrowserFailure('authentication','institution_credentials_rejected'));
+      const school=xmuLoginContext(context.entry,state.binding.url);
+      const confirmation=['terms','release'].includes(state.step);
+      tab.authState=state;
+      if(state.waiting && (school || confirmation))context.engaged=true;
+      if(school && state.code==='institution_credentials_rejected') {
+        context.failure=new BrowserFailure('authentication','institution_credentials_rejected');
+        context.reject(context.failure);
         this.reportPage('info','institution_auth_failed',tab,{code:state.code});
         return;
       }
-      if(!['account','login','terms','release'].includes(state.step))return;
-      context.origins.add(origin);
-      if(!tab.authDocument || tab.authDocument.context!==context || tab.authDocument.processId!==state.binding.processId
-        || tab.authDocument.frameToken!==state.binding.frameToken || tab.authDocument.documentId!==state.binding.documentId
-        || tab.authDocument.navigationGeneration!==state.binding.navigationGeneration)
-        tab.authDocument={...state.binding,context,attempted:new Set()};
+      if(!confirmation && (!school || !['account','login'].includes(state.step)))return;
+      if(!tab.authDocument || tab.authDocument.documentId!==state.binding.documentId
+        || tab.authDocument.frameToken!==state.binding.frameToken)
+        tab.authDocument={...state.binding,attempted:new Set()};
       const attempted=tab.authDocument.attempted;
-      if(attempted.has(state.step) || state.step===context.lastAction
-        || (state.step==='login' && context.loginSubmitted))return;
+      if(attempted.has(state.step) || state.step==='login' && context.loginSubmitted)return;
+      const authorized=()=>current() && context.revision===this.authenticationRevision && !this.authenticationPaused;
+      if(!authorized())return;
       let credentials=null;
-      if(state.step==='login') {
-        if(!context.allowCredentials || !this.readCASCredentials)return;
-        try {credentials=await this.readCASCredentials();}
-        catch(error) {this.reportPage('info','institution_auth_skipped',tab,{code:casErrorCode(error)});return;}
-        if(!credentials || !current())return;
+      if(!confirmation) {
+        if(state.step==='login') {
+          if(this.schoolSubmission && this.schoolSubmission!==context)return;
+          this.schoolSubmission=context;
+        }
+        try {
+          await context.owner.validateRecovery?.({signal:context.signal,
+            deadline:tab.navigation.current?.deadline ?? Infinity,stage:'authentication'});
+          if(state.step==='login' && this.readCASCredentials && authorized())credentials=await this.readCASCredentials();
+        } catch(error) {
+          if(!authorized())return;
+          if(error instanceof BrowserFailure)throw error;
+          this.reportPage('info','institution_auth_skipped',tab,{code:casErrorCode(error)});return;
+        } finally {
+          if(!context.active && this.schoolSubmission===context)this.schoolSubmission=null;
+        }
+        if(state.step==='login' && !credentials) {
+          if(this.schoolSubmission===context)this.schoolSubmission=null;
+          return;
+        }
       }
-      if(!current())return;
-      // Reserve before execution: duplicate events cannot replay an action, even if navigation interrupts JS.
-      attempted.add(state.step);context.lastAction=state.step;context.actionDispatched=true;
+      if(!authorized())return;
+      // A form action belongs to this document and is never replayed after dispatch.
+      attempted.add(state.step);context.actionDispatched=true;
       tab.navigation.blockReplay();
       if(state.step==='login')context.loginSubmitted=true;
       const releaseUnsent=()=>{
         attempted.delete(state.step);
-        if(context.lastAction===state.step)context.lastAction=null;
         if(state.step==='login')context.loginSubmitted=false;
+        if(!confirmation && this.schoolSubmission===context)this.schoolSubmission=null;
       };
       const frame=this.documentFrame(state.binding);
       let result;
       try {result=await frame.executeJavaScript('('+institutionAuthPage.toString()+')(...'
-        +JSON.stringify(['act',credentials,state.step,'institution'])+')');}
+        +JSON.stringify(['act',credentials,state.step,confirmation?'confirmation':'institution'])+')');}
       catch (_) {this.reportPage('info','institution_auth_skipped',tab,{code:'auth_execution_failed'});return;}
-      if(result?.acted===false && current())releaseUnsent();
+      if(result?.acted===false && authorized())releaseUnsent();
       if(['terms','release'].includes(state.step) && result?.submission) {
-        if(!current())return;
+        if(!authorized())return;
         let dispatched=false;
         try {
           const {url,body,referrer}=result.submission;
           const destination=browserURL(url),source=new URL(wc.getURL());
-          if(new URL(destination).origin!==source.origin || referrer!==source.href || typeof body!=='string')
+          if(source.protocol!=='https:' || new URL(destination).origin!==source.origin || referrer!==source.href || typeof body!=='string')
             throw Error('Invalid consent submission');
           // Navigation events observe the response; holding authHandling until load completion stalls that observer.
           tab.navigation.track(()=>{
@@ -380,7 +437,7 @@ class BrowserRuntime {
       }
       if(result?.code==='institution_credentials_rejected' && context.active && !context.signal.aborted
         && tab.authContext===context) {
-        context.failure=true;context.reject(new BrowserFailure('authentication','institution_credentials_rejected'));
+        context.failure=new BrowserFailure('authentication','institution_credentials_rejected');context.reject(context.failure);
       }
       this.reportPage('info','institution_auth_action',tab,{step:state.step,
         code:result?.acted?'auth_action_dispatched':'auth_action_unconfirmed'});
@@ -393,23 +450,16 @@ class BrowserRuntime {
     this.checkTaskResources();
     tab?.navigation.check();
     const context=tab?.authContext;
-    if(!context?.active || context.signal.aborted)return false;
     this.authenticationFailure(tab);
+    if(!context?.active || context.signal.aborted)return false;
     let waiting=false;
     for(const page of this.tabs.values()) {
       if(page.authContext!==context)continue;
       await this.handleAuthentication(page);
       this.authenticationFailure(tab);
-      waiting ||= page.authState?.waiting===true;
+      waiting ||= page===tab && page.authState?.waiting===true;
     }
     return waiting;
-  }
-  authenticationPortal(tab) {
-    const context=tab.authContext;
-    if(context) {
-      context.institution=false;context.allowCredentials=false;context.lastAction=null;
-      for(const page of this.tabs.values())if(page!==tab && page.authContext===context)page.authContext=null;
-    }
   }
   select(tab,{focus=false}={}) {
     this.selected = tab || null;
@@ -461,6 +511,7 @@ class BrowserRuntime {
       || (command.action==='select' && command.id===undefined)
       || (command.action==='navigate' && (typeof command.url!=='string' || command.url.length>8192))
       || (command.url!==undefined && command.action!=='navigate')) throw Error('Invalid Browser command');
+    if(this.resetting && command.action!=='state')throw new BrowserFailure('navigation','canceled');
     const tab = command.id == null ? this.selected : this.tabs.get(command.id);
     if (command.id != null && !tab && !['state','new'].includes(command.action)) throw Error('Unknown tab');
     if(tab?.managed && ['close','navigate','back','forward'].includes(command.action))
@@ -539,8 +590,8 @@ class BrowserRuntime {
   get taskTab() {return this.operation?.taskTab ?? null;}
   get taskActive() {return !!this.operation?.taskTab;}
   async runTask(signal,data,run) {
-    if(this.destroying)throw new BrowserFailure('navigation','canceled');
-    const owner={signal,phase:'loading',association:operationAssociation(data),
+    if(this.destroying || this.resetting)throw new BrowserFailure('navigation','canceled');
+    const owner={signal,phase:'loading',authenticationRevision:this.authenticationRevision,association:operationAssociation(data),
       taskTab:null,navigationAbort:null};
     this.operations.add(owner);
     try {
@@ -670,8 +721,7 @@ class BrowserRuntime {
         if(navigationChain && tab.navigation.current?.chain!==navigationChain)throw new BrowserFailure('navigation','document_changed');
         return this.documentCurrent(doc) && !tab.navigation.isLoading(documentOnly);
       },
-      extraWaiting:doc=>!!extraWaiting?.(doc) || !!(tab.authContext?.active && tab.authContext.institution
-        && new URL(doc.url).origin!=='https://ds.carsi.edu.cn'),
+      extraWaiting,
       }).then(result=>{
         if(result.waiting && !result.loading && (result.diagnostic || Number.isInteger(result.doc?.status)))
           tab.navigation.blockReplay();
@@ -694,7 +744,64 @@ class BrowserRuntime {
     } catch(error){if(tab.navigation.current?.chain===chain)this.finishPageLoad(tab);throw error;}
   }
 
+  navigateServiceTarget(data,target,options) {
+    return this.observeServiceTarget(data,target,options,value=>this.navigate(target,value));
+  }
+  waitForServiceTarget(data,options) {
+    const {tab}=options;
+    return this.observeServiceTarget(data,tab.view.webContents.getURL(),options,value=>this.waitForPage(tab,{
+      ...value,onWaiting:(waiting,diagnostic,doc)=>{if(waiting)value.onWaiting?.(diagnostic,doc);},
+    }));
+  }
+  async observeServiceTarget(data,target,options,observe) {
+    const {tab,signal,onWaiting}=options,entry=data.service_entry;
+    if(!entry)return observe(options);
+    if(entry.unavailable_reason)throw new BrowserFailure('preparation','service_unavailable');
+    const context=this.beginAuthentication(tab,signal,entry);
+    try {
+      return await observe({...options,signal:context.signal,
+        extraWaiting:doc=>isCarsiSelection(doc.url) || isFederatedPage(entry,doc.url) || options.extraWaiting?.(doc),
+        onWaiting:(diagnostic,doc)=>{
+          const url=doc?.url;
+          // Preserve the current IdP/consent chain. A recognized login barrier
+          // outside it can use the saved entry once. A bare 403 never gets here.
+          if(url && reusableNavigationURL(target) && (isCarsiSelection(url)
+            || !diagnostic && doc.markers.login && !doc.markers.mfa && !isFederatedPage(entry,url) && !context.engaged))
+            throw new BrowserFailure('authentication','service_authentication_required');
+          if(doc?.markers.login || doc?.markers.mfa || isFederatedPage(entry,url)) {
+            context.engaged=true;
+            if(context.revision!==this.authenticationRevision)
+              throw new BrowserFailure('authentication','configuration_changed');
+          }
+          onWaiting?.(diagnostic,doc);
+        }});
+    } finally {
+      this.endAuthentication(context);
+    }
+  }
+  async resumeServiceStep(data,{signal,deadline,onWaiting,closeBlockedPage=false},step) {
+    const previous=this.serviceContext(data);
+    try {return await step();}
+    catch(error) {
+      if(!data.service_entry || error.diagnostic?.stage!=='authentication'
+        || !['service_authentication_required','service_page_required'].includes(error.diagnostic.code))throw error;
+      const owner=this.operation,tab=owner.taskTab;
+      if(tab && this.ownsPage(owner,tab.id) && (tab.resourceOwner===owner || closeBlockedPage
+        && tab.resourceOwner===previous && !previous.pins.size && !previous.loan))await this.closePage(tab,'service_recovery');
+      previous?.pins.delete(owner);
+      this.pageBudget.releaseUnused(owner);
+      await recoverService(this,data,{signal,deadline,
+        progress:value=>{if(value.waiting_for_user)onWaiting?.(undefined,undefined);}},previous);
+      checkCanceled(signal);
+      return step();
+    }
+  }
+
   async openPaperPage(data,identity,{role,signal,onWaiting,deadline=Date.now()+TASK_DEADLINE_MS,documentOnly=false}={}) {
+    const options={role,signal,onWaiting,deadline,documentOnly};
+    return this.resumeServiceStep(data,options,()=>this.openArticle(data,identity,options));
+  }
+  async openArticle(data,identity,{role,signal,onWaiting,deadline,documentOnly}) {
     const {workspace_identity:workspace,paper_id:paper}=data;
     if(typeof workspace!=='string' || !/^[a-f0-9]{64}$/.test(workspace)
       || typeof paper!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(paper))
@@ -744,7 +851,7 @@ class BrowserRuntime {
             return {...doc,identity:paperIdentity};
         }
         tab.paperDocument=null;
-        const doc=await this.navigate(target,{tab,signal:attempt.signal,deadline,onWaiting,documentOnly});
+        const doc=await this.navigateServiceTarget(data,target,{tab,signal:attempt.signal,deadline,onWaiting,documentOnly});
         if(!matches(doc) || this.paperPages.get(key)!==tab)throw new BrowserFailure('navigation','document_changed');
         this.finishPageLoad(tab);
         const confirmed={...doc,identity:paperIdentity};
@@ -764,12 +871,12 @@ class BrowserRuntime {
     }
   }
 
-  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,httpReferrer,documentOnly=false}={}) {
+  async navigate(url,{tab=this.taskTab,signal=this.operation?.signal,deadline=Infinity,onWaiting,httpReferrer,documentOnly=false,serviceEntry,afterLoad=false,extraWaiting}={}) {
     const owner=this.operation;
     if(!this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     await waitFor(()=>this.ready,signal,deadline);
     checkCanceled(signal);
-    if(this.destroying || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
+    if(this.destroying || this.resetting || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');
     if(owner.navigationAbort)throw new BrowserFailure('navigation','navigation_active');
     if(!tab)throw new BrowserFailure('navigation','page_closed');
     const target=browserURL(url);
@@ -787,12 +894,27 @@ class BrowserRuntime {
       checkCanceled(bounded);
       validate();
       if(Date.now()>=deadline)throw timeoutFailure('navigation','request');
-      const loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target,{httpReferrer}),
-        {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target,httpReferrer,documentOnly});
-      chain=tab.navigation.current.chain;
+      let loading;
+      const start=()=>{
+        loading=tab.navigation.dispatch(()=>tab.view.webContents.loadURL(target,{httpReferrer}),
+          {...this.navigationOptions(tab,{signal:bounded,deadline}),replayable:true,initialURL:target,httpReferrer,documentOnly});
+        loading.catch(()=>{});
+        chain=tab.navigation.current?.chain;
+      };
+      if(serviceEntry) {
+        let first=serviceEntry==='first';
+        while(!loading) {
+          await this.serviceEntryStarts.dispatch(()=>{
+            if((this.cooldown.origins.get(origin(target))?.until ?? 0)<=this.cooldown.now())start();
+          },{signal:bounded,deadline,validate,first});
+          if(!loading)await this.waitForCooldown(target,{signal:bounded,deadline,validate,pageId:tab.id,step:'page_load'});
+          first=false;
+        }
+      } else start();
       const navigation=await (tab.authContext?.active
         ?Promise.race([loading,tab.authContext.fatal]):loading);
-      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,documentOnly,
+      if(afterLoad)return navigation;
+      const doc=await this.waitForPage(tab,{signal:bounded,deadline,finish:false,navigationChain:navigation.chain,documentOnly,extraWaiting,
         onWaiting:(waiting,diagnostic,document)=>{if(waiting)onWaiting?.(diagnostic,document);}});
       this.reportPage('info','navigation_ready',tab,{stage:'navigation',code:'page_ready',status:doc.status});
       return doc;
@@ -852,7 +974,7 @@ class BrowserRuntime {
         || !Number.isSafeInteger(data.deadline_ms))throw new BrowserFailure('navigation','document_operation_failed');
       checkCanceled(options.signal);if(Date.now()>=data.deadline_ms)throw timeoutFailure('navigation','document_operation');
       this.pinPreparedPaperAccess(data)();
-      const context=data.service_id && Number.isSafeInteger(data.target_page_id)?this.accessContexts.get(this.accessKey(data)):null;
+      const context=this.serviceContext(data);
       const oce=!!context && new URL(context.tab.view.webContents.getURL()).hostname==='oce.ovid.com';
       return {outcome:'retrieved',reader_access:{oce}};
     }
@@ -860,20 +982,32 @@ class BrowserRuntime {
   }
   async extractEbscoSource(data,options) {
     if(!['ebsco','ebsco-viewer'].includes(data.prepared_source) || data.reader || data.reader_access_only || !data.service_id
-      || !Number.isSafeInteger(data.target_page_id) || !Number.isSafeInteger(data.deadline_ms)
+      || !Number.isSafeInteger(data.deadline_ms)
       || !/^[a-f0-9]{64}$/.test(data.workspace_identity)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(data.paper_id))
       throw new BrowserFailure('navigation','document_operation_failed');
-    const verify=this.pinPreparedPaperAccess(data);
-    const context=this.accessContexts.get(this.accessKey(data));
-    const owner=this.operation,validateRecovery=owner.validateRecovery;
-    owner.validateRecovery=async next=>{verify();await validateRecovery?.(next);verify();};
+    let access,verify;
+    const withAccess=step=>this.resumeServiceStep(data,options,async()=>{
+      const context=this.serviceContext(data);
+      if(!context?.ebscoEntry)throw new BrowserFailure('authentication','service_page_required');
+      if(access!==context || !context.pins.has(this.operation)) {
+        verify=this.pinPreparedPaperAccess(data,'ebsco');
+        access=context;
+      }
+      return step(context);
+    });
     try {
-      return await readEbscoSource(this,data,context,{...options,verify});
+      const context=await withAccess(value=>value);
+      return await readEbscoSource(this,data,context,{...options,verify:()=>verify(),withAccess});
     } finally {
-      owner.validateRecovery=validateRecovery;
+      access?.pins.delete(this.operation);
     }
   }
-  async extractPaperDocument(data,{signal,deadline=Date.now()+TASK_DEADLINE_MS,onWaiting,metadata,observeReaderNavigation}={}) {
+  async extractPaperDocument(data,options={}) {
+    const bounded={...options,deadline:options.deadline ?? Date.now()+TASK_DEADLINE_MS};
+    if(data.reader)return this.resumeServiceStep(data,bounded,()=>this.readPaperDocument(data,bounded));
+    return this.readPaperDocument(data,bounded);
+  }
+  async readPaperDocument(data,{signal,deadline,onWaiting,metadata,observeReaderNavigation}) {
     if(metadata && (data.reader || Object.hasOwn(data,'reader_access_only') || Object.hasOwn(data,'prepared_source')))throw new BrowserFailure('navigation','document_operation_failed');
     const readerKind=data.reader?qualifyReader(data.reader,data.identity):null;
     const verifyAccess=this.pinPreparedPaperAccess(data,readerKind==='oce'?'oce.ovid.com':null),owner=this.operation,validateRecovery=owner.validateRecovery;
@@ -899,7 +1033,7 @@ class BrowserRuntime {
           if(details.webContentsId===tab.id && details.id===readerRequest?.id)
             readerRequest.referer=Object.entries(details.requestHeaders||{}).find(([name])=>name.toLowerCase()==='referer')?.[1] || null;
         });
-        doc=await this.navigate(data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
+        doc=await this.navigateServiceTarget(data,data.reader.url,{tab,signal,deadline,onWaiting});this.finishPageLoad(tab);
       } else doc=await this.openPaperPage(data,data.identity,{role:'article',signal,deadline,onWaiting,documentOnly:!metadata});
       const tab=this.tabs.get(doc.pageId);
       const result=await this.readDocument(tab,metadata?'extract':'pdf',{signal,deadline,identity:data.identity,
@@ -939,30 +1073,28 @@ class BrowserRuntime {
     } catch(error){throw readerFailure || error;}
     finally {requestGuard?.dispose();headerGuard?.dispose();owner.validateRecovery=validateRecovery;}
   }
+  serviceContext(data) {
+    if(!data.service_id)return null;
+    const context=this.accessContexts.get(this.accessKey(data));
+    return context?.valid && !context.tab.closing && this.tabs.get(context.tab.id)===context.tab
+      && !context.tab.view.webContents.isDestroyed() ? context : null;
+  }
   pinPreparedPaperAccess(data,requiredHost=null) {
     const owner=this.operation;
-    if(!data.service_id){if(requiredHost)throw new BrowserFailure('preparation','document_changed');return ()=>{};}
-    const key=this.accessKey(data),preparation=data.preparation_key,scope=data.service_scope.scope_id,
-      service=data.service_id,page=data.target_page_id,manual=data.manually_confirmed;
-    const context=page==null?null:this.accessContexts.get(key);
+    const scope=owner.association.service_scope?.scope_id, service=owner.association.service_id;
+    const context=requiredHost?this.serviceContext(data):null;
     const verify=()=>{
       checkCanceled(owner.signal);
-      if(!this.operations.has(owner) || owner.association.service_id!==service || owner.association.service_scope?.scope_id!==scope
-        || data.service_id!==service || data.service_scope.scope_id!==scope || data.preparation_key!==preparation || data.target_page_id!==page)
+      if(!this.operations.has(owner) || (data.service_id ?? null)!==service || data.service_scope?.scope_id!==scope)
         throw new BrowserFailure('preparation','document_changed');
-      if(page==null) {
-        // This explicit host-captured manual policy has no retained target to pin;
-        // its saved authority is still checked by the task and recovery callback.
-        if(manual!==true || data.manually_confirmed!==true)throw new BrowserFailure('preparation','document_changed');
-      } else if(!Number.isSafeInteger(page) || !context?.valid || context.accessKind!=='target'
-        || this.accessContexts.get(key)!==context || context.preparationKey!==preparation
-        || context.tab.id!==page || this.tabs.get(page)!==context.tab || context.tab.closing || context.tab.view.webContents.isDestroyed())
+      if(data.service_entry?.unavailable_reason)throw new BrowserFailure('preparation','service_unavailable');
+      if(requiredHost && (!context || this.serviceContext(data)!==context
+        || requiredHost==='ebsco' && !context.ebscoEntry
+        || requiredHost!=='ebsco' && new URL(context.tab.view.webContents.getURL()).hostname!==requiredHost))
         throw new BrowserFailure('preparation','document_changed');
-      if(requiredHost && (!context || new URL(context.tab.view.webContents.getURL()).hostname!==requiredHost))throw new BrowserFailure('preparation','document_changed');
     };
     verify();
     if(context){context.pins.add(owner);context.lastUsed=Date.now();}
-    // releaseOperation retains this pin through actual temporary-page destruction.
     return verify;
   }
   documentFrame(doc,owner=this.operationContext.getStore()) {
@@ -983,25 +1115,19 @@ class BrowserRuntime {
     return current.processId===doc.processId && current.frameToken===doc.frameToken?frame:null;
   }
   documentCurrent(doc) {return !!this.documentFrame(doc);}
-  accessKey(data,kind='target') {
+  accessKey(data) {
     const scope=data.service_scope?.scope_id;
-    const identity=kind==='portal'?data.authentication_key:data.preparation_key;
-    if(!scope || typeof identity!=='string' || !/^[a-f0-9]{64}$/.test(identity)
-      || kind!=='portal' && !data.service_id)throw new BrowserFailure('preparation','document_changed');
-    return scope+':'+(kind==='portal'?'portal':data.service_id);
+    if(!/^[a-f0-9]{64}$/.test(scope) || !/^svc_[a-f0-9]{32}$/.test(data.service_id))
+      throw new BrowserFailure('preparation','document_changed');
+    return scope+':'+data.service_id;
   }
-  async replaceAccess(data,kind='target') {
-    const key=this.accessKey(data,kind);
-    const contexts=[...this.accessContexts.values()].filter(context=>kind==='portal'?context.scopeId===data.service_scope.scope_id:context.key===key);
-    if(contexts.some(context=>context.pins.size || context.loan || this.pageBusy(context.tab)))throw new BrowserFailure('navigation','navigation_active');
-    await Promise.all(contexts.map(context=>{context.valid=false;return this.closePage(context.tab,'access_replaced');}));
-  }
-  pinAccessPage(tab,data) {
-    const context=tab?.resourceOwner,owner=this.operation;
-    if(context?.kind!=='access' || !context.valid || context.accessKind!=='portal'
-      || context.scopeId!==data.service_scope?.scope_id || data.authentication_key && context.authenticationKey!==data.authentication_key)
-      throw new BrowserFailure('authentication','carsi_session_expired');
-    context.pins.add(owner);return context;
+  async replaceAccess(data) {
+    const context=this.serviceContext(data);
+    if(!context)return;
+    if(context.pins.size || context.loan || this.pageBusy(context.tab))
+      throw new BrowserFailure('navigation','navigation_active');
+    context.valid=false;
+    await this.closePage(context.tab,'access_replaced');
   }
   async evictFor(owner,count) {
     const bucket=this.pageBucket(owner);
@@ -1011,7 +1137,7 @@ class BrowserRuntime {
       const scoped=used.scoped+count>this.pageBudget.limits.service_limit;
       const context=[...this.accessContexts.values()].filter(context=>context.valid && !context.pins.size && !context.loan
         && !this.pageBusy(context.tab) && !context.tab.closing && (!scoped || context.tab.resource.bucket===bucket))
-        .sort((a,b)=>(a.accessKind==='portal')-(b.accessKind==='portal') || a.lastUsed-b.lastUsed)[0];
+        .sort((a,b)=>a.lastUsed-b.lastUsed)[0];
       if(!context)return;
       context.valid=false;await this.closePage(context.tab,'access_evicted');
     }
@@ -1030,15 +1156,14 @@ class BrowserRuntime {
       }while(this.capacityDirty && !this.destroying);
     })().finally(()=>{this.capacityWork=null;});
   }
-  retainAccessPage(tab,data,kind='target') {
-    const owner=this.operation,key=this.accessKey(data,kind);
+  retainAccessPage(tab,data) {
+    const owner=this.operation,key=this.accessKey(data);
     if(!this.ownsPage(owner,tab.id) || tab.resourceOwner!==owner || this.accessContexts.has(key)
       || data.service_scope.scope_id!==owner.association.service_scope?.scope_id
-      || kind!=='portal' && data.service_id!==owner.association.service_id)
+      || data.service_id!==owner.association.service_id)
       throw new BrowserFailure('navigation','navigation_active');
-    const context={kind:'access',key,accessKind:kind,tab,scopeId:data.service_scope.scope_id,serviceId:data.service_id || null,
-      preparationKey:data.preparation_key,authenticationKey:data.authentication_key,valid:true,pins:new Set(),loan:null,lastUsed:Date.now()};
-    if(kind==='target')context.ebscoEntry=ebscoEntry(tab.view.webContents.getURL());
+    const context={kind:'access',key,tab,scopeId:data.service_scope.scope_id,serviceId:data.service_id,
+      valid:true,pins:new Set(),loan:null,lastUsed:Date.now(),ebscoEntry:ebscoEntry(tab.view.webContents.getURL())};
     tab.resourceOwner=context;tab.resource.owner=context;this.accessContexts.set(key,context);
     return context;
   }
@@ -1059,21 +1184,30 @@ class BrowserRuntime {
     this.pageBudget.drain();this.reconsiderAdmission();return {released};
   }
   async invalidateAccess(data) {
-    const hash=value=>typeof value==='string' && /^[a-f0-9]{64}$/.test(value);
-    if(!data || !hash(data.scope_id) || !data.preparation_keys || typeof data.preparation_keys!=='object'
-      || Array.isArray(data.preparation_keys) || Object.entries(data.preparation_keys).some(([id,key])=>!/^svc_[a-f0-9]{32}$/.test(id) || !hash(key))
-      || data.authentication_key!==null && !hash(data.authentication_key))throw Error('Invalid access invalidation');
+    if(!/^[a-f0-9]{64}$/.test(data?.scope_id) || !Array.isArray(data.service_ids)
+      || data.service_ids.some(id=>!/^svc_[a-f0-9]{32}$/.test(id)))throw Error('Invalid access invalidation');
     const contexts=[...this.accessContexts.values()].filter(context=>context.scopeId===data.scope_id
-      && (data.authentication_key && context.authenticationKey===data.authentication_key
-        || context.serviceId && context.preparationKey===data.preparation_keys[context.serviceId]));
-    if(contexts.some(context=>context.pins.size || context.loan || this.pageBusy(context.tab)))throw new BrowserFailure('navigation','navigation_active');
+      && data.service_ids.includes(context.serviceId));
+    if(contexts.some(context=>context.pins.size || context.loan || this.pageBusy(context.tab)))
+      throw new BrowserFailure('navigation','navigation_active');
     await Promise.all(contexts.map(context=>{context.valid=false;return this.closePage(context.tab,'access_invalidated');}));
     return {closed:contexts.length};
   }
-  async invalidateAllAccess() {
-    const contexts=[...this.accessContexts.values()];
-    if(contexts.some(context=>context.pins.size || context.loan || this.pageBusy(context.tab)))throw new BrowserFailure('navigation','navigation_active');
-    await Promise.all(contexts.map(context=>{context.valid=false;if(context.tab.authContext)context.tab.authContext.active=false;return this.closePage(context.tab,'credentials_changed');}));
+  async resetSession() {
+    this.resetting=true;
+    try {
+      if(this.operations.size)throw new BrowserFailure('navigation','navigation_active');
+      await Promise.all([...this.tabs.values()].map(tab=>this.closePage(tab,'session_reset')));
+      await Promise.all([...this.failedCreations,...this.closedPages]);
+      await this.sessionEvents.waitForDownloads();
+      await this.partition.closeAllConnections();
+      await this.partition.clearData();
+      await this.partition.clearAuthCache();
+      this.carsiVisitOrigins.clear();
+      return {ok:true};
+    } finally {
+      this.resetting=false;
+    }
   }
   updatePageLimits(limits) {return this.pageBudget.update(limits);}
   pageBucket(owner) {
@@ -1082,7 +1216,7 @@ class BrowserRuntime {
   }
   async newTaskPage({signal=this.operation?.signal,deadline=Infinity,...options}={}) {
     const owner=this.operation;
-    const validate=()=>{checkCanceled(signal);if(this.destroying || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');};
+    const validate=()=>{checkCanceled(signal);if(this.destroying || this.resetting || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');};
     await waitFor(()=>this.ready,signal,deadline);validate();
     if(!this.reservedTicket(owner))await this.evictFor(owner,1);
     const ticket=this.reservedTicket(owner) || await this.pageBudget.acquire(owner,this.pageBucket(owner),{signal,deadline,validate});
@@ -1092,7 +1226,7 @@ class BrowserRuntime {
   reservedTicket(owner) {return owner && [...(owner.pageTickets || [])].find(ticket=>!ticket.revoked && ticket.remaining>0);}
   async reserveTaskPages(count,{signal=this.operation?.signal,deadline=Infinity}={}) {
     const owner=this.operation;
-    const validate=()=>{checkCanceled(signal);if(this.destroying || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');};
+    const validate=()=>{checkCanceled(signal);if(this.destroying || this.resetting || !this.operations.has(owner))throw new BrowserFailure('navigation','canceled');};
     validate();
     await this.evictFor(owner,count);validate();
     const ticket=await this.pageBudget.acquire(owner,this.pageBucket(owner),{count,signal,deadline,validate});
@@ -1104,11 +1238,12 @@ class BrowserRuntime {
   }
   async closePage(tab,reason='task_complete') {
     if(tab.closing)return tab.closing;
+    if(tab.destroyedCleanup)return tab.destroyedCleanup;
     const contents=tab.view.webContents;
     const challengeCleanup=tab.challenge?.close();
     tab.closing=(async()=>{
       await Promise.all([this.sessionEvents.waitForDownloads(contents),challengeCleanup]);
-      if(contents.isDestroyed())return;
+      if(contents.isDestroyed()){await tab.destroyedCleanup;return;}
       const destroyed=new Promise(resolve=>contents.once('destroyed',resolve));
       tab.closeReason=reason;this.cleanupStep(()=>this.reportPage('info','page_close_requested',tab,{reason}),tab.taskOwner);
       contents.close({waitForBeforeUnload:false});await destroyed;await tab.destroyedCleanup;
@@ -1120,10 +1255,11 @@ class BrowserRuntime {
     this.cleanupStep(()=>owner.navigationAbort?.abort(),owner);
     this.cleanupStep(()=>this.pageBudget.releaseUnused(owner),owner);
     owner.cleanup=(async()=>{
+      this.endAuthentication(owner.authContext);
       const temporary=[];
       for(const tab of this.tabs.values()) {
         if(tab.navigation.current?.owner===owner)this.cleanupStep(()=>tab.navigation.finish(),owner);
-        if(tab.authContext?.owner===owner)tab.authContext.active=false;
+        if(tab.authContext?.owner===owner)tab.authContext=null;
         if(tab.associationOwner===owner) {this.cleanupStep(()=>this.reportPage('info','page_association_released',tab),owner);tab.associationOwner=null;}
         const unsafeSource=tab.taskOwner===owner && this.sessionEvents.downloadSourceUnsafe(tab.view.webContents);
         if(tab.resourceOwner===owner || unsafeSource) {
@@ -1166,7 +1302,7 @@ class BrowserRuntime {
       await Promise.all([...this.operations].map(owner=>this.releaseOperation(owner)));
       for(const context of this.accessContexts.values()){context.valid=false;context.loan=null;context.pins.clear();}
       await Promise.all([...this.tabs.values()].map(tab=>this.closePage(tab,'app_exit')));
-      await Promise.all(this.failedCreations);
+      await Promise.all([...this.failedCreations,...this.closedPages]);
       await this.sessionEvents.waitForDownloads();
       await this.ready.catch(()=>{});
       this.presentation.dispose();this.selected=null;

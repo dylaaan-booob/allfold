@@ -66,7 +66,7 @@ def test_public_download_keeps_stable_cache_after_optional_refresh_without_prepa
         assert bridge.dispatched.wait(2)
         task = app.state.workspace_tasks.current()._reservations[paper.id]
         data = bridge.calls[-1][1]
-        assert data['url'] == stable and 'service_id' not in data and 'preparation_key' not in data
+        assert data['url'] == stable and 'service_id' not in data
         (workspace/data['output']['temporary']).write_bytes(b'%PDF-stable')
         bridge.future.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
             output_file=data['output']['file'], size_bytes=11, final_url=stable))
@@ -143,7 +143,7 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
                     self.started.set()
                     return self.first
                 if data['url'] == oa:
-                    assert 'service_id' not in data and 'preparation_key' not in data
+                    assert 'service_id' not in data
                     (Path(data['workspace_root'])/data['output']['temporary']).write_bytes(b'OA body')
                     result.set_result(dict(kind='pdf', outcome='stream_complete', pdf_type=True, transfer_complete=True,
                         size_bytes=7, output_file=data['output']['file'], final_url=oa))
@@ -208,9 +208,9 @@ def test_public_lww_empty_viewer_uses_only_its_captured_oce_capability(tmp_path,
         for _, data in body_calls:
             bound = data.get('reader_access_only') or data.get('reader', {}).get('platform') == 'oce' or data.get('url') == pdf
             if bound:
-                assert data['service_id'] == service.id and data['target_page_id'] == 17
+                assert data['service_id'] == service.id
             else:
-                assert 'service_id' not in data and 'preparation_key' not in data
+                assert 'service_id' not in data
         assert task.service_id is None and task.access_operation is None and not task.authority.native_access().payload()
         saved = read_paper(workspace, paper.id)
         assert saved.metadata == paper.metadata and saved.collection_status == 'not_started'

@@ -201,13 +201,12 @@ The payload carries the existing workflow/task/Paper association,
 the SQLite Workspace UUID), `identity:{doi?,confirmed_article_url?}`, a strictly
 boolean `wantAbstract`, and absolute integer `deadline_ms`. It currently opens/recovers
 through `openPaperPage` and uses the owning operation's recovery-authority callback.
-It does not borrow a foreground Run snapshot. A Service call additionally carries the captured
-`service_scope`, `service_id`, `preparation_key` and `target_page_id`. A retained
-target must match the actual native access context/key/Page; it is pinned through
-actual work-page cleanup without being navigated or closed. A captured explicitly
-manual preparation with no target instead requires `manually_confirmed:true` and
-the same captured key; Python's task authority and recovery check retain that
-policy. No Service fields are needed for public access.
+A Service call carries `service_scope`, the saved `service_id` and the current
+entry parameters. Ordinary extraction can acquire its own article page in the
+shared Session. A recognized authentication barrier can prepare that Service
+once and continue the original Paper within its remaining deadline. EBSCO
+record operations and the OCE Reader still verify their live platform context
+when they use it. Public access sends only Paper and operation authority.
 
 The runtime action is `extract` with exactly `{wantAbstract:boolean}`. Other args,
 unknown actions and non-booleans fail before dispatch; the sandboxed preload
@@ -306,7 +305,7 @@ The same internal `extract_paper_pdf_clues` action accepts the fixed
 `reader_access_only: true` mode instead of a reader. It returns
 `{outcome:"retrieved", reader_access:{oce:boolean}}`, without opening a page,
 reading content or exporting a URL, handle or secret. The bit describes only the
-captured Service/key/retained target's actual `oce.ovid.com` Host; a CARSI entry
+captured Service's retained target's actual `oce.ovid.com` host; a CARSI entry
 URL or Service name is not the decision. It is operation-local and grants no
 authority by itself. An OCE read subsequently requires that same live prepared
 target again, the original Paper binding and a qualified AN. Only the fixed
@@ -314,7 +313,9 @@ target again, the original Paper binding and a qualified AN. Only the fixed
 `/pdfviewer/web/viewer.html?file=...` carrier are accepted; the file value must
 point to `assets.ovid.com` and retains its complete signature. An empty LWW
 viewer can reach this conditional alternative, keeping its original discovery
-phase and recording a fallback. Missing OCE access skips it. The OCE reader itself does not bootstrap access or receive PDF bytes.
+phase and recording a fallback. Missing OCE access skips it. If the qualified
+Reader GET encounters an authentication block, its owned page settles before
+reopening the same CARSI Service and retrying that GET within the attempt.
 
 ### Shared extraction scope
 

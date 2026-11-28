@@ -129,6 +129,19 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
       const buttons=positive(scope(password),loginPattern);
       if(users.length!==1 || buttons.length!==1)return {step:'manual',waiting:true,...unacted};
       username=users[0];target=buttons[0];step='login';
+      if(institution) {
+        const form=password.form;
+        if(!form || username.form!==form || !usable(target))return {step:'manual',waiting:true,...unacted};
+        // CAS uses a link to invoke the school's own password submission script.
+        const xmuSubmitLink=target.tagName==='A' && url.origin==='https://ids.xmu.edu.cn'
+          && form.id==='pwdFromId' && target.id==='login_submit' && target.closest('form')===form
+          && /^javascript:\s*void\s*\(\s*0\s*\)\s*;?$/i.test(target.getAttribute('href') ?? '');
+        if(target.tagName==='A'?!xmuSubmitLink:target.form!==form)return {step:'manual',waiting:true,...unacted};
+        const actionURL=new URL(target.hasAttribute('formaction')?target.formAction:form.action,document.baseURI);
+        if(url.protocol!=='https:' || actionURL.origin!==url.origin || actionURL.username || actionURL.password
+          || (target.hasAttribute('formmethod')?target.formMethod:form.method).toLowerCase()!=='post')
+          return {step:'manual',waiting:true,...unacted};
+      }
     } else {
       const switches=controls.filter(node=>/密码登录|密码登陆|账号登录|帐号登录|账户登录|账号密码|password\s+(?:login|sign.in)|(?:use|sign.in.with).{0,15}password/i.test(caption(node))
         && (institution || /登录|登陆|sign\s*in|log\s*in/i.test(heading(scope(node)))));
@@ -142,7 +155,9 @@ function institutionAuthPage(action='inspect',credentials=null,expectedStep=null
     }
     const state={step,waiting:step!=='none'};
     if(action!=='act')return state;
-    if(!institution || step==='none' || step!==expectedStep)return {...state,acted:false};
+    const consent=step==='terms' || step==='release';
+    if(step==='none' || step!==expectedStep || (consent?mode!=='confirmation':!institution))
+      return {...state,acted:false};
     if(!visible(target))return {step:'manual',waiting:true,acted:false};
     if(step==='login') {
       if(!credentials)return {...state,acted:false};

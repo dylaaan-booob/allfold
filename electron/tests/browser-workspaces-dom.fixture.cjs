@@ -7,7 +7,7 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'allfold-browser-workspaces-'));
 app.setPath('userData',temp);app.setPath('sessionData',temp);app.commandLine.appendSwitch('disable-background-networking');app.commandLine.appendSwitch('force-prefers-reduced-motion','reduce');
 app.on('window-all-closed',()=>{}); // Cleanup owns the explicit success/failure exit code.
 const ui=path.resolve(__dirname,'../../src/allfold/web/static/ui_next'),serviceId='svc_'+'a'.repeat(32),scope={scope_id:'a'.repeat(64),config_revision:'b'.repeat(64),user_state_revision:'c'.repeat(64)};
-const services=[{id:serviceId,name:'Synthetic Service A',access_method:'manual',access_url:''}];
+const services=[{id:serviceId,name:'Synthetic Service A',access_method:'carsi',access_url:''}];
 const journals=[{name:'Synthetic Journal',issn:'0000-0001',group:'Synthetic Group',labels:'',access_service_id:serviceId}];
 const cover_search={phase:'Idle',busy:false,supported:false};
 const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
@@ -20,7 +20,7 @@ const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_work
 const paper={id:'paper-1',title:'Synthetic downloaded paper',doi:'10.5555/presentation',publication_date:'2026-10-01',status:'downloaded',metadata_present:true,excluded:false,identities:[],ordinary_dates:[],preprints:[],abstract:'Synthetic fixture only',authors:[]};
 const record={key:'0000-0001',...journals[0],labels:[],papers:[]};
 const workspace={workspace_id:'fixture-library',revision:0,initialized:true,csrf_token:'fixture',issues:[],counts:{candidates:0,active_journals:1},subjects:[{name:'Synthetic Group',journals:[record]}],trash:{papers:[]},downloaded:{papers:[{paper,journal:record}],journals:[record],services,settings:{},titles:{'paper-1':paper.title}}};
-let loginState={active:false,phase:'idle',scope,carsi:{status:'Not prepared'},services:services.map(service=>({...service,preparation:{status:'Not prepared'}}))};
+let loginState={active:false,phase:'idle',scope,services:services.map(service=>({...service,preparation:{status:'Not prepared'}}))};
 let runActive=false;
 const runData=()=>({active:runActive,snapshot:{status:runActive?'RUNNING':'IDLE',provider:'integrated',task_id:'run-a',browser_active:runActive,waiting_for_user:runActive},progress:{stage_label:'Waiting for synthetic challenge',elapsed_text:'2s',announcement_message:'Local fixture only'},providers:Object.fromEntries(['integrated','wos'].map(id=>[id,{enabled:true,message:'',snapshot:{status:id==='wos'&&runActive?'RUNNING':'IDLE'},result_summary:null}]))});
 const requests=[],workspaceReads={started:0,inFlight:0,lastCandidateIds:[]};
@@ -32,9 +32,15 @@ const server=http.createServer(async(req,res)=>{
   if(route==='/background-layout'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<iframe style="width:100%;border:0" src="/checkbox-frame"></iframe>');return;}
   if(route==='/checkbox-frame'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<input type="checkbox">');return;}
   if(route.startsWith('/api/')||route==='/settings/covers/search'){
-    let body='';for await(const chunk of req)body+=chunk;requests.push({route,body:body?JSON.parse(body):null});
-    if(route==='/api/login/start')loginState={...loginState,phase:'completed',confirmation_workflow_id:'login-a',
-      services:services.map(service=>({...service,preparation:{status:'Needs attention',reason:'manual_action_required'}}))};
+    let body='';for await(const chunk of req)body+=chunk;
+    const submitted=body?JSON.parse(body):null;requests.push({route,body:submitted});
+    if(route==='/api/login/start'){
+      const workflow_id='login-a', selected=new Set(submitted.service_ids || [submitted.service_id]);
+      loginState={...loginState,phase:'completed',workflow_id,
+        services:loginState.services.map(service=>selected.has(service.id)
+          ? {...service,preparation:{status:'Needs attention',workflow_id,reason:'first_service_incomplete'}}
+          : service)};
+    }
     const data=route.startsWith('/api/login/')?loginState:route==='/api/ui-next/workspace'?workspace:route==='/api/ui-next/settings'?settings:
       route==='/api/ui-next/browser-services'?{scope,services}:route.startsWith('/api/ui-next/run')&&!route.endsWith('expression')?runData():
       route==='/api/ui-next/run-expression'?{providers:Object.fromEntries([...settings.values.provider_order,'integrated'].map(id=>[id,{expression:'causal',error:null}]))}:
@@ -93,7 +99,7 @@ app.whenReady().then(async()=>{
     await ready(()=>host(`document.activeElement.dataset.serviceId===${JSON.stringify(serviceId)}`),'Service result focuses its Login row');
     await click(win.webContents,'#login-start');
     await ready(()=>host("document.getElementById('login-services').textContent.includes('Needs attention')"),'Login presents the Service result');
-    assert(await host("!document.getElementById('login-confirm').hidden && !document.querySelector('#login-services [data-login-action=page]')"),'Login exposes one batch confirmation');
+    assert(await host("!!document.querySelector('#login-services input[type=checkbox]')"),'Login exposes selection for Prepare');
     assert(requests.filter(request=>request.route==='/api/login/start').length===1,'Login did not submit one explicit task');
     await search('Synthetic downloaded paper');await key(win.webContents,'Enter');
     await ready(()=>host("workspaceNavigation.current()==='workspace'&&document.getElementById('view-paper-title').textContent==='Synthetic downloaded paper'"),'paper search opens Reader');

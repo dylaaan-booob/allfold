@@ -144,7 +144,7 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
     from allfold.config import AccessService
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.login import ServicePreparation
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.providers.integrated import DiscoveryClient
     from allfold.web.electron_bridge import ElectronDisconnected
@@ -159,13 +159,13 @@ def test_selected_native_disconnect_revokes_http_but_waits_native_settlement(tmp
             return 71
 
         def prepared_authority(self, saved, service_id):
-            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
+            return ServicePreparation(status='Opened', page_id=self.prepared_page(saved, service_id))
 
     query_started, disconnected=Event(),Event()
     class Bridge:
         connected=True
         pending=Future()
-        def execute(self,action,data,progress=None):
+        def execute(self,action,data,progress=None,**kwargs):
             if action == 'release_workflow_pages':
                 done = Future(); done.set_result({'ok': True}); return done
             assert action=='wos_query'
@@ -208,7 +208,7 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
     from allfold.config import AccessService
     from allfold.persistence.user_state import load_user_state, compare_write_user_state
     from allfold.application.browser_runtime import BrowserTaskLock
-    from allfold.application.coordinators.login import PreparedService
+    from allfold.application.coordinators.login import ServicePreparation
     from allfold.application.coordinators.wos_coordinator import WoSCoordinator
     from allfold.application.coordinators.run_coordinator import RunCoordinator
     from allfold.providers.integrated import DiscoveryClient
@@ -226,13 +226,13 @@ def test_work_guard_settles_native_before_parent_cancel_or_authority_error(tmp_p
             return 71
 
         def prepared_authority(self, saved, service_id):
-            return PreparedService(self.prepared_page(saved, service_id), 'd' * 64)
+            return ServicePreparation(status='Opened', page_id=self.prepared_page(saved, service_id))
 
     query_started, revoked, guard_entered = Event(), Event(), Event()
     class Bridge:
         connected = True
         pending = Future()
-        def execute(self, action, data, progress=None):
+        def execute(self, action, data, progress=None, **kwargs):
             if action == 'release_workflow_pages':
                 done = Future(); done.set_result({'ok': True}); return done
             assert action == 'wos_query'

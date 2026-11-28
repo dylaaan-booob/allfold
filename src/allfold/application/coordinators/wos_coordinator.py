@@ -23,6 +23,7 @@ from allfold.application.runtime_metadata import metadata_directory
 from allfold.application.browser_services import BrowserServiceSnapshot
 from allfold.config import ConfigurationError, load_config
 from allfold.persistence.user_state import load_user_state
+from allfold.application.carsi_entry import service_entry
 from allfold.persistence.journal_registry import local_candidates
 from allfold.date_range import resolve_date_range
 from allfold.persistence.safe_write import CompareReadError, ContentChangedError, read_text_exact, workspace_text_directory
@@ -97,7 +98,7 @@ class WoSCoordinator:
                 enabled = self._browser_available()
                 if not enabled:
                     message = 'Browser runtime unavailable'
-                elif self.login.prepared_authority(saved, service.id) is None:
+                elif service.access_method == 'manual' and self.login.prepared_authority(saved, service.id) is None:
                     enabled = False
                     message = 'Prepare Web of Science in Workflows → Login'
             except (ValueError, OSError, ContentChangedError) as error:
@@ -175,21 +176,19 @@ class WoSCoordinator:
                 not_listed = []
                 warnings.append(f'无法核对本地 WoS 来源清单；仍使用保存的标识检索：{error}')
             prepared = self.login.prepared_authority(saved, service.id)
-            if prepared is None:
-                raise ValueError('Prepare Web of Science in Workflows → Login')
+            if service.access_method == 'manual' and prepared is None:
+                raise ValueError('Open the Manual Web of Science Service with Visit')
+            entry = service_entry(self.path, service, saved.institution)
+            if entry and entry.get('unavailable_reason'):
+                raise ValueError(entry['unavailable_reason'])
             if parent_snapshot is None and not self.run_slot.acquire(blocking=False):
                 raise ValueError('Another Run is already active')
             owner = self.browser_lock.acquire('wos', scopes={saved.service_scope(service.id)}, shared=True,
-                pages={prepared.page_id} if prepared.page_id is not None else ())
+                pages={prepared.page_id} if prepared and prepared.page_id is not None else ())
             if owner is None:
                 if parent_snapshot is None:
                     self.run_slot.release()
                 raise ValueError('Another browser workflow is active')
-            if self.login.prepared_authority(saved, service.id) != prepared:
-                self.browser_lock.release(owner)
-                if parent_snapshot is None:
-                    self.run_slot.release()
-                raise ValueError('Prepare Web of Science in Workflows → Login')
             own_snapshot = None
             try:
                 if parent_snapshot is None:
@@ -205,12 +204,11 @@ class WoSCoordinator:
                 raise
             if own_snapshot is not None:
                 workspace_identity = own_snapshot.workspace_identity
-            page = prepared.page_id
+            page = prepared.page_id if prepared else None
             task = dict(id=workflow_id or secrets.token_hex(16), owner=owner, config=config,
                 parent_snapshot=parent_snapshot, own_snapshot=own_snapshot, progress_callback=progress_callback, records_callback=records_callback, evidence=[],
                 compiled=compiled, service=service, dates=dates,
-                service_scope=saved.scope, preparation_key=prepared.key, manually_confirmed=prepared.manually_confirmed,
-                saved=saved, prepared=prepared,
+                service_scope=saved.scope, service_entry=entry, saved=saved,
                 workspace_identity=workspace_identity, status='RUNNING', stage='WoS Query',
                 message='Using prepared WoS page' if page is not None else 'Opening WoS in the shared Browser session',
                 started_at=datetime.now(timezone.utc).isoformat(), started_clock=time.monotonic(),
@@ -276,8 +274,7 @@ class WoSCoordinator:
                 pass
         if workspace_checked and snapshot:
             snapshot.verify_configuration()
-        if self.login.prepared_authority(task['saved'], task['service'].id) != task['prepared']:
-            raise ContentChangedError('Prepared WoS access context changed during Run WoS')
+        task['saved'].verify((task['service'].id,))
         path = task['config'].output_dir
         if task['workspace_identity'] is not None:
             info = path.lstat()
@@ -358,8 +355,8 @@ class WoSCoordinator:
             self.browser_lock.require(task['owner'])
             pending = self.bridge.execute(action, {**data, 'task_id': task['id'], 'workflow_id':task['id'],
                 'service_id': task['service'].id, 'service_scope': task['service_scope'],
-                'preparation_key': task['preparation_key']},
-                lambda value: self._electron_progress(task, value))
+                'service_entry': task['service_entry']},
+                lambda value: self._electron_progress(task, value), verify_recovery=lambda: self._assert_current(task))
         result = pending.result()
         if result.get('recovery'):
             task['recovery'] = merge_recovery(task.get('recovery'), result['recovery'])
@@ -416,16 +413,13 @@ class WoSCoordinator:
                 self._current(task)
                 if task['cancelled'].is_set():
                     raise InterruptedError()
-            page = task['page_id']
             task.update(stage='WoS Query', waiting_for_user=False)
             self._publish_progress(task)
-            query = self._electron_call(task, 'wos_query', {'page_id': page, 'query': task['query']['text'],
-                'manually_confirmed': task['manually_confirmed']})
+            query = self._electron_call(task, 'wos_query', {'query': task['query']['text']})
             total, result_page = query.get('total'), query.get('page_id')
-            if (type(total) is not int or total < 0 or type(result_page) is not int or result_page <= 0
-                    or (not task['manually_confirmed'] and result_page != page)):
+            if type(total) is not int or total < 0 or type(result_page) is not int or result_page <= 0:
                 raise ValueError('Unattributable WoS search result')
-            page = result_page
+            page = task['page_id'] = result_page
             task['query']['total'] = total
             task['query']['finished'] = total == 0
             limit = query.get('batch_limit')
@@ -448,6 +442,10 @@ class WoSCoordinator:
                         first=first, last=last, download_root=str(root), filename=str(filename)))
                     if result.get('filename') != str(filename):
                         raise ValueError('Export path did not match the issued batch')
+                    page = result.get('page_id')
+                    if type(page) is not int or page <= 0:
+                        raise ValueError('Unattributable WoS export')
+                    task['page_id'] = page
                     task['download_root'] = root
                     previous = len(task['evidence'])
                     batch['issues'] = self._consume_export(task, batch, str(filename))

@@ -42,11 +42,11 @@ def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change
     config.write_text(config.read_text() + 'institution:\n  name: Test University\n')
     bridge, lock = PendingBridge(), BrowserTaskLock()
     login = LoginCoordinator(bridge, lock)
-    login.start(config)
+    login.start(config, service_ids=(service.id,))
     assert bridge.dispatched.wait(2)
     action, request = bridge.calls[0]
-    assert action == 'login_carsi'
-    assert request['service_id'] is None
+    assert action == 'prepare_service'
+    assert request['service_id'] == service.id
     assert request['service_scope'] == BrowserServiceSnapshot.read(config).scope
     if change == 'institution':
         config.write_text(config.read_text().replace('Test University', 'Other University'))
@@ -54,7 +54,7 @@ def test_login_never_admits_preparation_under_stale_saved_scope(tmp_path, change
         saved = load_user_state(config)
         compare_write_user_state(config, replace(saved.state,
             access_services=(service.model_copy(update={'access_url': 'https://changed.example/'}),)), saved.revision)
-    bridge.future.set_result({'outcome': 'Opened', 'portal_page_id': 7})
+    bridge.future.set_result({'outcome': 'Opened', 'target_page_id': 7})
     login.join()
     saved = BrowserServiceSnapshot.read(config)
     assert login.snapshot(saved)['phase'] == 'failed'
@@ -71,7 +71,10 @@ def test_independent_browser_owners_share_admission_but_service_and_controls_rem
     wos = lock.acquire('wos', scopes={'service:scope:wos'})
     assert login and covers and wos
     assert lock.acquire('login', scopes={'service:scope:wos'}) is None
-    assert lock.acquire('credentials') is None
+    credentials = lock.reserve_control('credentials', scopes={'authentication:scope'})
+    assert credentials is not None
+    assert lock.reserve_control('browser-session-reset') is None
+    lock.release_control(credentials)
     lock.release(covers)
     lock.require(login)
     lock.require(wos)
@@ -148,7 +151,10 @@ def test_service_data_owners_share_authority_but_keep_control_and_page_exclusivi
     assert first and second
     assert lock.acquire('login', scopes=scope) is None
     assert lock.acquire('access-cleanup', scopes=scope) is None
-    assert lock.acquire('credentials') is None
+    credentials = lock.reserve_control('credentials', scopes={'authentication:scope'})
+    assert credentials is not None
+    assert lock.reserve_control('browser-session-reset') is None
+    lock.release_control(credentials)
     assert lock.acquire('collection', scopes={'service:scope:other'}, shared=True, pages={101}) is None
     assert lock.conflicts(scope)
     lock.release(first)

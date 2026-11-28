@@ -10,9 +10,15 @@ npm --prefix electron run setup
 
 Setup checks tools, creates `config.example.yaml` only if absent, installs locked Python/Electron/build dependencies, explicitly installs the Electron binary and builds the UI. Existing ignored vendor/Runtime directories are untouched. Translation-only assembly and Local API saving are retired; remaining Browser/Document/Prepare/Cloudflare helpers have no generated Runtime dependency.
 
-Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution and Service preparation concurrency. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
+Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution settings and Service selection. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
-Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests. Do not launch tests against personal YAML, Workspace, covers or Zotero.
+Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests.
+The shipped `src/allfold/application/carsi_defaults.json` initializes or updates
+the existing CARSI catalog snapshot with 180 WAYFless entries, 181 Portal defaults
+and one unavailable product. To regenerate the seed from the reviewed
+handoff, run `uv run --locked python tools/import_carsi_defaults.py HANDOFF src/allfold/application/carsi_defaults.json`.
+The converter resolves source references during import. Prepare and recovery
+read the SQLite snapshot. Do not launch tests against personal YAML, Workspace, covers or Zotero.
 
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
@@ -39,10 +45,9 @@ Pass an absolute `--config` path. The example expands `$PWD` from the project ro
 
 Normal exit stops admission and waits for foreground Run, Workspace branches
 and native operations to settle. Main then closes the Browser pages and drains
-the shared Session's work. Restart fails
-interrupted attempts without replaying the queue or opening pages. The new
-Browser Session starts with fresh site state and reclaims retired storage as
-described in [Shared Browser Session](browser-session.md).
+the shared Session's work. Restart fails interrupted attempts without replaying
+the queue or opening old pages. Chromium reopens the stable business Session.
+See [Shared Browser Session](browser-session.md).
 
 ### Isolated source-startup smoke
 
@@ -204,6 +209,33 @@ Synthetic fixtures cover recovery paths when real services do not reproduce them
 Python HTTPX callers share the [HTTP client and proxy layer](http.md). Its focused
 tests cover isolated request routing, TLS, transport lifecycle and cache failures;
 Chromium authentication remains a separate manual acceptance boundary.
+
+### CARSI Browser and Prepare acceptance
+
+On 2026-11-27 and 2026-11-28, PR #142 was exercised through the Allfold source
+Electron app with a rebuilt UI, a disposable configuration, a separate Browser
+profile and a seeded test Workspace.
+
+| Check | Observed result |
+| --- | --- |
+| Selected Prepare batch | First waited at the fixture verification page while Second and Third remained unstarted. After completing verification, all three opened. The Login header reported `0 / 3` and then `3 / 3`, scoped to the selected workflow. |
+| Public WAYFless entry | Web of Science reached the Xiamen University sign-in page. EBSCO stayed unstarted while it waited. Cancel settled the batch. |
+| WoS default WAYFless sign-in | With only Web of Science selected, Allfold used the default SQLite template and reused the existing Xiamen University sign-in. The native navigation reached Web of Science Basic Search and Prepare reported `Opened` (1 / 1). |
+| Public Portal entry | Karger reached the Xiamen University sign-in page from CARSI Portal. Login reported the manual step and Cancel settled the task. |
+| EBSCO Portal sign-in | A disposable Portal route override exercised the PR #141 entry. Allfold upgraded the HTTP XMU CAS entry to HTTPS, submitted the password form, and automatically confirmed the recognized privacy terms and attribute release. Prepare reported `Opened` at EBSCOhost. Both `-100` events came from image requests. |
+| Manual Visit and restart | Explicit Visit opened the fixture page. After normal quit and restart, the old page was absent and the fixture still read its persistent Cookie and site storage. |
+| Browser Session Reset | The Settings action canceled a Prepare waiting for verification and closed the old Browser pages. The fixture then read empty Cookie and site storage. The seeded Paper-to-PDF association, PDF bytes, configuration and application databases survived. |
+| Multi-school compatibility | Deferred for this acceptance. |
+| Live authorization | MFA, first-time binding and subscription entitlements remain manual checks. |
+
+Before the navigation fix, the CAS page updated its address within the same
+document before load finished. Allfold compared the completed load with the
+original address and timed out. Load completion now follows the committed
+document address. Network failures still use the matching request URL and ID.
+
+The public entries used the system network configuration. The local fixture was
+retested with direct networking after the system proxy returned HTTP 502 for its
+reserved test hostname.
 
 ## Troubleshooting
 
