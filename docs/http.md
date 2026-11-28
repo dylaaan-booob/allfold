@@ -64,8 +64,8 @@ data sources, accounts or Zotero Library are contacted.
 This layer applies only to Python. Electron/Chromium has its own Session and
 network stack. CARSI first login, SP Cookie expiry and WoS authentication remain
 separate manual compatibility checks; this fix makes no claim about their IPv4/
-IPv6 behavior. With user authorization, manually check real catalog/GOKB fetches
-under the user's proxy and IPv6 CIDRs, direct access where reachable, and record
+IPv6 behavior. With user authorization, manually check GOKB queries under the
+user's proxy and IPv6 CIDRs, direct access where reachable, and record
 any Chromium CARSI session failure separately. No particular proxy product or
 global IPv6 setting is a prerequisite.
 

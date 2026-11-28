@@ -6,21 +6,27 @@ Each configuration keeps its own followed Journals, order, Groups, Labels, Acces
 
 Choose **Import Research Scope**, select a UTF-8 Markdown file, review its Preview, then explicitly confirm the rows to add. Names are looked up in the local Registry first, with OpenAlex as a fallback. ISSN/eISSN values are checksum-validated and take precedence over names. Source records that share identifiers can contribute evidence to the same candidate. If identity remains ambiguous, choose a candidate; a row without a valid identifier stays in Preview rather than becoming a saved Journal.
 
-Existing Journals are skipped by default, including their Group, Labels and default Service. New registry entries and Journals retain their source order after existing entries. Preview identifies duplicates, identity conflicts, verified Services, Services requiring attention, pending Resolver queries and Unresolved rows. Resolve unsaved Settings before confirmation; stale revisions require a fresh Preview.
+Existing Journals are skipped by default, including their Group, Labels and default Service. New registry entries and Journals retain their source order after existing entries. Preview identifies duplicates, identity conflicts, verified Services, Services requiring attention, GOKB outcomes and Unresolved rows. Resolve unsaved Settings before confirmation; stale revisions require a fresh Preview.
 
 ## Choose a Service
 
-CARSI Service names must match the official Catalog's `production` exactly. A shared file's `svc_...` identifiers are local to its author and are never treated as portable identities. Import reuses the receiving configuration's matching Service or creates a new local identity. An explicit Journal → CARSI choice, such as INFORMS Journal on Computing → EBSCO, does not require GOKB to prove that access relationship.
+CARSI Service names must match the bundled CARSI catalog's `production` exactly. A shared file's `svc_...` identifiers are local to its author and are never treated as portable identities. Import reuses the receiving configuration's matching Service or creates a new local identity. An explicit Journal → CARSI choice, such as INFORMS Journal on Computing → EBSCO, does not require GOKB to prove that access relationship.
 
 Manual Services use a user-supplied public HTTP(S) URL and do not enter automatic CARSI authentication. Missing or invalid URLs require attention; Allfold does not invent an institutional login URL. A Journal may remain Unresolved.
 
-For Journals without a supplied valid Service, the Import Preview offers optional GOKB resolution. It follows all Current TIPP pages and retains the associated Journal UUIDs, Platforms, Packages and candidate products. Multiple GOKB identities or CARSI products remain visible for a Journal-level choice. A unique reliable candidate may fill an empty default. Neither refresh nor an imported choice overwrites an existing default, and a Journal-level choice never becomes an application-wide Platform rule.
+For Journals without a supplied valid Service, the Import Preview offers optional GOKB resolution. It follows all Current TIPP pages and retains the associated Journal UUIDs, Platforms, Packages and candidate products. Multiple GOKB identities or CARSI products remain visible for a Journal-level choice. A unique reliable candidate may fill an empty default. Existing Journal associations and explicit choices take precedence. Confirm saves the verified Preview.
 
-GOKB and the CARSI Catalog use shared local caches; explicit refresh replaces a snapshot only after successful validation. Failed refresh retains the last valid data and reports failure separately from a confirmed empty GOKB result. Ordinary Run uses saved Journal identifiers without contacting GOKB. Its later identity and date completion applies only to discovered new Papers and does not extend the journal or date scope. See [Run Provider roles](providers.md). Candidate evidence does not establish institutional entitlement, a successful login or PDF availability.
+In a saved Journal's Service dialog, **Discover GOKB** queries current evidence.
+A unique reliable candidate is selected in the CARSI picker. Save it with
+**Save CARSI**, or choose another product. A failed query reports an error
+distinct from an empty result, and the picker remains available.
+Ordinary Run uses saved Journal identifiers. Candidate evidence describes a
+resource match. Actual access is checked by the publisher when used.
+[Run Provider roles](providers.md) · [GOKB contract](gokb-api.md)
 
 ## Export, backup and migration
 
-**Export User Data** generates Markdown from the current configuration's saved SQLite scope. It includes all Journals, their order, Groups, Labels, Services and assignments, including independent Services such as Web of Science. It excludes credentials, institution passwords, API keys, sessions, Workspace papers, Zotero data, Registry and external caches.
+**Export User Data** generates Markdown from the current configuration's saved SQLite scope. It includes all Journals, their order, Groups, Labels, Services and assignments, including independent Services such as Web of Science. It excludes credentials, institution passwords, API keys, sessions, Workspace papers, Zotero data, and Registry data.
 
 For backup at the same configuration paths, preserve the private `.allfold/` directory along with YAML and other user data. For transfer to another location or configuration, export and import Markdown. Renaming a configuration changes its canonical scope identity.
 
@@ -48,7 +54,7 @@ For identifiers, assignments or a supplied Service, use a table. Column order is
 | Annals of Applied Statistics | 1932-6157 | Statistics | Follow | Project Euclid | manual | https://projecteuclid.org/ |
 ```
 
-A supplied CARSI production must match the official Catalog exactly. An existing CARSI Service for that production is reused with its local ID and settings preserved. A new Service uses the official URL; an imported CARSI URL is never trusted. `manual` requires the supplied public HTTP(S) URL, and a same-name local Manual Service with different settings remains a conflict. A blank Service means Unresolved unless the user opts into GOKB and a unique reliable candidate is found. Choosing Unresolved explicitly in Preview keeps it unresolved. A valid supplied Service skips GOKB even when the query option is enabled. Service choices are configuration-local preferences, not proof of access or entitlement.
+A supplied CARSI production must match the bundled CARSI catalog exactly. An existing CARSI Service for that production is reused with its local ID and settings preserved. A new Service uses the official URL; an imported CARSI URL is never trusted. `manual` requires the supplied public HTTP(S) URL, and a same-name local Manual Service with different settings remains a conflict. A blank Service means Unresolved unless the user opts into GOKB and a unique reliable candidate is found. Choosing Unresolved explicitly in Preview keeps it unresolved. A valid supplied Service skips GOKB even when the query option is enabled. Service choices are configuration-local preferences, not proof of access or entitlement.
 
 To share independent Services or preserve empty Group/Label entries and their order, add the following tables. Journal `Service` cells refer to these definitions by name:
 

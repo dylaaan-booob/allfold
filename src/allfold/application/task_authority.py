@@ -57,7 +57,7 @@ class TaskAuthority:
                 raise ServiceAccessUnavailable('Collection Service must be a saved Service', 'service-missing')
             if service.access_method == 'manual' and (not login or login.prepared_authority(saved, service_id) is None):
                 raise ServiceAccessUnavailable('Open the Manual Service with Visit', 'service-unprepared')
-            entry = service_entry(config_path, service, saved.institution)
+            entry = service_entry(service, saved.institution)
             if entry and entry.get('unavailable_reason'):
                 raise ServiceAccessUnavailable(entry['unavailable_reason'], 'service-unavailable')
             scope = saved.service_scope(service_id)
@@ -76,7 +76,7 @@ class TaskAuthority:
         if self.service_id is None:
             return NativeAccessBinding()
         institution = load_config(self.config_path).institution
-        entry = service_entry(self.config_path, self._service, institution)
+        entry = service_entry(self._service, institution)
         prepared = self._login.prepared_authority(self._saved, self.service_id) if self._login else None
         kind = getattr(prepared, 'pdf_source', None)
         if self._service.access_method == 'manual' and prepared and prepared.page_id is None:

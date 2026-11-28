@@ -191,12 +191,22 @@ Reject persists exclusion before exact-Paper cancellation outside write locks;
 restoration cannot revive old work. Clearing metadata waits for actual cleanup.
 See [identity](paper-identity.md) and [Workspace runtime](collection-runtime.md).
 
-The private `.allfold/resources.sqlite` shares complete GOKB snapshots and the CARSI official Catalog across configurations. It holds external evidence and the selected default entry fields. Offline initialization
-and upgrades attach those fields by official product identity. Refresh replaces
-validated official fields and retains matched entry evidence. Removed or conflicted
-evidence remains in the same snapshot. UserState owns the enabled Service UUIDs. The Journal Resolver follows Journal → GOKB Platform → CARSI Resource, retaining multiple identities and products. Only a unique, reliable candidate can fill an empty default; saved user choices take precedence. Ordinary Run never requires GOKB.
+The bundled `carsi-catalog.sqlite` holds CARSI products, default entry templates,
+stopped products and public entry evidence. The process loads its read-only
+directory once, keyed by exact `production`. Prepare and passive recovery
+substitute active institution values when building a Service entry. UserState
+owns saved Service UUIDs and Journal associations. The Journal Resolver queries
+GOKB on demand and matches complete Journal → TIPP → Platform evidence against
+the directory. A unique reliable result proposes a Service through the ordinary
+choice path. The import Confirm writes its already verified plan.
 
-The two application-level databases live outside Workspace; the independent Paper library belongs to its Workspace. Within the application project, configurations in subdirectories use the same application data directory; their canonical paths still identify separate user scopes. Registry remains read-only during normal use and retains source-specific evidence. Browser handles and scheduler queues remain transient; current collection qualification and branch completion belong to Paper SQLite. Generated UI is rebuildable, not user data.
+The bundled CARSI catalog and Journal Registry are independent static data.
+The Registry retains its source-specific evidence and existing read-only lookup.
+Within the project, configurations in subdirectories use the same application
+data directory. Their canonical paths identify separate user scopes. The Paper
+library belongs to its Workspace. Browser handles and scheduler queues are
+transient. Paper SQLite owns collection qualification and branch completion.
+UI delivery files are rebuilt from frontend sources.
 
 [Safety](safety.md) states the cross-module invariants. Types, parsers and validators in code define fields and interfaces; [development](development.md) defines preparation and verification. Historical plans and investigations are not current implementation authority.
 

@@ -13,7 +13,7 @@ const cover_search={phase:'Idle',busy:false,supported:false};
 const settings={csrf_token:'fixture',issues:[],covers:{},cover_search,saved_workspace:'/fixture/workspace',values:{
   name:'Synthetic Monitor',keyword_expression:'causal',from_month:'2026-01',to_month:'2026-01',output_dir:'workspace',log_level:'INFO',
   monitor_revision_exists:'1',monitor_revision_digest:'b'.repeat(64),journal_revision_exists:'1',journal_revision_digest:'c'.repeat(64),
-  institution_name:'',institution_idp_entity_id:'',auto_import_after_preparation:false,transition_delay_seconds:'3',display_name:'Synthetic researcher',
+  institution_name:'',institution_idp_entity_id:'',
   zotero_target:{server_id:'SyntheticServer',library_type:'user',library_id:'0',collection_key:null},
   provider_aliases:{},provider_order:['pubmed','openalex','europe_pmc','crossref','arxiv','biorxiv','medrxiv','wos'],enabled_providers:['pubmed','openalex'],groups:['Synthetic Group'],custom_labels:[],journals,access_services:services,
 }};

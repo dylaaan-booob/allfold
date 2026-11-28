@@ -12,13 +12,11 @@ Setup checks tools, creates `config.example.yaml` only if absent, installs locke
 
 Configure keywords, months and Provider settings in Discover. The Login toolbar owns Institution settings and Service selection. Single-Paper Download/Cancel and local PDF controls live in the existing reader; retired Import controls remain absent. Original DownloadItem body output retains the accepted [native cancellation limitation](body-downloads.md#native-output-and-accepted-cancellation-risk). Application settings remain in Settings. Ordinary edits autosave, while credential replacement/clearing and high-impact operations require explicit submission. The public template is separate from local configuration; setup does not create or copy credentials.
 
-Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical configuration path. The YAML `venue_whitelist` remains the first-migration source, not the live data store. The Journal Registry rebuilds offline from the existing five source lists with `uv run --locked python tools/build_journal_registry.py`; its shipped rows and indexes are checked against an isolated rebuild. Shared GOKB/CARSI data lives in `.allfold/resources.sqlite`; neither database belongs in a source candidate. Use temporary project/configuration directories and injected HTTP transports for migration, exchange and Resolver tests.
-The shipped `src/allfold/application/carsi_defaults.json` initializes or updates
-the existing CARSI catalog snapshot with 180 WAYFless entries, 181 Portal defaults
-and one unavailable product. To regenerate the seed from the reviewed
-handoff, run `uv run --locked python tools/import_carsi_defaults.py HANDOFF src/allfold/application/carsi_defaults.json`.
-The converter resolves source references during import. Prepare and recovery
-read the SQLite snapshot. Do not launch tests against personal YAML, Workspace, covers or Zotero.
+Journal state is stored in `.allfold/user-data.sqlite`, isolated by canonical
+configuration path. The YAML `venue_whitelist` remains the first-migration source.
+Use temporary project/configuration directories and injected HTTP transports
+for exchange and Resolver tests. Keep personal YAML, Workspace, covers and
+Zotero outside test fixtures.
 
 The production [Paper library](paper-library.md) uses standard-library `sqlite3`.
 Read-only uninitialized views do not create it; the first Run initializes
@@ -94,6 +92,43 @@ because a similarly named translation fixture was retired. Existing vendor trees
 and historical source pins remain untouched. Building UI does not package an
 application; see [release preparation](release.md).
 
+### CARSI catalog
+
+`src/allfold/application/carsi-catalog.sqlite` is a tracked Python package
+resource. The app loads the directory read-only on first use. Update the
+developer-maintained directory from reviewed public records and entry evidence.
+To begin from the current catalog, export its rows to an editable CSV:
+
+```sh
+sqlite3 -readonly -header -csv src/allfold/application/carsi-catalog.sqlite \
+  'SELECT * FROM resources ORDER BY rowid' > /tmp/carsi-catalog.csv
+uv run --locked python tools/build_carsi_catalog.py /tmp/carsi-catalog.csv
+```
+
+Provide the eight columns exported above and retain all products, including any
+stopped ones. Separate source URLs with newlines within the CSV cell. Store
+public evidence and applicable conditions in `entry_sources` and `entry_note`.
+A blank `wayfless_url_template` uses Portal unless `unavailable_reason` is set.
+Use the parameter placeholders supported by
+[carsi_entry.py](../src/allfold/application/carsi_entry.py). Institution values
+are supplied from the active configuration at entry time. Review the resulting
+SQLite before committing it. `--output` directs a trial build to another file.
+
+### Journal Registry
+
+Keep the four Master Journal List CSV exports under `journal-lists/` and pass
+the existing Scopus sources workbook to the offline builder:
+
+```sh
+uv run --locked python tools/build_journal_registry.py /path/to/scopus-sources.xlsx
+```
+
+The builder finds the worksheet with the required Scopus columns. If more than
+one worksheet qualifies, select one with `--scopus-sheet 'Worksheet name'`.
+`--data-dir` selects an alternate directory for the four WoS CSVs and the
+generated `journal-registry.sqlite`. The shipped Registry stays independent of
+the CARSI catalog.
+
 ## Checks
 
 Local validation follows the changed behavior. Use the existing file/name selectors
@@ -108,7 +143,7 @@ From the repository root, for example:
 ```sh
 # Python: file selection, then a narrower existing test name.
 uv run --locked pytest tests/test_ci_scope.py tests/test_pdf_rules.py
-uv run --locked pytest tests/test_pdf_rules.py -k adoption_catalogue
+uv run --locked pytest tests/test_pdf_rules.py -k rule_catalog
 
 # Electron/Node: select files; keep native fixture processes serial.
 node --test --test-concurrency=1 electron/tests/setup.test.cjs electron/tests/ui-build.test.cjs

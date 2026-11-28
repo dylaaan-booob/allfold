@@ -178,7 +178,7 @@ class WoSCoordinator:
             prepared = self.login.prepared_authority(saved, service.id)
             if service.access_method == 'manual' and prepared is None:
                 raise ValueError('Open the Manual Web of Science Service with Visit')
-            entry = service_entry(self.path, service, saved.institution)
+            entry = service_entry(service, saved.institution)
             if entry and entry.get('unavailable_reason'):
                 raise ValueError(entry['unavailable_reason'])
             if parent_snapshot is None and not self.run_slot.acquire(blocking=False):

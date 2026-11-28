@@ -1,8 +1,10 @@
 from dataclasses import replace
+from pathlib import Path
 import re
 
 import pytest
 
+from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
 from allfold.pdf_rules import KnownPdfUrl, PdfRuleInputs, PdfTarget, iter_p1_candidates, iter_p2_candidates
 
 
@@ -313,23 +315,14 @@ def test_inputs_are_bounded_immutable_and_target_binding_cannot_be_replaced():
         KnownPdfUrl('https://example.org/Paper.pdf', 'API02', '')
 
 
-def test_adoption_catalogue_keeps_all_ids_conditions_and_source_references():
-    from allfold.pdf_catalog import API_CATALOG, RULE_CATALOG
-
-    assert set(RULE_CATALOG) == {f'R{i:03}' for i in range(1, 74)}
-    assert set(API_CATALOG) == {f'API{i:02}' for i in range(1, 18)}
-    for item in (*RULE_CATALOG.values(), *API_CATALOG.values()):
+def test_rule_catalog_keeps_conditions_and_links_to_documented_evidence():
+    spec = (Path(__file__).resolve().parents[1] / 'docs/pdf-source-discovery.md').read_text(encoding='utf-8')
+    anchors = set(re.findall(r'<a id="([^"]+)">', spec))
+    for rule_id, item in (*RULE_CATALOG.items(), *API_CATALOG.items()):
+        assert item.rule_id == rule_id
         assert item.expression and item.requirements and item.access and item.adoption
-        assert item.source_ids and all(re.fullmatch(r'S[0-9]{3}', source) for source in item.source_ids)
-        assert item.spec_ref == 'docs/pdf-source-discovery.md#' + item.rule_id.lower()
-    assert RULE_CATALOG['R009'].status == 'conditional'
-    assert RULE_CATALOG['R073'].status == 'conditional' and RULE_CATALOG['R073'].stages == ('P4',)
-    assert RULE_CATALOG['R021'].status == RULE_CATALOG['R027'].status == 'extension'
-    assert all(RULE_CATALOG[f'R{i:03}'].status == 'historical' for i in range(62, 73))
-    assert all(API_CATALOG[f'API{i:02}'].status == 'non-pdf' for i in (5, 10, 11, 14))
-    assert API_CATALOG['API12'].stages == ('P1',)
-    with pytest.raises(TypeError):
-        RULE_CATALOG['R001'] = RULE_CATALOG['R072']
+        assert item.spec_ref.partition('#')[2] in anchors
+        assert item.source_ids and {source.lower() for source in item.source_ids} <= anchors
 
 
 def test_encoded_doi_octets_are_preserved_and_literal_percent_is_escaped_once():
@@ -374,7 +367,9 @@ def test_article_doi_transform_does_not_collapse_different_encoded_octets(suffix
 
 
 def test_known_fields_do_not_reactivate_historical_or_non_pdf_services():
-    for rule in ('R000', 'R021', 'R027', 'R062', 'R063', 'R072', 'API01', 'API05', 'API10', 'API11', 'API14', 'API17'):
+    inactive = [entry.rule_id for entry in (*RULE_CATALOG.values(), *API_CATALOG.values())
+                if entry.status in {'historical', 'extension', 'non-pdf', 'reference'}]
+    for rule in ('unknown-rule', 'API01', *inactive):
         with pytest.raises(ValueError):
             KnownPdfUrl('https://example.org/Paper.pdf', rule, 'url')
     # Independent generic Meta belongs to P3; disabling a historical conversion

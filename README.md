@@ -60,6 +60,9 @@ authentication pages close after the task settles. The Browser can retain a
 bounded set of Service targets. Prepare establishes a usable product page.
 Subscription decisions are reported by the resource when used. See
 [Browser page ownership](docs/browser-pages.md).
+Choose bundled CARSI products in Journals. **Discover GOKB** looks up a Journal
+on demand and preselects a unique reliable match for the ordinary Service save.
+See [Research Scope and Services](docs/research-scope.md).
 
 ARRAY and Journals keep icon rails on both sides. Hover, focus or click Index/Directory to browse without shifting the content; choose a right-hand tool to open or collapse Info/Details. Journal selection opens Details; Directory filtering closes it. Resize the Sidebar from its left edge; narrow windows use an overlay and restore the preferred width when space returns. ARRAY's Reject/Restore and Trash metadata actions stay beside the Reader. Developer Mode adds a horizontally scrolling Layout strip with independent SAVE/RESET/ORIGIN targets; Journals GRID columns always adapt to the available content width.
 
@@ -94,7 +97,7 @@ records remain readable and exportable. See [Providers](docs/providers.md#prepri
 | `config.example.yaml` or a custom root YAML file | Local settings | No |
 | `list.md` | Legacy migration seed and importable example | Yes |
 | `.allfold/user-data.sqlite` | Journals, Groups, Labels and Services, isolated by configuration | No |
-| `.allfold/resources.sqlite` | Shared GOKB and official CARSI resource cache | No |
+| `src/allfold/application/carsi-catalog.sqlite` | Read-only CARSI products and default entries | Yes |
 | `journal-lists/journal-registry.sqlite` | Read-only Journal Registry | Yes |
 | `workspace/papers.sqlite` | Paper identity, metadata, dates, exclusions and body associations | No |
 | `workspace/Documents/`, Run snapshots | Managed body files/staging and Last Run results | No |
@@ -104,7 +107,7 @@ records remain readable and exportable. See [Providers](docs/providers.md#prepri
 
 Submit API key replacement or clearing explicitly from the corresponding Run Provider Sidebar. PubMed and OpenAlex keys are optional. Anonymous OpenAlex queries retain first-page evidence and explicitly report incomplete coverage when cursor paging needs a key. Run settings select Discovery sources; necessary identity and relationship capabilities have their own eligibility. Optional Xiamen University credentials use Electron safeStorage separately from YAML, through the Login Access toolbar. Ordinary configuration changes save automatically; Pending, failure and conflict states retain the draft. Background Paper work permits new Run inputs and unrelated Journal/Service edits. Changes to access used by an active branch revoke and drain only affected work before replacing the old context. Foreground Run/WoS keeps its input snapshot and ordinary edits Pending until completion; every save still rechecks saved revisions. Sensitive credential changes and destructive operations keep separate explicit submission and confirmation. Discovery and page workflows contact the selected external providers and sites.
 
-Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export contains no provider credentials, resource caches, Workspace papers . Legacy Markdown is a first-migration or explicit exchange source, not the live store.
+Configuration, legacy journal seed and Workspace paths must stay inside the project directory. On first use, each configuration validates and copies its legacy managed Markdown data into SQLite without changing the source file; later changes use SQLite. Include `.allfold/` in local backups. Use **Export User Data** to transfer a research scope to another configuration or application location, since canonical configuration paths identify saved scopes. Export excludes provider credentials and Workspace papers. Legacy Markdown is a first-migration or explicit exchange source, not the live store.
 
 The shared Browser Session stores cookies, site data and HTTP cache in Electron's
 profile across restarts. **Browser Session Reset** in Settings ends Browser work,

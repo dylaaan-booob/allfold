@@ -8,15 +8,12 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Literal
+from dataclasses import dataclass
 
 import httpx
 
 from allfold.config import JournalConfig, normalize_journal_issn
 from allfold.http_client import create_http_client
-from allfold.persistence.resource_cache import read_snapshot, write_snapshot
 
 
 GOKB_FIND_URL = "https://gokb.org/gokb/api/find"
@@ -29,7 +26,7 @@ ISSN_NAMESPACES = {"issn", "eissn", "pissn", "e-issn", "p-issn", "issn-l"}
 
 
 class GokbError(ValueError):
-    """Remote data was unavailable or could not establish a complete snapshot."""
+    """Remote data was unavailable or the query result was incomplete."""
 
 
 @dataclass(frozen=True)
@@ -65,25 +62,11 @@ class GokbPlatform:
 
 
 @dataclass(frozen=True)
-class GokbSnapshot:
+class GokbResources:
     identifiers: tuple[str, ...]
     journals: tuple[GokbJournal, ...]
     tipps: tuple[GokbTipp, ...]
     platforms: tuple[GokbPlatform, ...]
-
-
-@dataclass(frozen=True)
-class GokbLookup:
-    snapshot: GokbSnapshot | None
-    status: Literal["fresh", "cached", "stale", "unavailable"]
-    fetched_at: float | None = None
-    error: str | None = None
-
-    @property
-    def outcome(self) -> Literal["ok", "no_results", "unavailable"]:
-        if self.snapshot is None:
-            return "unavailable"
-        return "ok" if self.snapshot.journals else "no_results"
 
 
 def _text(record, field, *, optional=False):
@@ -165,7 +148,7 @@ class GokbClient:
             if offset == count:
                 return records
 
-    def fetch(self, journal: JournalConfig) -> GokbSnapshot:
+    def fetch(self, journal: JournalConfig) -> GokbResources:
         """Fetch every local ISSN/eISSN and every linked Current TIPP before return."""
         started = time.monotonic()
         try:
@@ -218,49 +201,9 @@ class GokbClient:
                         raise GokbError("GOKB Platform UUID does not resolve uniquely")
                     row = rows[0]
                     platforms.append(GokbPlatform(identity, _text(row, "name"), _text(row, "primaryUrl", optional=True)))
-                return GokbSnapshot(tuple(sorted(journal.identifiers)), tuple(journals[key] for key in sorted(journals)),
-                                    tuple(tipps[key] for key in sorted(tipps)), tuple(platforms))
+                return GokbResources(tuple(sorted(journal.identifiers)), tuple(journals[key] for key in sorted(journals)),
+                                     tuple(tipps[key] for key in sorted(tipps)), tuple(platforms))
         except httpx.TimeoutException as error:
             raise GokbError("GOKB request timed out") from error
         except (httpx.RequestError, httpx.InvalidURL) as error:
             raise GokbError("GOKB request failed") from error
-
-
-def _from_cache(payload, identifiers):
-    try:
-        snapshot = GokbSnapshot(
-            tuple(payload["identifiers"]),
-            tuple(GokbJournal(item["uuid"], item["name"], tuple(GokbIdentifier(**entry) for entry in item["identifiers"]),
-                              tuple(item["matched_identifiers"])) for item in payload["journals"]),
-            tuple(GokbTipp(**item) for item in payload["tipps"]),
-            tuple(GokbPlatform(**item) for item in payload["platforms"]),
-        )
-        if snapshot.identifiers != identifiers:
-            raise ValueError("cache identifiers differ")
-        journal_ids = [item.uuid for item in snapshot.journals]
-        platform_ids = [item.uuid for item in snapshot.platforms]
-        if (len(set(journal_ids)) != len(journal_ids) or len(set(platform_ids)) != len(platform_ids)
-                or len({item.uuid for item in snapshot.tipps}) != len(snapshot.tipps)
-                or any(item.journal_uuid not in journal_ids or item.platform_uuid not in platform_ids
-                       for item in snapshot.tipps)):
-            raise ValueError("cache associations differ")
-        return snapshot
-    except (ValueError, TypeError, KeyError) as error:
-        raise GokbError("GOKB cached snapshot is invalid; existing data was preserved") from error
-
-
-def get_journal_resources(cache_path: Path, journal: JournalConfig, *, refresh=False,
-                          transport: httpx.BaseTransport | None = None) -> GokbLookup:
-    """Only a validated complete query may replace a last-good (including empty) result."""
-    identifiers = tuple(sorted(journal.identifiers))
-    key = "gokb:journal:v1:" + ",".join(identifiers)
-    cached = read_snapshot(cache_path, key)
-    previous = _from_cache(cached.payload, identifiers) if cached else None
-    if cached is not None and not refresh:
-        return GokbLookup(previous, "cached", cached.fetched_at)
-    try:
-        snapshot = GokbClient(transport=transport).fetch(journal)
-    except GokbError as error:
-        return GokbLookup(previous, "stale" if cached else "unavailable", cached.fetched_at if cached else None, str(error))
-    saved = write_snapshot(cache_path, key, asdict(snapshot))
-    return GokbLookup(snapshot, "fresh", saved.fetched_at)

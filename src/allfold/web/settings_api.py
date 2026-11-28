@@ -123,13 +123,10 @@ def install_resource_api(app, config_path, csrf_token):
     from starlette.concurrency import run_in_threadpool
     from allfold.application.carsi_catalog import get_carsi_catalog
     from allfold.application.journal_resolver import resolve_journal
-    from allfold.persistence.user_state import application_data_dir, read_user_state
+    from allfold.persistence.user_state import read_user_state
     from allfold.persistence.safe_write import ContentChangedError
     from allfold.application.journal_services import choose_journal_service
     from allfold.web.settings_form import settings_form_from_submission, settings_draft_from_form
-
-    def resource_path():
-        return application_data_dir(config_path) / 'resources.sqlite'
 
     async def validated_form(request):
         form = await request.form()
@@ -140,8 +137,9 @@ def install_resource_api(app, config_path, csrf_token):
     @app.post('/api/ui-next/settings/catalog')
     async def catalog(request: Request):
         try:
-            form = await validated_form(request)
-            return json_response(await run_in_threadpool(get_carsi_catalog, resource_path(), refresh=form.get('refresh') == 'yes'))
+            await validated_form(request)
+            resources = await run_in_threadpool(get_carsi_catalog)
+            return json_response({"resources": tuple(resources.values())})
         except PermissionError as error:
             return settings_error(str(error))
         except (ConfigurationError, ValueError, OSError) as error:
@@ -150,12 +148,12 @@ def install_resource_api(app, config_path, csrf_token):
     @app.post('/api/ui-next/settings/journals/{key}/resolve')
     async def resolve(request: Request, key: str):
         try:
-            form = await validated_form(request)
+            await validated_form(request)
             state = read_user_state(config_path)
             journal = next((j for j in state.state.journals if j.key == key), None)
             if journal is None:
                 return settings_error('Save the Journal before querying resources', 409)
-            return json_response(await run_in_threadpool(resolve_journal, config_path, journal, refresh=form.get('refresh') == 'yes'))
+            return json_response(await run_in_threadpool(resolve_journal, journal))
         except PermissionError as error:
             return settings_error(str(error))
         except (ConfigurationError, ValueError, OSError) as error:
