@@ -220,6 +220,7 @@ profile and a seeded test Workspace.
 | --- | --- |
 | Selected Prepare batch | First waited at the fixture verification page while Second and Third remained unstarted. After completing verification, all three opened. The Login header reported `0 / 3` and then `3 / 3`, scoped to the selected workflow. |
 | Public WAYFless entry | Web of Science reached the Xiamen University sign-in page. EBSCO stayed unstarted while it waited. Cancel settled the batch. |
+| WoS default WAYFless sign-in | With only Web of Science selected, Allfold used the default SQLite template and reused the existing Xiamen University sign-in. The native navigation reached Web of Science Basic Search and Prepare reported `Opened` (1 / 1). |
 | Public Portal entry | Karger reached the Xiamen University sign-in page from CARSI Portal. Login reported the manual step and Cancel settled the task. |
 | EBSCO Portal sign-in | A disposable Portal route override exercised the PR #141 entry. Allfold upgraded the HTTP XMU CAS entry to HTTPS, submitted the password form, and automatically confirmed the recognized privacy terms and attribute release. Prepare reported `Opened` at EBSCOhost. Both `-100` events came from image requests. |
 | Manual Visit and restart | Explicit Visit opened the fixture page. After normal quit and restart, the old page was absent and the fixture still read its persistent Cookie and site storage. |
