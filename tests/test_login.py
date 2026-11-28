@@ -104,10 +104,16 @@ def test_incomplete_first_service_does_not_dispatch_the_rest(tmp_path, cancel):
     assert login.snapshot(BrowserServiceSnapshot.read(path))['phase'] == ('canceled' if cancel else 'completed')
 
 
-def test_unavailable_service_is_reported_before_first_executable_entry(tmp_path):
+def test_unavailable_service_is_reported_before_first_executable_entry(tmp_path, monkeypatch):
+    from allfold.application import carsi_entry
+    from allfold.application.carsi_catalog import CarsiResource
+
     path, services = login_fixture(tmp_path, count=2)
     saved = load_user_state(path)
-    stopped = AccessService.create('中国科学院文献情报中心期刊分区表')
+    stopped = AccessService.create('Stopped product')
+    reason = 'Service closed'
+    resource = CarsiResource(stopped.name, stopped.name, 'https://stopped.example/', '1', unavailable_reason=reason)
+    monkeypatch.setattr(carsi_entry, 'get_carsi_catalog', lambda: {stopped.name: resource})
     compare_write_user_state(path, replace(saved.state, access_services=(stopped, *services)), saved.revision)
     native, lock = Native(), BrowserTaskLock()
     login = LoginCoordinator(native, lock)
@@ -116,7 +122,7 @@ def test_unavailable_service_is_reported_before_first_executable_entry(tmp_path)
     try:
         assert action == 'prepare_service' and data['first_entry'] and data['service_id'] == services[0].id
         status = login.snapshot(BrowserServiceSnapshot.read(path))['services'][0]['preparation']
-        assert status.status == 'Unavailable' and '2026-09-30' in status.reason
+        assert status.status == 'Unavailable' and status.reason == reason
     finally:
         result.set_result(opened(29))
         login.join()

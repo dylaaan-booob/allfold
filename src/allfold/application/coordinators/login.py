@@ -8,12 +8,10 @@ from uuid import uuid4
 
 from allfold.application.browser_runtime import ElectronDisconnected
 from allfold.application.browser_services import BrowserServiceSnapshot
-from allfold.application.carsi_catalog import get_carsi_catalog
 from allfold.application.carsi_entry import service_entry
 from allfold.application.history import observe
 from allfold.config import load_config
 from allfold.browser_diagnostics import normalize_browser_diagnostic
-from allfold.persistence.user_state import application_data_dir
 from allfold.recovery_diagnostics import normalize_recovery, normalize_recovery_action
 
 
@@ -110,8 +108,7 @@ class LoginCoordinator:
             services = tuple(s for s in available if s.id in chosen)
             if not services or chosen != {s.id for s in services}:
                 raise ValueError('Choose saved CARSI Services to prepare')
-            catalog = get_carsi_catalog(application_data_dir(config_path) / 'resources.sqlite')
-            entries = {s.id: service_entry(config_path, s, saved.institution, catalog=catalog) for s in services}
+            entries = {s.id: service_entry(s, saved.institution) for s in services}
         saved.verify(s.id for s in services)
         with self._mutex:
             if self.running:
@@ -171,7 +168,7 @@ class LoginCoordinator:
 
             verify()
             if entry is not None:
-                entry = service_entry(saved.config_path, service, load_config(saved.config_path).institution)
+                entry = service_entry(service, load_config(saved.config_path).institution)
             current = self._results[service.id] = replace(self._results[service.id], status='Preparing')
             return self.bridge.execute('prepare_service' if entry is not None else 'visit_manual_service', {
                 'service_id': service.id, 'service_scope': saved.scope,

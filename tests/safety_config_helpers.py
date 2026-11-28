@@ -29,8 +29,8 @@ def document(tmp_path, contents):
     return path
 
 
-def current_mapping_document(tmp_path):
-    service = AccessService.create("University Library", "https://library.example.org")
+def current_mapping_document(tmp_path, *, method="carsi"):
+    service = AccessService.create("University Library", "https://library.example.org", access_method=method)
     journal = JournalConfig(name="Biometrics", issn=A, access_service_id=service.id, group="Statistics")
     config = monitor(tmp_path)
     path = document(tmp_path, render_settings_list_text(

@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
-from allfold.application.carsi_catalog import CarsiCatalog, CarsiResource, get_carsi_catalog
+from allfold.application.carsi_catalog import CarsiResource, get_carsi_catalog
 from allfold.config import JournalConfig
-from allfold.providers.gokb import GokbLookup, GokbPlatform, GokbSnapshot, get_journal_resources
+from allfold.providers.gokb import GokbClient, GokbError, GokbPlatform, GokbResources
 from allfold.url_safety import normalize_public_http_url
 
 
@@ -39,20 +39,14 @@ class ServiceCandidate:
     def production(self) -> str:
         return self.resource.production
 
-    @property
-    def access_url(self) -> str | None:
-        return self.resource.access_url
-
-
 @dataclass(frozen=True)
 class JournalResolution:
     journal_key: str
-    gokb: GokbLookup
-    catalog: CarsiCatalog
+    gokb: GokbResources | None
     candidates: tuple[ServiceCandidate, ...]
     unique_candidate: ServiceCandidate | None
     status: Literal["unique", "ambiguous", "unresolved", "no_results", "unavailable"]
-    warnings: tuple[str, ...] = ()
+    error: str | None = None
 
 
 def normalized_host(url: str | None) -> str | None:
@@ -92,7 +86,7 @@ def _name(value):
                    if character.isalnum())
 
 
-def _matches(platform: GokbPlatform, resource: CarsiResource, snapshot: GokbSnapshot):
+def _matches(platform: GokbPlatform, resource: CarsiResource, gokb: GokbResources):
     platform_host = normalized_host(platform.primary_url)
     resource_host, host_kind = _resource_host(resource)
     matches = []
@@ -108,7 +102,7 @@ def _matches(platform: GokbPlatform, resource: CarsiResource, snapshot: GokbSnap
         matches.append(("search_name", product))
     if not matches:
         return (), False
-    tipps = [item for item in snapshot.tipps if item.platform_uuid == platform.uuid]
+    tipps = [item for item in gokb.tipps if item.platform_uuid == platform.uuid]
     evidence = tuple(MatchEvidence(kind, value, platform.uuid, platform.name, platform.primary_url,
                                     tuple(item.uuid for item in tipps),
                                     tuple(sorted({item.journal_uuid for item in tipps})),
@@ -119,17 +113,17 @@ def _matches(platform: GokbPlatform, resource: CarsiResource, snapshot: GokbSnap
     # also retained; package evidence is displayed without inventing entitlement.
     product_text = " ".join((resource.production, product, urlsplit(resource.url.strip()).path)).casefold()
     ebook = bool(re.search(r"ebooks?|e-books?|\bbooks\b|电子书", product_text))
-    reliable = bool(resource.access_url and not conflicting_hosts and not ebook)
+    reliable = bool(resource.access_url and not resource.unavailable_reason and not conflicting_hosts and not ebook)
     return evidence, reliable
 
 
-def match_carsi_candidates(snapshot: GokbSnapshot, catalog: CarsiCatalog) -> tuple[ServiceCandidate, ...]:
+def match_carsi_candidates(gokb: GokbResources, catalog: Mapping[str, CarsiResource]) -> tuple[ServiceCandidate, ...]:
     """Return every matching product and the exact remote associations behind it."""
     candidates = []
-    for resource in catalog.resources:
+    for resource in catalog.values():
         evidence, reliable = [], False
-        for platform in snapshot.platforms:
-            matches, supported = _matches(platform, resource, snapshot)
+        for platform in gokb.platforms:
+            matches, supported = _matches(platform, resource, gokb)
             evidence.extend(matches)
             reliable = reliable or supported
         if evidence:
@@ -137,36 +131,20 @@ def match_carsi_candidates(snapshot: GokbSnapshot, catalog: CarsiCatalog) -> tup
     return tuple(sorted(candidates, key=lambda item: item.production))
 
 
-def resolve_journal(config_path: Path, journal: JournalConfig, *, refresh=False,
-                    transport: httpx.BaseTransport | None = None,
-                    cache_path: Path | None = None) -> JournalResolution:
-    """Discover candidates; a caller may adopt unique_candidate with its own CAS.
-
-    An existing Service is never changed here. The shared cache contains only
-    public data, not a Journal's manual selection or configuration identity.
-    """
-    if cache_path is None:
-        from allfold.persistence.user_state import application_data_dir
-        cache_path = application_data_dir(config_path) / "resources.sqlite"
-    gokb = get_journal_resources(cache_path, journal, refresh=refresh, transport=transport)
-    catalog = get_carsi_catalog(cache_path, refresh=refresh, transport=transport)
-    candidates = match_carsi_candidates(gokb.snapshot, catalog) if gokb.snapshot is not None else ()
-    warnings = tuple(f"CARSI {change.kind}: {change.previous_production}"
-                     + (" → " + ", ".join(change.productions) if change.productions else "")
-                     for change in catalog.changes)
-    identity_count = len(gokb.snapshot.journals) if gokb.snapshot else 0
-    conflicts = {name for change in catalog.changes if change.kind in {"possible_rename", "identity_conflict", "changed"}
-                 for name in change.productions}
-    unique = (candidates[0] if len(candidates) == 1 and candidates[0].reliable and identity_count == 1
-              and candidates[0].production not in conflicts else None)
-    if gokb.outcome == "unavailable" or catalog.status == "unavailable":
-        status = "unavailable"
-    elif identity_count > 1 or len(candidates) > 1:
+def resolve_journal(journal: JournalConfig, *, transport: httpx.BaseTransport | None = None) -> JournalResolution:
+    """Query GOKB and report candidate evidence for this Journal."""
+    try:
+        gokb = GokbClient(transport=transport).fetch(journal)
+    except GokbError as error:
+        return JournalResolution(journal.key, None, (), None, "unavailable", str(error))
+    if not gokb.journals:
+        return JournalResolution(journal.key, gokb, (), None, "no_results")
+    candidates = match_carsi_candidates(gokb, get_carsi_catalog())
+    unique = candidates[0] if len(gokb.journals) == len(candidates) == 1 and candidates[0].reliable else None
+    if len(gokb.journals) > 1 or len(candidates) > 1:
         status = "ambiguous"
-    elif gokb.outcome == "no_results":
-        status = "no_results"
     elif unique is not None:
         status = "unique"
     else:
         status = "unresolved"
-    return JournalResolution(journal.key, gokb, catalog, candidates, unique, status, warnings)
+    return JournalResolution(journal.key, gokb, candidates, unique, status)

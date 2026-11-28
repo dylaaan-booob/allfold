@@ -30,16 +30,17 @@ at commit `ed459e44eaef207cc79502fc15855b32ecf980f9`:
 Allfold validates response status, record type/UUID, requested page bounds,
 fixed total, page length, uniqueness and link identities. A count above the
 supported window, missing/duplicate UUID, changed total, truncated page or
-non-Current TIPP rejects the entire refresh. Only complete validated snapshots,
-including confirmed zero-result queries, replace prior cache entries.
-Timeouts and query/schema failures return prior data with `stale` status or
-`unavailable` without prior data. Neither outcome changes user choices.
+non-Current TIPP rejects the query. Timeouts and invalid responses report
+`unavailable` with an error. A confirmed empty Journal query reports `no_results`.
+A complete query can report a unique, ambiguous or unresolved CARSI match.
 
-The CARSI catalog comes from [official SPlist.html](https://www.carsi.edu.cn/SPlist.html).
-Its nonempty inline JSON records are stored as `production`, `searchStr`, `url`,
-`sptype` (string `1` or `2`). Renames/removals/conflicts are warnings, not a
-request to rewrite saved Services. Outer URL whitespace may be trimmed for a
-validated access link; scheme-less catalog references remain evidence only.
+Matching uses the bundled, read-only CARSI catalog. Its base product metadata
+comes from the official directory. Outer URL whitespace may be trimmed for a
+validated access link. Scheme-less references remain catalog evidence.
+**Discover GOKB** selects a unique reliable match in the CARSI picker, and
+**Save CARSI** validates and saves that selection through the normal Service
+route. Research Scope can query during Preview and saves the verified proposal
+on Confirm. [Official CARSI directory](https://www.carsi.edu.cn/SPlist.html)
 
 `tests/test_resource_resolver.py` uses synthetic isolated HTTP and SQLite
 fixtures. These checks establish source behavior, not real-site, institution

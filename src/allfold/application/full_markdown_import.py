@@ -1,7 +1,7 @@
 """Incremental, revision-bound portable Research Scope exchange.
 
-Preview reads user state, verifies Journal identities, and may fill shared remote
-caches. Only Confirm writes the receiving configuration's user scope.
+Preview reads user state, verifies Journal identities, and may query GOKB.
+Only Confirm writes the receiving configuration's user scope.
 """
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from allfold.application.carsi_catalog import get_carsi_catalog, validate_carsi_service, CatalogError
+from allfold.application.carsi_catalog import validate_carsi_service
 from allfold.application.journal_lookup import search_journals, normalized_title
-from allfold.application.journal_resolver import resolve_journal
+from allfold.application.journal_resolver import JournalResolution, resolve_journal
 from allfold.config import ConfigurationError, JournalConfig, AccessService, SettingsList, normalize_journal_issn
 from allfold.persistence.user_state import ContentRevision
 from allfold.persistence.user_state import (
-    read_user_state, compare_write_user_state, application_data_dir, validate_user_state,
+    read_user_state, compare_write_user_state, validate_user_state,
 )
 from allfold.providers.openalex import OpenAlexError
 
@@ -31,7 +31,7 @@ class ScopeRow:
     status: str
     service_status: str
     messages: tuple[str, ...] = ()
-    resolution: object | None = None
+    resolution: JournalResolution | None = None
 
 
 @dataclass(frozen=True)
@@ -101,13 +101,13 @@ def _identity(list_path, row, *, client):
     return candidates, selected
 
 
-def _service(source, existing, catalog):
+def _service(source, existing):
     name, method = source.get('service', '').strip(), source.get('access method', 'carsi').strip().lower() or 'carsi'
     if not name:
         return None, 'unresolved', 'No Service supplied'
     url = source.get('access url', '').strip() or None
     if method == 'carsi':
-        resource = validate_carsi_service(name, catalog=catalog())
+        resource = validate_carsi_service(name)
         # New Services use the official URL; a shared file cannot inject a
         # credential URL under a trusted production name.
         url = resource.access_url
@@ -140,12 +140,6 @@ def preview_research_scope(config_path: Path, list_path: Path, contents: str, *,
     journals, services = list(snapshot.state.journals), list(snapshot.state.access_services)
     groups, labels = list(snapshot.state.groups), list(snapshot.state.custom_labels)
     reports, service_reports, changes = [], [], []
-    catalog_value = None
-    def catalog():
-        nonlocal catalog_value
-        if catalog_value is None:
-            catalog_value = get_carsi_catalog(application_data_dir(config_path) / 'resources.sqlite', transport=transport)
-        return catalog_value
     definitions = {}
     for index, definition in enumerate(parsed['access services']):
         key = definition.get('service id') or definition.get('service', '')
@@ -153,11 +147,11 @@ def preview_research_scope(config_path: Path, list_path: Path, contents: str, *,
             raise ConfigurationError('Duplicate or missing Service definition')
         definitions[key] = definition
         try:
-            service, status, detail = _service(definition, services, catalog)
+            service, status, detail = _service(definition, services)
             if service and all(s.id != service.id for s in services):
                 services.append(service)
             service_reports.append(dict(name=definition.get('service', ''), status=status, message=detail))
-        except (ValueError, CatalogError) as error:
+        except ValueError as error:
             service_reports.append(dict(name=definition.get('service', ''), status='invalid', message=str(error)))
     # Independent registries are portable, including entries without members.
     for target, source, key, insensitive in ((groups, parsed['groups'], 'group', True), (labels, parsed['custom labels'], 'label', False)):
@@ -220,25 +214,27 @@ def preview_research_scope(config_path: Path, list_path: Path, contents: str, *,
                     if row.get('service id') and row['service id'] not in definitions:
                         messages.append('Unknown foreign Service ID; never reused as local identity')
                     # Explicit corrections supersede a legacy Service definition.
-                    if any(field in choice for field in ('service', 'access url', 'access method')):
+                    explicit_service = any(field in choice for field in ('service', 'access url', 'access method'))
+                    if explicit_service:
                         definition = row
-                    try:
-                        service, service_status, detail = _service(definition, services, catalog)
-                        messages.append(detail)
-                    except (ValueError, CatalogError) as error:
-                        service, service_status = None, 'invalid'
-                        messages.append(str(error))
-                    if not service and query_gokb and not choice.get('unresolved'):
+                    service = None
+                    if choice.get('unresolved'):
+                        messages.append('Unresolved by user choice')
+                    else:
                         try:
-                            resolution = resolve_journal(config_path, journal, transport=transport)
+                            service, service_status, detail = _service(definition, services)
+                            messages.append(detail)
+                        except ValueError as error:
+                            service_status = 'invalid'
+                            messages.append(str(error))
+                    if not service and query_gokb and not explicit_service and not choice.get('unresolved'):
+                        try:
+                            resolution = resolve_journal(journal, transport=transport)
                             if resolution.unique_candidate:
-                                candidate = resolution.unique_candidate
-                                service, service_status, _ = _service({'service': candidate.production}, services, catalog)
-                            messages.append(f'Resolver: {resolution.status}')
+                                service, service_status, _ = _service({'service': resolution.unique_candidate.production}, services)
+                            messages.append(f'Resolver: {resolution.error or resolution.status}')
                         except (ConfigurationError, ValueError, OSError) as error:
                             messages.append(f'Resolver unavailable: {error}')
-                    elif not service:
-                        messages.append('Unresolved by user choice' if choice.get('unresolved') else 'Optional GOKB query pending')
                     if service and all(s.id != service.id for s in services):
                         services.append(service)
                     if group and group.casefold() not in {g.casefold() for g in groups}:

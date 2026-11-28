@@ -2,7 +2,7 @@
 
 Expressions/constraints are facts from the adopted specification. Full fixed
 source links, evidence qualifications and licences live at each spec_ref and its
-S001–S142 source anchors in docs/pdf-source-discovery.md. No translator source is
+source anchors in docs/pdf-source-discovery.md. No translator source is
 copied. Historical entries never authorise trying their expression.
 """
 

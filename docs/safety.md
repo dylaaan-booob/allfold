@@ -38,9 +38,11 @@ reliable identities, exclusion and body association. Exclusion has no expiry.
 Journals/Groups/Labels/Services live in canonical-configuration-scoped UserState.
 Compare-and-write protects newer edits; corrupt state is not replaced by defaults.
 First-configuration `list.md` initialization and explicit Research Scope exchange
-remain separate from retired per-Paper Markdown. Resource refresh replaces only
-validated complete cache snapshots, never user Service choices. Setup preserves
-configuration, credentials and existing vendor trees.
+remain separate from retired per-Paper Markdown. CARSI selections validate the
+exact product in the bundled directory before saving. The directory supplies the
+resource URL for new selections. Existing Service identities and Journal
+associations stay in UserState. GOKB queries gather evidence for the current
+operation. Setup preserves configuration, credentials and existing vendor trees.
 
 ## Files and destructive operations
 

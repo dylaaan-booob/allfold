@@ -935,11 +935,17 @@ function renderEntityDetail() {
   description.innerHTML=`<label>${info.entity} name<input id="s-entity-name" value="${esc(entity.name)}" autocomplete="off"></label>${ui.scope==='access'?`<label>Access Method<select data-service-field="method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>Service URL<input data-service-field="url" value="${esc(entity.url)}" type="url" placeholder="Optional public HTTP(S) URL"></label>`:''}<p class="s-help">${rows.length} ${sourceName()}</p>`;
   $('s-entity-name').addEventListener('change',event=>renameEntity(entity,event.target.value));
   if(ui.scope==='access'){
-    description.querySelector('select').value=entity.method;
-    description.querySelectorAll('[data-service-field]').forEach(input=>input.addEventListener(input.tagName==='SELECT'?'change':'input',()=>{
-      if(entity[input.dataset.serviceField]===input.value)return;
-      entity[input.dataset.serviceField]=input.value;changed({immediate:input.tagName==='SELECT'});
-    }));
+    const method=description.querySelector('[data-service-field=method]'),url=description.querySelector('[data-service-field=url]');
+    method.value=entity.method;
+    url.readOnly=entity.method==='carsi';
+    method.addEventListener('change',()=>{
+      if(entity.method===method.value)return;
+      entity.method=method.value;url.readOnly=entity.method==='carsi';changed({immediate:true});
+    });
+    url.addEventListener('input',()=>{
+      if(url.readOnly || entity.url===url.value)return;
+      entity.url=url.value;changed();
+    });
   }
 }
 function renderJournalDetail() {
@@ -966,25 +972,57 @@ function renderJournalDetail() {
   const resourceButton=document.createElement('button');resourceButton.className='s-button';resourceButton.textContent='Discover / choose Service';resourceButton.disabled=!isSaved;resourceButton.addEventListener('click',()=>void journalResources(j).catch(error=>message(error.message,'error')));detail.append(resourceButton);
   detail.querySelector('[data-cover=cancel]')?.addEventListener('click',()=>void coverAction('/settings/covers/search/cancel',{request_id:coverJob.request_id}));
 }
+function carsiOptions(resources) {
+  return '<option value="">Choose a resource</option>'+resources.map(r=>
+    `<option value="${esc(r.production)}">${esc(r.production)}${r.unavailable_reason?' (Unavailable)':''}</option>`).join('');
+}
 async function journalResources(j) {
   if(!await window.allfoldAutosave?.flush()){message('配置尚未保存，草稿保留；请重试或处理冲突。','error');return;}
   const base='/api/ui-next/settings/journals/'+encodeURIComponent(j.id);
-  let catalog=await formRequest('/api/ui-next/settings/catalog');
-  const catalogOptions=()=>catalog.resources.map(r=>`<option value="${esc(r.production)}">${esc(r.production)}</option>`).join('');
+  const {resources}=await formRequest('/api/ui-next/settings/catalog',{}, {draft:false});
+  const current=list().services.find(s=>s.id===j.serviceId);
   const choice=async(method)=>{
-    const result=await formRequest(base+'/service',{selection_method:method,selection_name:method==='manual'?$('s-resource-name').value:$('s-resource-catalog').value,selection_url:$('s-resource-url').value});
-    if(await acceptOperation(result))dialog.close();
+    const extra={selection_method:method};
+    if(method==='carsi'){
+      extra.selection_name=$('s-resource-catalog').value;
+      if(!extra.selection_name){$('s-resource-status').textContent='请先选择 CARSI 资源。';return false;}
+    }else if(method==='manual'){
+      extra.selection_name=$('s-resource-name').value;
+      extra.selection_url=$('s-resource-url').value;
+    }
+    return await acceptOperation(await formRequest(base+'/service',extra));
   };
-  showDialog('Journal Service · '+j.name,`<p>当前默认：${esc(list().services.find(s=>s.id===j.serviceId)?.name || 'Unresolved')}。同步只读取共享证据，保存选择仅影响此 Journal 与当前配置。</p><p id="s-catalog-status">Catalog: ${esc(catalog.status)} ${esc(catalog.error || '')}</p><label>Official CARSI Resource<select id="s-resource-catalog">${catalogOptions()}</select></label><label>Manual Service name<input id="s-resource-name"></label><label>Manual public HTTP(S) URL<input id="s-resource-url" type="url"></label><details open><summary>GOKB / CARSI evidence</summary><pre id="s-resource-evidence">尚未查询 GOKB。可直接选择官方 CARSI、Manual 或 Unresolved。</pre></details>`,[
+  showDialog('Journal Service · '+j.name,`<p>当前默认：${esc(current?.name || 'Unresolved')}</p><label>CARSI Resource<select id="s-resource-catalog">${carsiOptions(resources)}</select></label><label>Manual Service name<input id="s-resource-name"></label><label>Manual public HTTP(S) URL<input id="s-resource-url" type="url"></label><p id="s-resource-status" role="status"></p><details id="s-resource-evidence" hidden><summary>GOKB evidence</summary><pre></pre></details>`,[
     cancel,
-    {label:'Refresh Catalog',run:async()=>{catalog=await formRequest('/api/ui-next/settings/catalog',{refresh:'yes'});$('s-resource-catalog').innerHTML=catalogOptions();$('s-catalog-status').textContent='Catalog: '+catalog.status+' '+(catalog.error || '')+' '+JSON.stringify(catalog.changes);return false;}},
-    {label:'Discover GOKB',run:async()=>{$('s-resource-evidence').textContent=JSON.stringify(await formRequest(base+'/resolve'),null,2);return false;}},
-    {label:'Refresh GOKB / Catalog',run:async()=>{$('s-resource-evidence').textContent=JSON.stringify(await formRequest(base+'/resolve',{refresh:'yes'}),null,2);return false;}},
-    {label:'Use unique candidate',run:()=>choice('auto')},
+    {label:'Discover GOKB',run:async()=>{
+      const select=$('s-resource-catalog'),status=$('s-resource-status'),evidence=$('s-resource-evidence');
+      const original=select.value;
+      status.textContent='正在查询 GOKB…';evidence.hidden=true;
+      try {
+        const result=await formRequest(base+'/resolve',{}, {draft:false});
+        if(!dialog.open || !select.isConnected)return false;
+        const candidate=result.unique_candidate?.resource.production;
+        const preselected=select.value===original && candidate && resources.some(r=>r.production===candidate);
+        if(preselected)select.value=candidate;
+        status.textContent={
+          unique:preselected?'已选中 GOKB 匹配的 CARSI 资源，可保存或改选。':'GOKB 找到唯一匹配，已保留当前选择。',
+          ambiguous:'GOKB 找到多个可能匹配，请选择 CARSI 资源。',
+          no_results:'GOKB 未找到该 Journal，可直接选择 CARSI 资源。',
+          unresolved:'GOKB 未找到可靠的单一匹配，可直接选择 CARSI 资源。',
+          unavailable:result.error || 'GOKB 查询失败，可直接选择 CARSI 资源。',
+        }[result.status];
+        if(result.gokb){
+          evidence.querySelector('pre').textContent=JSON.stringify({gokb:result.gokb,candidates:result.candidates},null,2);
+          evidence.hidden=false;
+        }
+      }catch(error){if(dialog.open && status.isConnected)status.textContent=error.message;}
+      return false;
+    }},
     {label:'Save CARSI',primary:true,run:()=>choice('carsi')},
     {label:'Save Manual',run:()=>choice('manual')},
     {label:'Keep Unresolved',run:()=>choice('unresolved')},
   ]);
+  if(current?.method==='carsi' && resources.some(r=>r.production===current.name))$('s-resource-catalog').value=current.name;
 }
 function renderJournalsPage() {
   renderDirectory();
@@ -1043,18 +1081,33 @@ function deleteEntity() {
     ui.directory[scope]='none';ui.detail='entity';changed({immediate:true});renderJournalsPage();
   }}]);
 }
-function createEntity() {
-  const info=scopeInfo(),scope=ui.scope;
-  showDialog(`New ${info.entity}`,`<label>${info.entity} name<input id="s-new-entity-name" autocomplete="off"></label>${scope==='access'?'<label>Service URL<input id="s-new-service-url" placeholder="Optional HTTP(S) URL"></label><label>Access Method<select id="s-new-service-method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label>':''}<p id="s-entity-error" role="alert"></p>`,[cancel,{label:'Create',primary:true,run:()=>{
-    let name;try{name=entityName($('s-new-entity-name').value,scope==='custom');}catch(error){$('s-entity-error').textContent=error.message;return false;}
-    if(info.items.some(item=>scope==='custom'?item.name===name:item.name.toLowerCase()===name.toLowerCase())){$('s-entity-error').textContent='名称重复。';return false;}
-    const entity=scope==='access'?{id:'svc_'+crypto.randomUUID().replaceAll('-',''),name,url:$('s-new-service-url').value.trim(),method:$('s-new-service-method').value}:{id:scope==='subject'?groupKey(name):labelKey(name),name};
-    info.items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
-  }}]);$('s-new-entity-name').focus();
+async function createEntity() {
+  const scope=ui.scope,{entity:entityLabel}=scopeInfo(scope);
+  const access=scope==='access',resources=access?(await formRequest('/api/ui-next/settings/catalog',{}, {draft:false})).resources:[];
+  if(scope!==ui.scope)return;
+  const nameField=`<label>${entityLabel} name<input id="s-new-entity-name" autocomplete="off"></label>`;
+  showDialog(`New ${entityLabel}`,`${access?`<label>Access Method<select id="s-new-service-method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>CARSI Resource<select id="s-new-service-catalog">${carsiOptions(resources)}</select></label>`:''}${nameField}${access?'<label>Service URL<input id="s-new-service-url" type="url"></label>':''}<p id="s-entity-error" role="alert"></p>`,[cancel,{label:'Create',primary:true,run:()=>{
+    const method=access?$('s-new-service-method').value:null;
+    let name;
+    try{name=entityName(method==='carsi'?$('s-new-service-catalog').value:$('s-new-entity-name').value,scope==='custom');}catch(error){$('s-entity-error').textContent=error.message;return false;}
+    const items=scopeInfo(scope).items;
+    if(items.some(item=>scope==='custom'?item.name===name:item.name.toLowerCase()===name.toLowerCase())){$('s-entity-error').textContent='名称重复。';return false;}
+    const entity=access?{id:'svc_'+crypto.randomUUID().replaceAll('-',''),name,url:method==='manual'?$('s-new-service-url').value.trim():'',method}:{id:scope==='subject'?groupKey(name):labelKey(name),name};
+    items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
+  }}]);
+  if(access){
+    const method=$('s-new-service-method'),catalog=$('s-new-service-catalog'),name=$('s-new-entity-name'),url=$('s-new-service-url');
+    const sync=()=>{
+      const carsi=method.value==='carsi';
+      catalog.closest('label').hidden=!carsi;
+      name.closest('label').hidden=url.closest('label').hidden=carsi;
+    };
+    method.addEventListener('change',sync);sync();catalog.focus();
+  }else $('s-new-entity-name').focus();
 }
 function activateDirectory() {if(ui.scope!==directoryScope)setJournalScope(directoryScope);}
 $('s-edit-entity').addEventListener('click',()=>{activateDirectory();ui.detail='entity';renderEntityDetail();renderJournalDetail();journalLayoutHost.openSidebar('details');journalLayoutHost.closeFlyout();});
-$('s-new-entity').addEventListener('click',()=>{activateDirectory();createEntity();});
+$('s-new-entity').addEventListener('click',()=>{activateDirectory();void createEntity().catch(error=>message(error.message,'error'));});
 $('s-entity-up').addEventListener('click',()=>{activateDirectory();moveEntity(-1);});$('s-entity-down').addEventListener('click',()=>{activateDirectory();moveEntity(1);});
 $('s-delete-entity').addEventListener('click',()=>{activateDirectory();deleteEntity();});
 $('s-entities').addEventListener('click',event=>{const row=event.target.closest('[data-entity]');if(!row)return;ui.scope=directoryScope;ui.directory[ui.scope]=row.dataset.entity;ui.detail='entity';ui.journal=null;renderJournalsPage();journalLayoutHost.closeSidebar();journalLayoutHost.closeFlyout();});
@@ -1237,7 +1290,7 @@ async function openImport(file,choices={},query=false) {
     {label:'Cancel Import',run:closePreview},
     {label:'Update Preview',run:()=>openImport(file,importChoices(),$('s-preview-query').checked)},
     {label:'Confirm Import',primary:true,run:confirmImport}]);
-  Object.assign(preview,{data,file});
+  Object.assign(preview,{data,file,choices,query});
   $('s-preview-columns').innerHTML=`<div><label><input type="checkbox" id="s-preview-query" ${query?'checked':''}> 对缺少有效 Service 的 Journal 查询 GOKB</label>${p.services.map(s=>`<p>${esc(s.name)} · ${esc(s.status)} · ${esc(s.message)}</p>`).join('')}${renderImportRows(p,choices)}</div>`;
   const confirmButton=$('s-preview-actions').lastElementChild;
   $('s-preview-columns').addEventListener('input',()=>{confirmButton.disabled=true;$('s-preview-summary').textContent='Selections changed. Choose Update Preview before Confirm.';},{once:true});
@@ -1253,7 +1306,7 @@ async function executeImport(discard=false) {
 function confirmImport() {
   if(!dirty())return executeImport();
   showDialog('Resolve unsaved Settings','<p>Import 将增量添加到当前配置。明确 Discard 会丢弃全部 Settings 草稿；已保存的其他 Journal 保留。</p>',[
-    cancel,{label:'Save & refresh Preview',run:async()=>{const file=preview.file;dialog.close();await saveDraft(()=>openImport(file));}},
+    cancel,{label:'Save & refresh Preview',run:async()=>{const {file,choices,query}=preview;dialog.close();await saveDraft(()=>openImport(file,choices,query));}},
     {label:'Discard all Draft & Import',primary:true,run:()=>executeImport(true)},
   ]);
 }

@@ -116,22 +116,14 @@ def test_identity_conflicts_and_unsafe_paths_preserve_authoritative_state(tmp_pa
 
 
 def test_reset_preserves_database_and_refuses_data_directory(tmp_path):
-    import httpx
-    from allfold.application.carsi_catalog import get_carsi_catalog
     from allfold.application.workspace_reset import execute_reset, preview_reset, ResetRefused
     config, legacy, journal, service = current_mapping_document(tmp_path)
     snapshot = load_user_state(config)
-    cache = snapshot.database_path.parent / "resources.sqlite"
-    catalog = get_carsi_catalog(cache, transport=httpx.MockTransport(lambda request: httpx.Response(
-        200, headers={"content-type": "text/html"},
-        text='<script>var SPList=[{"production":"EBSCO","searchStr":"EBSCO",'
-             '"url":"https://search.ebscohost.com/","sptype":"1"}];</script>')))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / "paper.md").write_text("isolated paper")
     assert execute_reset(config, preview_reset(config)).success
     assert load_user_state(config).state == snapshot.state
-    assert get_carsi_catalog(cache).resources == catalog.resources
     config.write_text(config.read_text().replace("output_dir: workspace", "output_dir: .allfold"))
     with pytest.raises(ResetRefused):
         preview_reset(config)
