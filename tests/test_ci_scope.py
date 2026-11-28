@@ -88,6 +88,7 @@ def test_document_pr_excludes_changes_only_on_base_branch(repo):
     ({'.github/workflows/ci.yml': 'changed'}, True),
     ({'tools/check.py': 'changed'}, True),
     ({'tests/fixtures/example.md': 'test input'}, True),
+    ({'docs/pdf-source-discovery.md': 'updated rule contract'}, True),
     ({'pyproject.toml': 'changed'}, True),
     ({'uv.lock': 'changed'}, True),
     ({'config.template.yaml': 'changed'}, True),

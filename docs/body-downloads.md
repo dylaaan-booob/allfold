@@ -478,12 +478,11 @@ signed final navigation outside its starting template, repeated actual Cookie
 progress without a DOM link and no-progress fallback. Other ordinary URLs use the
 same transport; this is not a claim of universal publisher compatibility.
 
-The earlier strict-original-response Fetch limitation remains historical research
-and can matter for genuinely one-time actions. It does not block ordinary GET
-under the adopted Session strategy. Its explicit opt-in reproduction and original
-evidence remain in the [response-capture investigation](pdf-response-capture.md).
-No production Fetch capture, PDF buffering or runtime upgrade is added. Real
-publisher/Reader timing, institutional and Zotero paired acceptance remain unrun.
+The [16 November 2026 response-capture study](https://github.com/dylaaan-booob/allfold/blob/5ef93750b03d0e35e2c2a5b73d2693bfc1845d91/docs/pdf-response-capture.md)
+records why Response-stage Fetch could not expose the original transfer terminal.
+The [PR #141 paired acceptance](https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md)
+records the later publisher, institutional and Zotero results for the tested
+versions and access conditions.
 
 Source failures do not stop independent candidates. P1–P5 remains lazy and stops
 at the first actual PDF completion. OpenAlex preserves best-first deterministic

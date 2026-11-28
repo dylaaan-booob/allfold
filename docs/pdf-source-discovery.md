@@ -266,7 +266,7 @@ Handle、Crossref 和官方 API 的响应按用途解释。登记 URL 不等于 
 https://www.sciencedirect.com/science/article/pii/{PII}/pdfft?download=true
 ```
 
-已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。生成入口时优先使用 `?download=true`，无法继续时回退到普通 `/pdfft`。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
+已有可信文章 URL 时保留其实际 origin（协议及端口）和必要 Referer，不把文章查询参数当作 PDF 签名生成。已取得的正文 URL 原样使用。生成入口时优先使用 `?download=true`，无法继续时回退到普通 `/pdfft`。如果已取得的 Elsevier API 响应包含 `coredata.link` 中的 `rel=scidir-pdf`，直接使用该候选，不再要求 DOI → PII → URL。[S109](#s109)、[F27 现场证据](https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
 
 同一 DOI 的可信登记落点若是 Elsevier Linking Hub 的 `/retrieve/pii/{pii}`，用其中合格的 PII 生成现有 ScienceDirect R024 入口。仅在已取得文章页上下文时附带文章 Referer；后续 Session、Reader 和保存仍按正常权限与任务范围处理。
 
@@ -1110,7 +1110,7 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **源实现范围：** 无需把HTML中间页放成每篇必经阶段。PII通常应使用规范化串；B类/旧PII及非标准值需校验；不能取alternative-id任意第一项。
 
-**研究证据及模块：** 原研究验证源码 `getPDFLink`、`parseIntermediatePDFPage`、`_crossref_pii`。实际入口顺序依据本地 PDF 配对验收的 F27 诊断。[S002](#s002)、[S033](#s033)、[S025](#s025)、[F27 现场证据](pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
+**研究证据及模块：** 原研究验证源码 `getPDFLink`、`parseIntermediatePDFPage`、`_crossref_pii`。实际入口顺序依据 PR #141 PDF 配对验收的 F27 诊断。[S002](#s002)、[S033](#s033)、[S025](#s025)、[F27 现场证据](https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md#live-sciencedirect-reader-order)
 
 
 <a id="r025"></a>
@@ -1434,7 +1434,7 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **源实现范围：** 源 `buildPdfUrl` 根据 DOM 选择路径。本机版本及现场出版版 PDF 入口对照用于扩展共用直达资格；不轮询三个变体，不复制 Translator 实现。共用优先级还适用于其他平台已有的直达候选与 Reader；不会为了排序提前打开新页面。
 
-**研究证据及模块：** 历史源码固定 commit `3fb4e794446763ac2053250112890631c428159f`，本机 Atypon Journals 更新日期 `2022-10-25 02:51:38`；具体实站覆盖及未验证 Host 见 [配对验收报告](pdf-pairing-acceptance.md)。**来源：** [S026](#s026)。
+**研究证据及模块：** 历史源码固定 commit `3fb4e794446763ac2053250112890631c428159f`，本机 Atypon Journals 更新日期 `2022-10-25 02:51:38`；具体实站覆盖及未验证 Host 见 [配对验收报告](https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md)。**来源：** [S026](#s026)。
 
 
 <a id="r040"></a>
@@ -1918,7 +1918,7 @@ Atypon 共享有条件的路径选择；Silverchair 共享 PDF DOM 读取并保�
 
 **源实现范围：** 本机 Atypon Journals `2022-10-25 02:51:38` 的 `buildPdfUrl` 按 DOM 线索选择路径。真实 Connector 已从当前 SIAM `/doi/pdf/` 保存出版版；Allfold 将该证据用于共用入口选择，保留原 Session、Service 与保存终点，未复制 Translator 源码。
 
-**研究证据及模块：** 本轮具体样本、修复前后版本及现场结果见 [配对验收报告](pdf-pairing-acceptance.md)。历史源码依据仍为 `buildPdfUrl`。**来源：** [S026](#s026)。
+**研究证据及模块：** PR #141 的具体样本、修复前后版本及现场结果见 [配对验收报告](https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md)。历史源码依据仍为 `buildPdfUrl`。**来源：** [S026](#s026)。
 
 
 ### A.5 历史候选：默认不启用
