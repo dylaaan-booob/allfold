@@ -390,6 +390,10 @@ def test_settings_uses_catalog_url_and_preserves_its_service_mapping_across_scho
     saved = save_settings(config, replace(draft, name='Updated monitor'))
     assert saved.outcome == SettingsSaveOutcome.SAVED
     draft = saved.state.draft
+    changed_url = replace(draft, access_services=(service.model_copy(update={
+        'access_url': 'https://untrusted.example/login'}),))
+    assert save_settings(config, changed_url).outcome == SettingsSaveOutcome.INVALID_DRAFT
+    assert load_user_state(config).state.access_services == (service,)
     invalid = replace(draft, access_services=(service.model_copy(update={'name': 'ebsco'}),))
     assert save_settings(config, invalid).outcome == SettingsSaveOutcome.INVALID_DRAFT
     valid = replace(draft, access_services=(service.model_copy(update={

@@ -51,7 +51,7 @@ const carsiResources=[
   {production:'First Catalog Product',url:'https://first.example/'},
   {production:'Matched Catalog Product',url:'https://matched.example/'},
 ];
-let gokbUnavailable=false;
+let gokbUnavailable=false,holdGokbResponse,holdServiceAutosave;
 const collectionRetries=[],fieldWrites=[],bodyActions=[];
 let holdFieldResponse,localRefreshFailure=false;
 const server=http.createServer((req,res)=>{
@@ -139,7 +139,28 @@ const server=http.createServer((req,res)=>{
     });return;
   }
   if(route==='/api/ui-next/settings/autosave'){
-    let text='';req.on('data',chunk=>{text+=chunk;});req.on('end',()=>{const patch=JSON.parse(text);if(rejectAutosave){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'}));return;}if(patch.changes.keyword_expression==='lea*'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:false,outcome:'INVALID_DRAFT',validation:{issues:[{field:'keyword_expression',message:'Prefix needs at least four characters'}]}}));return;}Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';setTimeout(()=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,saved:true,outcome:'SAVED'}));},90);});return;
+    let text='';
+    req.on('data',chunk=>{text+=chunk;});
+    req.on('end',()=>{
+      const patch=JSON.parse(text);
+      const send=data=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...settings,...data}));};
+      if(rejectAutosave){send({saved:false,outcome:'WRITE_FAILED',message:'Synthetic offline write'});return;}
+      if(patch.changes.keyword_expression==='lea*'){
+        send({saved:false,outcome:'INVALID_DRAFT',validation:{issues:[{field:'keyword_expression',message:'Prefix needs at least four characters'}]}});
+        return;
+      }
+      const services=patch.changes.access_services;
+      for(const service of services || []){
+        const resource=service.access_method==='carsi' && carsiResources.find(row=>row.production===service.name);
+        if(resource)service.access_url=resource.url;
+      }
+      Object.assign(settings.values,patch.changes);settings.values.monitor_revision_digest+='x';
+      const finish=()=>send({saved:true,outcome:'SAVED'});
+      if(services && holdServiceAutosave){
+        const release=holdServiceAutosave;holdServiceAutosave=null;release(finish);
+      }else setTimeout(finish,90);
+    });
+    return;
   }
   if(route==='/api/ui-next/settings/catalog'){
     res.writeHead(200,{'Content-Type':'application/json'});
@@ -151,8 +172,9 @@ const server=http.createServer((req,res)=>{
     const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
     if(operation==='resolve'){
       const candidate={resource:carsiResources[1],reliable:true,evidence:[]};
-      send(gokbUnavailable?{status:'unavailable',error:'Fixture GOKB is offline'}:
+      const finish=()=>send(gokbUnavailable?{status:'unavailable',error:'Fixture GOKB is offline'}:
         {status:'unique',unique_candidate:candidate,candidates:[candidate],gokb:{journals:[]}});
+      if(holdGokbResponse){const release=holdGokbResponse;holdGokbResponse=null;release(finish);}else finish();
       return;
     }
     void new Response(req,{headers:{'Content-Type':req.headers['content-type']}}).formData().then(form=>{
@@ -857,14 +879,28 @@ $('s-run-overview-open').click();
       $('s-new-entity').click();
     });
     await ready("document.getElementById('s-dialog').open && !!document.getElementById('s-new-service-catalog')");
+    const serviceAutosave=new Promise(resolve=>{holdServiceAutosave=resolve;});
     await check(()=>{
       const $=id=>document.getElementById(id),assert=(ok,message)=>{if(!ok)throw Error(message);};
       const resources=$('s-new-service-catalog');
       assert([...resources.options].some(item=>item.value==='First Catalog Product'),'New Service did not show the CARSI directory');
       assert($('s-new-service-url').closest('label').hidden,'CARSI creation offered a free-form URL');
-      $('s-dialog-actions').firstElementChild.click();
+      resources.value='First Catalog Product';
+      $('s-dialog-actions').lastElementChild.click();
     });
+    const finishServiceAutosave=await serviceAutosave;
+    await ready("!document.getElementById('s-dialog').open");
+    await js("document.getElementById('s-new-entity').click()");
+    await ready("document.getElementById('s-dialog').open && !!document.getElementById('s-new-service-catalog')");
+    finishServiceAutosave();
+    await ready("window.allfoldAutosave.status==='Saved'");
+    await js("document.getElementById('s-new-service-catalog').value='Matched Catalog Product',document.querySelector('#s-dialog-actions .s-primary').click()");
+    await ready("!document.getElementById('s-dialog').open && window.allfoldAutosave.status==='Saved'");
+    if(!carsiResources.every(resource=>settings.values.access_services.some(service=>
+      service.name===resource.production && service.access_url===resource.url)))throw Error('Autosave normalization lost a concurrent New Service action');
+    await ready("document.querySelector('[data-service-field=url]')?.readOnly");
     await navigate('journals');
+    await js("document.querySelector('#s-entities [data-entity=all]').click()");
     await js("document.querySelector('#s-journals [data-journal]').click()");
     const chosenJournal=await js("document.querySelector('#s-journals [data-current=true]').dataset.journal");
     const openService="Array.from(document.querySelectorAll('#s-journal-detail button')).find(button=>button.textContent==='Discover / choose Service').click()";
@@ -878,6 +914,18 @@ $('s-run-overview-open').click();
     await js(saveService);
     await ready("!document.getElementById('s-dialog').open && document.getElementById('s-journal-service').selectedOptions[0]?.textContent==='Matched Catalog Product'");
     if(queryCount()!==1)throw Error('Saving the discovered selection repeated the GOKB query');
+    const inFlightGokb=new Promise(resolve=>{holdGokbResponse=resolve;});
+    await js(openService);
+    await ready("document.getElementById('s-dialog').open && !!document.getElementById('s-resource-catalog')");
+    await js(discover);
+    const finishGokb=await inFlightGokb;
+    await js("document.getElementById('s-resource-catalog').value='First Catalog Product'");
+    finishGokb();
+    await ready("!document.getElementById('s-resource-evidence').hidden");
+    if(await js("document.getElementById('s-resource-catalog').value")!=='First Catalog Product')
+      throw Error('GOKB replaced the choice made while it was querying');
+    await js("document.querySelector('#s-dialog-actions button').click()");
+    await ready("!document.getElementById('s-dialog').open");
     gokbUnavailable=true;
     await js(openService);
     await ready("document.getElementById('s-dialog').open && !!document.getElementById('s-resource-catalog')");
@@ -886,7 +934,7 @@ $('s-run-overview-open').click();
     await js("document.getElementById('s-resource-catalog').value='First Catalog Product'");
     await js(saveService);
     await ready("!document.getElementById('s-dialog').open && document.getElementById('s-journal-service').selectedOptions[0]?.textContent==='First Catalog Product'");
-    if(queryCount()!==2)throw Error('Manual CARSI selection repeated the failed GOKB query');
+    if(queryCount()!==3)throw Error('Manual CARSI selection repeated the failed GOKB query');
     await navigate('workspace');
     rejectAutosave=true;
     await check(async()=>{

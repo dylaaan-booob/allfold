@@ -27,7 +27,7 @@ def test_autosave_patches_only_requested_fields_and_rejects_stale_revisions(tmp_
 
 def test_autosave_allows_unrelated_inputs_but_defers_overlapping_service_edits(tmp_path):
     from allfold.application.browser_services import BrowserServiceSnapshot
-    config, _, _, service = current_mapping_document(tmp_path)
+    config, _, _, service = current_mapping_document(tmp_path, method="manual")
     app = create_app(config, electron_bridge=OfflineBridge())
     with TestClient(app, base_url='http://localhost') as client:
         opened = client.get('/api/ui-next/settings').json()

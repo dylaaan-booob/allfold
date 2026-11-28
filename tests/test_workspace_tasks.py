@@ -518,7 +518,7 @@ def test_partial_output_save_rebinds_fresh_lifetime_to_actual_old_path(tmp_path,
         opened = client.get('/api/ui-next/settings').json()
         submitted = form(opened)
         submitted['output_dir'] = 'requested-but-not-saved'
-        submitted['service_access_url'] = ['https://saved-service.example/']
+        submitted['settings_group'] = [*opened['values']['groups'], 'Additional Group']
         result = client.post('/settings/save', data=submitted).json()
         assert result['save']['outcome'] == 'PARTIAL_SAVE' and not result['saved']
         assert result['values']['output_dir'] == 'requested-but-not-saved'

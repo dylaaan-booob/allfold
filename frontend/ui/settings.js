@@ -935,11 +935,17 @@ function renderEntityDetail() {
   description.innerHTML=`<label>${info.entity} name<input id="s-entity-name" value="${esc(entity.name)}" autocomplete="off"></label>${ui.scope==='access'?`<label>Access Method<select data-service-field="method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>Service URL<input data-service-field="url" value="${esc(entity.url)}" type="url" placeholder="Optional public HTTP(S) URL"></label>`:''}<p class="s-help">${rows.length} ${sourceName()}</p>`;
   $('s-entity-name').addEventListener('change',event=>renameEntity(entity,event.target.value));
   if(ui.scope==='access'){
-    description.querySelector('select').value=entity.method;
-    description.querySelectorAll('[data-service-field]').forEach(input=>input.addEventListener(input.tagName==='SELECT'?'change':'input',()=>{
-      if(entity[input.dataset.serviceField]===input.value)return;
-      entity[input.dataset.serviceField]=input.value;changed({immediate:input.tagName==='SELECT'});
-    }));
+    const method=description.querySelector('[data-service-field=method]'),url=description.querySelector('[data-service-field=url]');
+    method.value=entity.method;
+    url.readOnly=entity.method==='carsi';
+    method.addEventListener('change',()=>{
+      if(entity.method===method.value)return;
+      entity.method=method.value;url.readOnly=entity.method==='carsi';changed({immediate:true});
+    });
+    url.addEventListener('input',()=>{
+      if(url.readOnly || entity.url===url.value)return;
+      entity.url=url.value;changed();
+    });
   }
 }
 function renderJournalDetail() {
@@ -990,14 +996,16 @@ async function journalResources(j) {
     cancel,
     {label:'Discover GOKB',run:async()=>{
       const select=$('s-resource-catalog'),status=$('s-resource-status'),evidence=$('s-resource-evidence');
+      const original=select.value;
       status.textContent='正在查询 GOKB…';evidence.hidden=true;
       try {
         const result=await formRequest(base+'/resolve',{}, {draft:false});
         if(!dialog.open || !select.isConnected)return false;
         const candidate=result.unique_candidate?.resource.production;
-        if(candidate && resources.some(r=>r.production===candidate))select.value=candidate;
+        const preselected=select.value===original && candidate && resources.some(r=>r.production===candidate);
+        if(preselected)select.value=candidate;
         status.textContent={
-          unique:'已选中 GOKB 匹配的 CARSI 资源，可保存或改选。',
+          unique:preselected?'已选中 GOKB 匹配的 CARSI 资源，可保存或改选。':'GOKB 找到唯一匹配，已保留当前选择。',
           ambiguous:'GOKB 找到多个可能匹配，请选择 CARSI 资源。',
           no_results:'GOKB 未找到该 Journal，可直接选择 CARSI 资源。',
           unresolved:'GOKB 未找到可靠的单一匹配，可直接选择 CARSI 资源。',
@@ -1074,17 +1082,18 @@ function deleteEntity() {
   }}]);
 }
 async function createEntity() {
-  const info=scopeInfo(),scope=ui.scope;
+  const scope=ui.scope,{entity:entityLabel}=scopeInfo(scope);
   const access=scope==='access',resources=access?(await formRequest('/api/ui-next/settings/catalog',{}, {draft:false})).resources:[];
   if(scope!==ui.scope)return;
-  const nameField=`<label>${info.entity} name<input id="s-new-entity-name" autocomplete="off"></label>`;
-  showDialog(`New ${info.entity}`,`${access?`<label>Access Method<select id="s-new-service-method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>CARSI Resource<select id="s-new-service-catalog">${carsiOptions(resources)}</select></label>`:''}${nameField}${access?'<label>Service URL<input id="s-new-service-url" type="url"></label>':''}<p id="s-entity-error" role="alert"></p>`,[cancel,{label:'Create',primary:true,run:()=>{
+  const nameField=`<label>${entityLabel} name<input id="s-new-entity-name" autocomplete="off"></label>`;
+  showDialog(`New ${entityLabel}`,`${access?`<label>Access Method<select id="s-new-service-method"><option value="carsi">CARSI</option><option value="manual">Manual Login</option></select></label><label>CARSI Resource<select id="s-new-service-catalog">${carsiOptions(resources)}</select></label>`:''}${nameField}${access?'<label>Service URL<input id="s-new-service-url" type="url"></label>':''}<p id="s-entity-error" role="alert"></p>`,[cancel,{label:'Create',primary:true,run:()=>{
     const method=access?$('s-new-service-method').value:null;
     let name;
     try{name=entityName(method==='carsi'?$('s-new-service-catalog').value:$('s-new-entity-name').value,scope==='custom');}catch(error){$('s-entity-error').textContent=error.message;return false;}
-    if(info.items.some(item=>scope==='custom'?item.name===name:item.name.toLowerCase()===name.toLowerCase())){$('s-entity-error').textContent='名称重复。';return false;}
+    const items=scopeInfo(scope).items;
+    if(items.some(item=>scope==='custom'?item.name===name:item.name.toLowerCase()===name.toLowerCase())){$('s-entity-error').textContent='名称重复。';return false;}
     const entity=access?{id:'svc_'+crypto.randomUUID().replaceAll('-',''),name,url:method==='manual'?$('s-new-service-url').value.trim():'',method}:{id:scope==='subject'?groupKey(name):labelKey(name),name};
-    info.items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
+    items.push(entity);ui.directory[scope]=entity.id;ui.detail='entity';changed({immediate:true});renderJournalsPage();journalLayoutHost.openSidebar('details');
   }}]);
   if(access){
     const method=$('s-new-service-method'),catalog=$('s-new-service-catalog'),name=$('s-new-entity-name'),url=$('s-new-service-url');

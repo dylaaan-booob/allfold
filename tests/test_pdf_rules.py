@@ -369,7 +369,9 @@ def test_article_doi_transform_does_not_collapse_different_encoded_octets(suffix
 def test_known_fields_do_not_reactivate_historical_or_non_pdf_services():
     inactive = [entry.rule_id for entry in (*RULE_CATALOG.values(), *API_CATALOG.values())
                 if entry.status in {'historical', 'extension', 'non-pdf', 'reference'}]
-    for rule in ('unknown-rule', 'API01', *inactive):
+    # T&F eBooks, historical ACS and IEEE OA fulltext are concrete exclusions.
+    excluded_examples = ('R021', 'R072', 'API05')
+    for rule in {'unknown-rule', 'API01', *excluded_examples, *inactive}:
         with pytest.raises(ValueError):
             KnownPdfUrl('https://example.org/Paper.pdf', rule, 'url')
     # Independent generic Meta belongs to P3; disabling a historical conversion

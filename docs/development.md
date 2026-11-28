@@ -100,7 +100,7 @@ developer-maintained directory from reviewed public records and entry evidence.
 To begin from the current catalog, export its rows to an editable CSV:
 
 ```sh
-sqlite3 -readonly -header -csv src/allfold/application/carsi-catalog.sqlite \
+sqlite3 -readonly -csv -header src/allfold/application/carsi-catalog.sqlite \
   'SELECT * FROM resources ORDER BY rowid' > /tmp/carsi-catalog.csv
 uv run --locked python tools/build_carsi_catalog.py /tmp/carsi-catalog.csv
 ```

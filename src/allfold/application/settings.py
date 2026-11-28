@@ -1081,21 +1081,17 @@ def _resolve_settings_targets(config_path: Path, draft: MonitorDraft, snapshot: 
     list_path = _journal_path(config_path, fields)
     persisted = parse_journal_whitelist_text(snapshot.contents, path=list_path)
     saved = {(j.issn, j.eissn): j for j in persisted}
-    from allfold.application.carsi_catalog import get_carsi_catalog, validate_carsi_service, CatalogError
+    from allfold.application.carsi_catalog import validate_carsi_service, CatalogError
     old_services = {service.id: service for service in parse_access_services_text(snapshot.contents, path=list_path)}
     services = []
     for service in draft.access_services:
         old = old_services.get(service.id)
         if service.access_method == "carsi" and service != old:
             try:
-                if old is None or (old.name, old.access_method) != (service.name, service.access_method):
-                    resource = validate_carsi_service(service.name)
-                else:
-                    resource = get_carsi_catalog().get(service.name)
+                resource = validate_carsi_service(service.name)
             except CatalogError as error:
                 raise ConfigurationError(str(error), field="access_services") from error
-            if resource is not None:
-                service = service.model_copy(update={"access_url": resource.access_url})
+            service = service.model_copy(update={"access_url": resource.access_url})
         elif service.access_method == "manual" and service != old and not service.access_url:
             raise ConfigurationError("Manual Service requires a public HTTP(S) URL", field="access_services")
         services.append(service)
