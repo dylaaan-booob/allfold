@@ -106,8 +106,8 @@ For native bioRxiv/medRxiv `/pubs` and `/details` paths, keep the first DOI slas
 literal and encode each suffix slash as `%252F`, including in provenance URLs.
 Canonical DOI identities remain unchanged. An empty response must still name the
 complete requested DOI where the status supplies a subject; a truncated status
-or service error is not NoMatch. See the [routing investigation](biorxiv-doi-routing.md)
-for the community fix and live positive/negative controls.
+or service error is not NoMatch. The [14 November 2026 routing study](https://github.com/dylaaan-booob/allfold/blob/0e29f964d529facc43f125b6df20b7066816d8e1/docs/biorxiv-doi-routing.md)
+records the community evidence and live positive and negative controls.
 
 Every known family needs first-version proof. Native arXiv Atom `published`, never `updated`, establishes its first public date. Europe PMC explicit PPR version facts can establish v1; native platform details supply missing proof. Crossref `posted`, version text or a DOI suffix alone do not establish native v1. OpenAlex `related_works`, `acceptedVersion`, `is_accepted` and repository locations cannot prove First public. Only explicit validated DOI/arXiv/official-URI relations are followed; there is no title similarity matching. Europe PMC keeps `Preprint in`/`Preprint of`, version identities and native relation notes, including automatic title/first-author matching notes, in source provenance. Missing history, conflicting dates or future preprint dates remain unresolved. Cancellation and configuration/Workspace checks guard every subsequent request and batch.
 
@@ -209,8 +209,8 @@ or restore it. There is no replacement query or compatibility API.
 Necessary background collection still follows verified relations and known native
 version families. An explicit native `reverse` purpose can query
 `/pubs/{server}/{published_doi}/na/json`, then the bound preprint's
-`/details/{server}/{preprint_doi}/na/json`. bioRxiv/medRxiv retain their
-[DOI path handling](biorxiv-doi-routing.md). This purpose does not enable scanning
+`/details/{server}/{preprint_doi}/na/json`. Both use the
+[native DOI path rules](#creation-time-evidence). This purpose does not enable scanning
 both servers for every Paper.
 
 Saved Preprint results, version evidence, relations, First public and source links

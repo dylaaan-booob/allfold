@@ -574,7 +574,8 @@ _RECORDS = (
         'PDF 请求依目标站点授权；所读构造函数未规定额外请求头。',
         '复用已有 Atypon Host 识别与共享直达优先机制；失败后保留 Reader、P3/P4 与 P5。',
         '/doi/pdf/{doi}; /doi/epdf/{doi}; /doi/pdfplus/{doi}',
-        '本机 Atypon Journals 2022-10-25 buildPdfUrl 与真实 Connector 出版版入口对照；现场证据见 pdf-pairing-acceptance.md；未复制源码。',
+        '本机 Atypon Journals 2022-10-25 buildPdfUrl 与真实 Connector 出版版入口对照；现场证据见 '
+        'https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md；未复制源码。',
         ('S026',),
     ),
     PdfAdoption(
@@ -882,7 +883,8 @@ _RECORDS = (
         '机构Session或OA。',
         '保留本条 P3/P4；适用共享直达优先机制，不增加 SIAM 专用性能分支。',
         'ePDF 是可能返回 HTML 的不同入口，不优先于已确认的正文 PDF 路径',
-        '本机 Atypon Journals 2022-10-25 buildPdfUrl 与真实 Connector 出版版入口对照；现场证据见 pdf-pairing-acceptance.md。',
+        '本机 Atypon Journals 2022-10-25 buildPdfUrl 与真实 Connector 出版版入口对照；现场证据见 '
+        'https://github.com/dylaaan-booob/allfold/blob/cd848a467a73bc4f6cd1dffc34a658121fbbcee6/docs/pdf-pairing-acceptance.md。',
         ('S026',),
     ),
     PdfAdoption(

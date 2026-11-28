@@ -63,8 +63,8 @@ own domain, path and expiry. A cross-site request can receive only
 SameSite=None additions. Ordinary Cookie order is retained, with known longer
 paths inserted first and ordinary-first ties. A newer ordinary value with an
 unknown path keeps its position. Values stay in Main and are never written
-back to the jar or logged. See the original mechanism investigation for the
-pinned Chromium version. [Partitioned Cookie research](partitioned-cookie-research.md)
+back to the jar or logged. The [17–18 November 2026 mechanism study](https://github.com/dylaaan-booob/allfold/blob/fc1005a725564d0b4acbfa51200625b376c4c5c0/docs/partitioned-cookie-research.md)
+records the observations on the pinned Chromium version.
 
 Main-frame `cf-mitigated: challenge` evidence is associated with its native Page
 and request ID through this same event owner, then reset on a new navigation.

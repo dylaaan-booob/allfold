@@ -12,12 +12,12 @@ import subprocess
 # Reviewed against runtime, build scripts and tests. New/unknown paths run full CI.
 # README.md is Python package metadata; list.md is a runtime/test input. UI and
 # third-party notices can be copied into build output. None belongs in this set.
+# docs/pdf-source-discovery.md is an input to the PDF rule catalog contract test.
 EXPLANATORY_DOCS = frozenset({
     'AGENTS.md',
     'docs/agents/issue-tracker.md',
     'docs/agents/triage-labels.md',
     'docs/architecture.md',
-    'docs/biorxiv-doi-routing.md',
     'docs/body-downloads.md',
     'docs/browser-documents.md',
     'docs/browser-pages.md',
@@ -29,7 +29,6 @@ EXPLANATORY_DOCS = frozenset({
     'docs/logging.md',
     'docs/paper-identity.md',
     'docs/paper-library.md',
-    'docs/pdf-source-discovery.md',
     'docs/providers.md',
     'docs/release.md',
     'docs/research-scope.md',

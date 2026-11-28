@@ -208,7 +208,8 @@ empty diffs, unrecognized events and unclassified paths choose full validation.
 Only a complete diff consisting of the explicitly listed explanatory documents
 skips dependency installation, UI build and heavy Python/Electron checks.
 `README.md` is Python build metadata, `list.md` is a runtime/test seed, and UI
-notices are build assets: Markdown is not automatically documentation-only.
+notices are build assets. The PDF rule catalog contract test reads
+`docs/pdf-source-discovery.md`, so changes to that document run full validation.
 New documentation paths need an input-usage review before joining the allowlist.
 Any code, test/fixture, CI, script, dependency, lock or runtime-configuration change
 runs existing locked setup plus all three commands above. Mixed changes do too.
@@ -305,7 +306,7 @@ related verification without turning every row into a requirement for every PR.
 | Document extraction / PDF sources | `test_document_metadata.py`, `test_pdf_rules.py`, `test_pdf_source_facts.py`, `test_pdf_discovery.py`, `test_pdf_http.py`; serial `document-probes`, `document-extraction`, `pdf-clues` Electron tests |
 | Native IPC / resources / Solver | `test_electron_bridge_solver.py`, `test_browser_services.py`, `test_login.py`; serial `cloudflare-solver`, `session-downloads`, `page-resources`, `browser-workspaces-dom` Electron tests |
 | Download / local files | `test_body_downloads.py`, `test_body_download_http.py`, `test_native_body_downloads.py`, `test_local_body.py`; serial `body-stream`, `body-native`, `local-body`, `native-output` Electron tests |
-| R024 Session/Reader and historical capture | Product `body-native` / `body-stream` fixtures cover public no-item save, Reader-to-Session and redirects. Explicit `node --test --test-concurrency=1 electron/tests/pdf-response-capture.research.cjs` reproduces the old pinned Fetch experiment; it is outside default product collection. |
+| R024 Session/Reader | Product `body-native` / `body-stream` fixtures cover public no-item save, Reader-to-Session and redirects. |
 | Reader / layout | `workspace-layout-dom.test.cjs`, `browser-presentation-dom.test.cjs`; built UI and temporary profiles, with `document_metadata_pipeline.py` for real cross-language extraction/persistence composition |
 
 Python names are under `tests/`; Electron names are under `electron/tests/` and
